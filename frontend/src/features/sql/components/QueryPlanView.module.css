@@ -1,0 +1,238 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.headerIcon {
+  width: 16px;
+  height: 16px;
+  color: var(--color-secondary);
+}
+
+.headerText {
+  font-size: var(--text-tiny);
+  font-weight: 600;
+  color: var(--color-text);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.explainBtn {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 500;
+  background: rgba(79, 70, 229, 0.15);
+  color: var(--color-secondary);
+  border: none;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.explainBtn:hover {
+  background: rgba(79, 70, 229, 0.25);
+}
+
+.explainBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btnIcon {
+  width: 12px;
+  height: 12px;
+}
+
+.btnSpinner {
+  width: 12px;
+  height: 12px;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.planContainer {
+  flex: 1;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  margin: 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+}
+
+.planHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  font-size: 11px;
+  color: var(--color-text-secondary);
+}
+
+.planHeaderRight {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.costBadge,
+.rowsBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 10px;
+  font-family: var(--font-mono);
+}
+
+.costBadge {
+  background: rgba(245, 158, 11, 0.12);
+  color: #f59e0b;
+}
+
+.rowsBadge {
+  background: rgba(34, 197, 94, 0.12);
+  color: #22c55e;
+}
+
+.costIcon {
+  width: 10px;
+  height: 10px;
+}
+
+.planIcon {
+  width: 12px;
+  height: 12px;
+  color: var(--color-secondary);
+}
+
+.copyBtn {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 10px;
+  color: var(--color-text-tertiary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.copyBtn:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+}
+
+.copyIcon {
+  width: 12px;
+  height: 12px;
+}
+
+.planBody {
+  padding: 8px;
+  background: var(--color-surface-hover);
+}
+
+.planLine {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 2px 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  position: relative;
+}
+
+.costBar {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  background: rgba(79, 70, 229, 0.08);
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+.lineNum {
+  color: var(--color-text-placeholder);
+  min-width: 20px;
+  text-align: right;
+  user-select: none;
+}
+
+.lineContent {
+  color: var(--color-text);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.emptyState {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.emptyIcon {
+  width: 32px;
+  height: 32px;
+  color: var(--color-secondary);
+  opacity: 0.3;
+  margin-bottom: 8px;
+}
+
+.emptyText {
+  font-size: var(--text-tiny);
+  color: var(--color-text-tertiary);
+  margin-bottom: 4px;
+}
+
+.emptySubtext {
+  font-size: 10px;
+  color: var(--color-text-placeholder);
+  text-align: center;
+}
+
+.error {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  margin: 8px 12px;
+  border-radius: var(--radius-md);
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--color-error);
+  font-size: var(--text-tiny);
+}
+
+.errorIcon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}

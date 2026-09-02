@@ -1,0 +1,70 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    expose:
+      - 5432
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-automl}
+      POSTGRES_USER: ${POSTGRES_USER:-changeme}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-changeme} -d ${POSTGRES_DB:-automl}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    expose:
+      - 6379
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: ${BUILD_TARGET:-final}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - backend/.env
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-changeme}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-automl}}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost}
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+      PORT: 8000
+    volumes:
+      - dataset_data:/app/dataset
+      - model_data:/app/models
+      - storage_data:/data
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+
+  frontend:
+    build:
+      context: frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "${FRONTEND_PORT:-80}:80"
+
+volumes:
+  postgres_data:
+  dataset_data:
+  model_data:
+  storage_data:

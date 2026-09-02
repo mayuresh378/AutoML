@@ -1,0 +1,166 @@
+.methods {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+.method {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 14px;
+  background: rgba(0,0,0,0.2);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 10px;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.method:hover {
+  border-color: rgba(255,255,255,0.15);
+}
+
+.on {
+  border-color: rgba(99,102,241,0.5);
+  background: rgba(99,102,241,0.07);
+}
+
+.radio {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255,255,255,0.2);
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.on .radio {
+  border-color: #6366f1;
+}
+
+.radioDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #6366f1;
+}
+
+.methodLabel {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: #e4e4e7;
+}
+
+.methodDesc {
+  display: block;
+  font-size: 11px;
+  color: rgba(255,255,255,0.4);
+  margin-top: 2px;
+}
+
+.row {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 140px;
+}
+
+.label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.55);
+  letter-spacing: 0.02em;
+}
+
+.input {
+  width: 100%;
+  padding: 8px 12px;
+  font-size: 13px;
+  background: rgba(0,0,0,0.25);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px;
+  color: #e4e4e7;
+  outline: none;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.input:focus {
+  border-color: #6366f1;
+}
+
+.inputWrap {
+  position: relative;
+}
+
+.suffix {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 12px;
+  color: rgba(255,255,255,0.4);
+}
+
+.inputWrap .input {
+  padding-right: 32px;
+}
+
+.toggle {
+  width: 40px;
+  height: 22px;
+  border-radius: 11px;
+  background: rgba(255,255,255,0.12);
+  border: 1px solid rgba(255,255,255,0.08);
+  cursor: pointer;
+  position: relative;
+  padding: 0;
+  transition: background 0.15s;
+}
+
+.toggleOn {
+  background: #6366f1;
+}
+
+.toggleKnob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.15s;
+}
+
+.toggleOn .toggleKnob {
+  transform: translateX(18px);
+}
+
+@media (max-width: 900px) {
+  .methods {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .methods {
+    grid-template-columns: 1fr;
+  }
+}

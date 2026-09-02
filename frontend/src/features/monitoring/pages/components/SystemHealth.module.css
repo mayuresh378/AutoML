@@ -1,0 +1,172 @@
+.card {
+  background: #111827;
+  border: 1px solid rgba(39, 42, 42, 0.8);
+  border-radius: 18px;
+  overflow: hidden;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 22px;
+  border-bottom: 1px solid rgba(39, 42, 42, 0.8);
+}
+
+.title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #f3f4f6;
+  margin: 0;
+}
+
+.body {
+  padding: 18px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.gauges {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.gaugeItem {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.gaugeTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.gaugeInfo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.gaugeIcon {
+  flex-shrink: 0;
+}
+
+.gaugeLabel {
+  font-size: 13px;
+  font-weight: 600;
+  color: #d1d5db;
+}
+
+.gaugeValue {
+  font-size: 14px;
+  font-weight: 700;
+  color: #f3f4f6;
+  font-family: 'SF Mono', 'Consolas', monospace;
+}
+
+.gaugeTrack {
+  width: 100%;
+  height: 6px;
+  background: rgba(39, 42, 42, 0.8);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.gaugeFill {
+  height: 100%;
+  border-radius: 3px;
+}
+
+.gaugeSub {
+  font-size: 11px;
+  color: #4b5563;
+}
+
+.alertSection {
+  border-top: 1px solid rgba(39, 42, 42, 0.6);
+  padding-top: 16px;
+}
+
+.alertHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.alertIcon {
+  color: #fbbf24;
+}
+
+.alertTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: #d1d5db;
+}
+
+.alertCount {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 600;
+  color: #6b7280;
+  background: rgba(39, 42, 42, 0.8);
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+
+.alertList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.alertItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  transition: background 0.15s;
+}
+
+.alertItem:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.sevDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-top: 5px;
+  flex-shrink: 0;
+}
+
+.alertContent {
+  flex: 1;
+  min-width: 0;
+}
+
+.alertName {
+  font-size: 13px;
+  font-weight: 500;
+  color: #d1d5db;
+}
+
+.alertMsg {
+  font-size: 11px;
+  color: #4b5563;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.alertTime {
+  font-size: 10px;
+  color: #4b5563;
+  white-space: nowrap;
+  flex-shrink: 0;
+}

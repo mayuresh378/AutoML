@@ -1,0 +1,362 @@
+.explorer {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* ── Header ── */
+.header {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.headerTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.headerIcon {
+  width: 16px;
+  height: 16px;
+  color: var(--color-secondary);
+}
+
+.headerText {
+  font-size: var(--text-tiny);
+  font-weight: 600;
+  color: var(--color-text);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* ── Search ── */
+.searchWrapper {
+  position: relative;
+}
+
+.searchIcon {
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 14px;
+  height: 14px;
+  color: var(--color-text-tertiary);
+}
+
+.searchInput {
+  width: 100%;
+  height: 28px;
+  padding-left: 28px;
+  padding-right: 8px;
+  border-radius: var(--radius-md);
+  background: var(--color-surface-hover);
+  border: 1px solid var(--color-border);
+  font-size: var(--text-tiny);
+  color: var(--color-text);
+  outline: none;
+  transition: border-color var(--transition-fast);
+}
+
+.searchInput::placeholder {
+  color: var(--color-text-placeholder);
+}
+
+.searchInput:focus {
+  border-color: var(--color-secondary);
+}
+
+/* ── Tree ── */
+.tree {
+  flex: 1;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  padding: 4px 0;
+}
+
+.emptyState {
+  padding: 24px 12px;
+  text-align: center;
+  font-size: var(--text-tiny);
+  color: var(--color-text-placeholder);
+}
+
+/* ── Dataset Node ── */
+.datasetNode {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  font-size: var(--text-tiny);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  border: none;
+  background: transparent;
+  text-align: left;
+}
+
+.datasetNode:hover {
+  color: var(--color-text);
+  background: var(--color-surface-hover);
+}
+
+.datasetChevron {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+}
+
+.datasetIcon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: var(--color-secondary);
+  opacity: 0.7;
+}
+
+.datasetName {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+/* ── Table Node ── */
+.tableNode {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px 6px 28px;
+  font-size: var(--text-tiny);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  border: none;
+  background: transparent;
+  text-align: left;
+}
+
+.tableNode:hover {
+  color: var(--color-text);
+  background: var(--color-surface-hover);
+}
+
+.tableChevron {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+}
+
+.tableIcon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: var(--color-text-tertiary);
+}
+
+.tableName {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+/* ── Column Node ── */
+.columnNode {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px 4px 44px;
+  font-size: var(--text-tiny);
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  border: none;
+  background: transparent;
+  text-align: left;
+}
+
+.columnNode:hover {
+  color: var(--color-text);
+  background: var(--color-surface-hover);
+}
+
+.columnIcon {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+}
+
+.pkIcon {
+  color: #f59e0b;
+}
+
+.columnName {
+  flex: 1;
+}
+
+.columnType {
+  font-size: 10px;
+  color: var(--color-text-placeholder);
+  margin-left: auto;
+}
+
+.allColumns {
+  font-style: italic;
+}
+
+/* ── Preview Button ── */
+.previewBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 4px;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-placeholder);
+  transition: all var(--transition-fast);
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.tableNode:hover .previewBtn {
+  opacity: 1;
+}
+
+.previewBtn:hover {
+  color: var(--color-secondary);
+  background: rgba(79, 70, 229, 0.15);
+}
+
+.previewIcon {
+  width: 12px;
+  height: 12px;
+}
+
+/* ── Preview Panel ── */
+.previewPanel {
+  border-top: 1px solid var(--color-border);
+  max-height: 200px;
+  display: flex;
+  flex-direction: column;
+}
+
+.previewHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.previewHeaderIcon {
+  width: 12px;
+  height: 12px;
+  color: var(--color-secondary);
+}
+
+.previewTitle {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  flex: 1;
+}
+
+.previewClose {
+  display: flex;
+  align-items: center;
+  padding: 2px;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-tertiary);
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.previewClose:hover {
+  color: var(--color-text);
+  background: var(--color-surface-hover);
+}
+
+.previewCloseIcon {
+  width: 12px;
+  height: 12px;
+}
+
+.previewLoading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.previewSpinner {
+  width: 16px;
+  height: 16px;
+  color: var(--color-secondary);
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.previewTableWrapper {
+  flex: 1;
+  overflow: auto;
+  scrollbar-width: thin;
+}
+
+.previewTable {
+  width: 100%;
+  font-size: 10px;
+  border-collapse: collapse;
+}
+
+.previewTh {
+  padding: 4px 8px;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  text-align: left;
+  font-weight: 500;
+  color: var(--color-text-tertiary);
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+}
+
+.previewTd {
+  padding: 3px 8px;
+  border-bottom: 1px solid var(--color-border);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--color-text-secondary);
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.previewRowOdd {
+  background: rgba(0, 0, 0, 0.015);
+}
+
+[data-theme='dark'] .previewRowOdd {
+  background: rgba(255, 255, 255, 0.015);
+}
+
+.previewNull {
+  color: var(--color-text-placeholder);
+  font-style: italic;
+}

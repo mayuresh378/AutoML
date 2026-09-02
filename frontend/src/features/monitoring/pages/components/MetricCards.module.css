@@ -1,0 +1,148 @@
+.grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 16px;
+  margin-bottom: 32px;
+}
+
+.card {
+  border-radius: 18px;
+  overflow: hidden;
+  border: 1px solid rgba(39, 42, 42, 0.8);
+  transition: border-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+.card:hover {
+  border-color: rgba(55, 65, 81, 0.8);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.cardInner {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+}
+
+.cardTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.iconWrap {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.trend {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+
+.trendUp {
+  color: #34d399;
+  background: rgba(34, 197, 94, 0.1);
+}
+
+.trendDown {
+  color: #f87171;
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.trendFlat {
+  color: #6b7280;
+  background: rgba(107, 114, 128, 0.1);
+}
+
+.statusBadge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.statusOk {
+  color: #34d399;
+  background: rgba(34, 197, 94, 0.1);
+}
+
+.statusWarn {
+  color: #fbbf24;
+  background: rgba(245, 158, 11, 0.1);
+}
+
+.statusCrit {
+  color: #f87171;
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.cardValue {
+  font-size: 24px;
+  font-weight: 700;
+  color: #f3f4f6;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  font-family: 'SF Mono', 'Consolas', monospace;
+}
+
+.cardLabel {
+  font-size: 12px;
+  font-weight: 500;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.cardBottom {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.cardSub {
+  font-size: 10px;
+  color: #4b5563;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sparkline {
+  margin-top: 4px;
+  margin-left: -8px;
+  margin-right: -8px;
+}
+
+@media (max-width: 1400px) {
+  .grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}

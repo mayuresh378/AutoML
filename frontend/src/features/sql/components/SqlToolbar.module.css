@@ -1,0 +1,213 @@
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 44px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-glass-bg);
+  backdrop-filter: blur(var(--glass-blur-sm));
+  flex-shrink: 0;
+}
+
+/* ── Dataset Selector ── */
+.datasetGroup {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.datasetWrapper {
+  position: relative;
+}
+
+.datasetSelect {
+  height: 28px;
+  padding-left: 28px;
+  padding-right: 24px;
+  border-radius: var(--radius-md);
+  background: var(--color-surface-hover);
+  border: 1px solid var(--color-border);
+  font-size: var(--text-tiny);
+  color: var(--color-text);
+  appearance: none;
+  cursor: pointer;
+  outline: none;
+  transition: border-color var(--transition-fast);
+}
+
+.datasetSelect:focus {
+  border-color: var(--color-secondary);
+}
+
+.datasetIcon {
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 14px;
+  height: 14px;
+  color: var(--color-text-tertiary);
+  pointer-events: none;
+}
+
+.datasetChevron {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 12px;
+  height: 12px;
+  color: var(--color-text-tertiary);
+  pointer-events: none;
+}
+
+/* ── Divider ── */
+.divider {
+  width: 1px;
+  height: 20px;
+  background: var(--color-border);
+  margin: 0 4px;
+}
+
+/* ── Toolbar Button ── */
+.btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-md);
+  color: var(--color-text-tertiary);
+  transition: all var(--transition-fast);
+  cursor: pointer;
+  border: none;
+  background: transparent;
+}
+
+.btn:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+}
+
+.btnIcon {
+  width: 14px;
+  height: 14px;
+}
+
+.btnAccent {
+  color: var(--color-secondary);
+}
+
+.btnAccent:hover {
+  color: var(--color-secondary-hover);
+}
+
+/* ── Panel Toggle Buttons ── */
+.panelToggle {
+  opacity: 1;
+  transition: opacity var(--transition-fast);
+}
+
+.panelToggleInactive {
+  opacity: 0.4;
+}
+
+/* ── Spacer ── */
+.spacer {
+  flex: 1;
+}
+
+/* ── Run Button ── */
+.runBtn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: var(--radius-md);
+  background: var(--color-secondary);
+  color: var(--color-text-inverse);
+  font-size: var(--text-tiny);
+  font-weight: 500;
+  border: none;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.runBtn:hover {
+  background: var(--color-secondary-hover);
+}
+
+.runBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.runBtnIcon {
+  width: 12px;
+  height: 12px;
+  fill: currentColor;
+}
+
+.runSpinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Export Dropdown ── */
+.exportDropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  min-width: 180px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-dropdown);
+  z-index: 100;
+  padding: 4px;
+
+  backdrop-filter: blur(var(--glass-blur-sm)) saturate(160%);
+  -webkit-backdrop-filter: blur(var(--glass-blur-sm)) saturate(160%);}
+
+.exportItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-tiny);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  border: none;
+  background: transparent;
+  text-align: left;
+}
+
+.exportItem:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+}
+
+.exportIcon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.btnActive {
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+}

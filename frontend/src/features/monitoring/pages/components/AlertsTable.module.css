@@ -1,0 +1,144 @@
+.card {
+  background: #111827;
+  border: 1px solid rgba(39, 42, 42, 0.8);
+  border-radius: 18px;
+  overflow: hidden;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 22px;
+  border-bottom: 1px solid rgba(39, 42, 42, 0.8);
+}
+
+.title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #f3f4f6;
+  margin: 0;
+}
+
+.count {
+  font-size: 12px;
+  color: #6b7280;
+  background: rgba(39, 42, 42, 0.8);
+  padding: 4px 10px;
+  border-radius: 6px;
+}
+
+.tableWrap {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.table th {
+  text-align: left;
+  padding: 12px 18px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #6b7280;
+  border-bottom: 1px solid rgba(39, 42, 42, 0.8);
+  white-space: nowrap;
+}
+
+.table td {
+  padding: 12px 18px;
+  border-bottom: 1px solid rgba(39, 42, 42, 0.5);
+  color: #d1d5db;
+  white-space: nowrap;
+}
+
+.row:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.sevBadge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.sevCrit {
+  color: #f87171;
+  background: rgba(239, 68, 68, 0.12);
+}
+
+.sevWarn {
+  color: #fbbf24;
+  background: rgba(245, 158, 11, 0.12);
+}
+
+.sevInfo {
+  color: #60a5fa;
+  background: rgba(59, 130, 246, 0.12);
+}
+
+.statusBadge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 6px;
+  color: #f87171;
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.cellTitle {
+  font-weight: 500;
+  color: #f3f4f6;
+}
+
+.cellMsg {
+  color: #6b7280;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cellTime {
+  color: #4b5563;
+  font-size: 12px;
+}
+
+.actionBtn {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: none;
+  border: 1px solid transparent;
+  color: #6b7280;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.actionBtn:hover {
+  color: #d1d5db;
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(39, 42, 42, 0.8);
+}
+
+.empty {
+  text-align: center;
+  padding: 40px 20px !important;
+  color: #4b5563;
+}
+
+.emptyIcon {
+  margin-right: 8px;
+  vertical-align: middle;
+  opacity: 0.4;
+}

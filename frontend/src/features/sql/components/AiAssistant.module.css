@@ -1,0 +1,306 @@
+.assistant {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* ── Header ── */
+.header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.headerIcon {
+  width: 16px;
+  height: 16px;
+  color: var(--color-secondary);
+}
+
+.headerText {
+  font-size: var(--text-tiny);
+  font-weight: 600;
+  color: var(--color-text);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* ── Messages ── */
+.messages {
+  flex: 1;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ── Empty State ── */
+.emptyState {
+  text-align: center;
+  padding: 24px 0;
+}
+
+.emptyIcon {
+  width: 32px;
+  height: 32px;
+  color: var(--color-secondary);
+  opacity: 0.4;
+  margin: 0 auto 8px;
+}
+
+.emptyText {
+  font-size: var(--text-tiny);
+  color: var(--color-text-tertiary);
+  margin-bottom: 12px;
+}
+
+.suggestions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.suggestion {
+  width: 100%;
+  text-align: left;
+  padding: 6px 10px;
+  border-radius: var(--radius-md);
+  font-size: var(--text-tiny);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  border: none;
+  background: transparent;
+}
+
+.suggestion:hover {
+  color: var(--color-text);
+  background: var(--color-surface-hover);
+}
+
+.suggestionIcon {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  color: var(--color-secondary);
+  opacity: 0.5;
+}
+
+.suggestionQuote {
+  color: var(--color-text-tertiary);
+}
+
+/* ── Message Bubble ── */
+.message {
+  font-size: var(--text-tiny);
+}
+
+.messageUser {
+  text-align: right;
+}
+
+.messageAssistant {
+  text-align: left;
+}
+
+.bubble {
+  display: inline-block;
+  max-width: 90%;
+  border-radius: var(--radius-md);
+  padding: 8px 12px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.bubbleUser {
+  background: var(--color-secondary);
+  background: rgba(79, 70, 229, 0.15);
+  color: var(--color-text);
+}
+
+.bubbleAssistant {
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+}
+
+/* ── SQL Block ── */
+.sqlBlock {
+  position: relative;
+  margin-top: 6px;
+  text-align: left;
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  padding: 10px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--color-success);
+
+  backdrop-filter: blur(var(--glass-blur-sm)) saturate(160%);
+  -webkit-backdrop-filter: blur(var(--glass-blur-sm)) saturate(160%);}
+
+.sqlPre {
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.sqlActions {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.sqlBlock:hover .sqlActions {
+  opacity: 1;
+}
+
+.sqlActionBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-tertiary);
+  transition: all var(--transition-fast);
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.sqlActionBtn:hover {
+  color: var(--color-text);
+  background: var(--color-surface-hover);
+}
+
+.sqlActionBtnSuccess {
+  color: var(--color-success);
+}
+
+.insertBtn {
+  position: absolute;
+  bottom: 6px;
+  right: 6px;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 10px;
+  background: rgba(79, 70, 229, 0.15);
+  color: var(--color-secondary);
+  border: none;
+  cursor: pointer;
+  opacity: 0;
+  transition: all var(--transition-fast);
+}
+
+.sqlBlock:hover .insertBtn {
+  opacity: 1;
+}
+
+.insertBtn:hover {
+  background: rgba(79, 70, 229, 0.25);
+}
+
+/* ── Timing Badge ── */
+.timingBadge {
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: var(--color-text-tertiary);
+}
+
+.timingIcon {
+  width: 12px;
+  height: 12px;
+}
+
+/* ── Loading ── */
+.loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--text-tiny);
+  color: var(--color-text-tertiary);
+  padding: 8px 0;
+}
+
+.loadingSpinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--color-border);
+  border-top-color: var(--color-secondary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Input Area ── */
+.inputArea {
+  padding: 12px;
+  border-top: 1px solid var(--color-border);
+}
+
+.inputRow {
+  display: flex;
+  gap: 8px;
+}
+
+.input {
+  flex: 1;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: var(--radius-md);
+  background: var(--color-surface-hover);
+  border: 1px solid var(--color-border);
+  font-size: var(--text-tiny);
+  color: var(--color-text);
+  outline: none;
+  transition: border-color var(--transition-fast);
+}
+
+.input::placeholder {
+  color: var(--color-text-placeholder);
+}
+
+.input:focus {
+  border-color: var(--color-secondary);
+}
+
+.sendBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md);
+  background: var(--color-secondary);
+  color: var(--color-text-inverse);
+  border: none;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.sendBtn:hover {
+  background: var(--color-secondary-hover);
+}
+
+.sendBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.sendIcon {
+  width: 14px;
+  height: 14px;
+}

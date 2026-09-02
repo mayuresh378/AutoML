@@ -1,0 +1,120 @@
+.container {
+  background: var(--color-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+
+  backdrop-filter: blur(var(--glass-blur-sm)) saturate(160%);
+  -webkit-backdrop-filter: blur(var(--glass-blur-sm)) saturate(160%);}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-5) var(--space-6);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.title {
+  font-size: var(--text-body-lg);
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.baseValue {
+  font-size: var(--text-tiny);
+  color: var(--color-text-tertiary);
+  font-family: var(--font-mono);
+}
+
+.waterfallList {
+  padding: var(--space-4) var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 140px 1fr 90px;
+  align-items: center;
+  gap: var(--space-3);
+  height: 28px;
+}
+
+.featureLabel {
+  font-size: var(--text-tiny);
+  color: var(--color-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+  padding-right: var(--space-2);
+}
+
+.barTrack {
+  height: 16px;
+  position: relative;
+  background: transparent;
+}
+
+.bar {
+  position: absolute;
+  top: 2px;
+  height: 12px;
+  border-radius: 3px;
+  min-width: 2px;
+}
+
+.bar.positive {
+  background: #22c55e;
+}
+
+.bar.negative {
+  background: #ef4444;
+}
+
+.value {
+  font-size: var(--text-tiny);
+  font-family: var(--font-mono);
+  font-weight: 500;
+  text-align: right;
+}
+
+.posText {
+  color: #16a34a;
+}
+
+.negText {
+  color: #dc2626;
+}
+
+.footer {
+  display: flex;
+  gap: var(--space-5);
+  padding: var(--space-3) var(--space-6) var(--space-5);
+  border-top: 1px solid var(--color-border);
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-tiny);
+  color: var(--color-text-tertiary);
+}
+
+.legendDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.legendDot.positive {
+  background: #22c55e;
+}
+
+.legendDot.negative {
+  background: #ef4444;
+}

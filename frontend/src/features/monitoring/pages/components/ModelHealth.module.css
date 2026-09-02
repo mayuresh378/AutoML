@@ -1,0 +1,86 @@
+.card {
+  background: #111827;
+  border: 1px solid rgba(39, 42, 42, 0.8);
+  border-radius: 18px;
+  overflow: hidden;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 22px;
+  border-bottom: 1px solid rgba(39, 42, 42, 0.8);
+}
+
+.title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #f3f4f6;
+  margin: 0;
+}
+
+.body {
+  padding: 18px 22px;
+}
+
+.metricsGrid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 16px;
+}
+
+.metricItem {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.metricTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.metricInfo {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.metricLabel {
+  font-size: 12px;
+  font-weight: 500;
+  color: #9ca3af;
+}
+
+.metricValue {
+  font-size: 16px;
+  font-weight: 700;
+  font-family: 'SF Mono', 'Consolas', monospace;
+}
+
+.progressTrack {
+  width: 100%;
+  height: 6px;
+  background: rgba(39, 42, 42, 0.8);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.progressFill {
+  height: 100%;
+  border-radius: 3px;
+}
+
+@media (max-width: 1024px) {
+  .metricsGrid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .metricsGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}

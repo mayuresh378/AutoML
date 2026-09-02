@@ -1,0 +1,160 @@
+.row {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-width: 200px;
+}
+
+.label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.55);
+  letter-spacing: 0.02em;
+}
+
+.select, .input {
+  width: 100%;
+  padding: 9px 12px;
+  font-size: 13px;
+  background: rgba(0,0,0,0.25);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px;
+  color: #e4e4e7;
+  outline: none;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.select:focus, .input:focus {
+  border-color: #6366f1;
+}
+
+.select {
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2371717a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 30px;
+}
+
+.select option {
+  background: #1f1f1f;
+  color: #e4e4e7;
+}
+
+.statsGrid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.statBox {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px;
+  background: rgba(0,0,0,0.2);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 10px;
+}
+
+.statVal {
+  font-size: 15px;
+  font-weight: 700;
+  color: #e4e4e7;
+}
+
+.statLabel {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: rgba(255,255,255,0.35);
+}
+
+.distCard {
+  margin-top: 16px;
+  padding: 16px;
+  background: rgba(0,0,0,0.2);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 10px;
+}
+
+.distTitle {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.55);
+  display: block;
+  margin-bottom: 12px;
+}
+
+.distList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.distRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.distName {
+  width: 140px;
+  font-size: 12px;
+  color: #d4d4d8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.distBarWrap {
+  flex: 1;
+  height: 8px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.distBar {
+  height: 100%;
+  background: #6366f1;
+  border-radius: 4px;
+}
+
+.distCount {
+  width: 120px;
+  text-align: right;
+  font-size: 11px;
+  color: rgba(255,255,255,0.45);
+  font-family: var(--font-mono, monospace);
+}
+
+@media (max-width: 900px) {
+  .statsGrid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 560px) {
+  .statsGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .distName {
+    width: 90px;
+  }
+}

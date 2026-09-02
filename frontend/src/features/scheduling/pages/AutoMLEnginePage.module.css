@@ -1,0 +1,18 @@
+.page {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.section {
+  scroll-margin-top: 88px;
+}

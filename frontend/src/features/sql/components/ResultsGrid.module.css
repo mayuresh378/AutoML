@@ -1,0 +1,328 @@
+.grid {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* ── Header Bar ── */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
+  flex-shrink: 0;
+}
+
+.headerLeft {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.rowCount {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-tiny);
+  color: var(--color-text-secondary);
+}
+
+.rowCountIcon {
+  width: 14px;
+  height: 14px;
+}
+
+.execTime {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--text-tiny);
+  color: var(--color-text-tertiary);
+}
+
+.execTimeIcon {
+  width: 12px;
+  height: 12px;
+}
+
+.headerRight {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ── Filter Input ── */
+.filterWrapper {
+  position: relative;
+}
+
+.filterIcon {
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 12px;
+  height: 12px;
+  color: var(--color-text-tertiary);
+}
+
+.filterInput {
+  height: 24px;
+  width: 128px;
+  padding-left: 24px;
+  padding-right: 8px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  background: var(--color-surface-hover);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  outline: none;
+  transition: border-color var(--transition-fast);
+}
+
+.filterInput::placeholder {
+  color: var(--color-text-placeholder);
+}
+
+.filterInput:focus {
+  border-color: var(--color-secondary);
+}
+
+/* ── Grid Buttons ── */
+.gridActions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.gridBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  border: none;
+  background: transparent;
+}
+
+.gridBtn:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+}
+
+.gridBtn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.gridBtnIcon {
+  width: 12px;
+  height: 12px;
+}
+
+/* ── Table ── */
+.tableContainer {
+  flex: 1;
+  overflow: auto;
+  scrollbar-width: thin;
+}
+
+.table {
+  width: 100%;
+  font-size: var(--text-tiny);
+  border-collapse: collapse;
+}
+
+/* ── Table Header ── */
+.thead {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.thRow {
+  /* inherits from tr */
+}
+
+.th {
+  padding: 6px 8px;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  text-align: left;
+  font-size: 10px;
+  color: var(--color-text-tertiary);
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  transition: color var(--transition-fast);
+}
+
+.th:hover {
+  color: var(--color-text);
+}
+
+.thRowNum {
+  width: 40px;
+}
+
+.thContent {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sortIcon {
+  width: 12px;
+  height: 12px;
+}
+
+.sortInactive {
+  opacity: 0.3;
+}
+
+/* ── Table Body ── */
+.td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--color-border);
+  font-family: var(--font-mono);
+  cursor: pointer;
+  position: relative;
+  transition: background var(--transition-fast);
+}
+
+.td:hover {
+  background: var(--color-surface-hover);
+}
+
+.tdRowNum {
+  color: var(--color-text-placeholder);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.rowEven {
+  background: transparent;
+}
+
+.rowOdd {
+  background: var(--color-surface-hover);
+  background: rgba(0, 0, 0, 0.015);
+}
+
+[data-theme='dark'] .rowOdd {
+  background: rgba(255, 255, 255, 0.015);
+}
+
+.cellValue {
+  font-size: 11px;
+}
+
+.cellNull {
+  color: var(--color-text-placeholder);
+  font-style: italic;
+}
+
+.cellNumber {
+  color: var(--color-success);
+}
+
+.cellCopied {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--color-success);
+}
+
+/* ── Pagination Footer ── */
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  border-top: 1px solid var(--color-border);
+  background: var(--color-surface);
+  flex-shrink: 0;
+}
+
+.footerInfo {
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+}
+
+.footerControls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pageInfo {
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+  padding: 0 8px;
+}
+
+.pageSizeSelect {
+  height: 24px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  background: var(--color-surface-hover);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-tertiary);
+  padding: 0 4px;
+  outline: none;
+}
+
+/* ── Column Filters ── */
+.colFilterInput {
+  width: 100%;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: var(--radius-sm);
+  font-size: 10px;
+  background: var(--color-surface-hover);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  outline: none;
+  transition: border-color var(--transition-fast);
+}
+
+.colFilterInput::placeholder {
+  color: var(--color-text-placeholder);
+}
+
+.colFilterInput:focus {
+  border-color: var(--color-secondary);
+}
+
+.gridBtnActive {
+  background: rgba(79, 70, 229, 0.12);
+  color: var(--color-secondary);
+}
+
+.clearFiltersBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  transition: all var(--transition-fast);
+}
+
+.clearFiltersBtn:hover {
+  color: var(--color-danger);
+  background: rgba(239, 68, 68, 0.1);
+}

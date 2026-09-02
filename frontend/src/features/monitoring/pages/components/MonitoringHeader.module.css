@@ -1,0 +1,130 @@
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 28px;
+}
+
+.headerLeft {
+  display: flex;
+  align-items: center;
+}
+
+.titleRow {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.iconWrap {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(5, 150, 105, 0.08));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #34d399;
+  flex-shrink: 0;
+}
+
+.title {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: #f3f4f6;
+  margin: 0;
+}
+
+.subtitle {
+  font-size: 14px;
+  color: #6b7280;
+  margin: 4px 0 0;
+}
+
+.headerRight {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.timeRange {
+  display: flex;
+  gap: 4px;
+  background: #111827;
+  border: 1px solid rgba(39, 42, 42, 0.8);
+  border-radius: 12px;
+  padding: 4px;
+}
+
+.timeBtn {
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 8px;
+  background: transparent;
+  color: #6b7280;
+  font-size: 13px;
+  font-weight: 500;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.timeBtn:hover {
+  color: #d1d5db;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.timeBtnActive {
+  background: rgba(124, 58, 237, 0.15);
+  color: #a78bfa;
+  box-shadow: 0 0 0 1px rgba(124, 58, 237, 0.3);
+}
+
+.actions {
+  display: flex;
+  gap: 6px;
+}
+
+.actionBtn {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: #111827;
+  border: 1px solid rgba(39, 42, 42, 0.8);
+  color: #6b7280;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.actionBtn:hover {
+  color: #d1d5db;
+  border-color: rgba(55, 65, 81, 0.8);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+@media (max-width: 1024px) {
+  .header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+  }
+
+  .headerRight {
+    width: 100%;
+    justify-content: space-between;
+  }
+}
+
+@media (max-width: 640px) {
+  .title {
+    font-size: 22px;
+  }
+
+  .timeRange {
+    display: none;
+  }
+}

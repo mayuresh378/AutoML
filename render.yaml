@@ -1,0 +1,45 @@
+services:
+  # Backend API (FastAPI + Uvicorn via Docker)
+  - type: web
+    name: automl-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: automl-db
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: CORS_ORIGINS
+        value: 'https://automl-platform-1.onrender.com,https://automl-frontend.onrender.com,https://automl-api-ukq3.onrender.com'
+      - key: TRUSTED_HOSTS
+        value: '*.onrender.com,localhost,127.0.0.1'
+      - key: PORT
+        value: "10000"
+    healthCheckPath: /api/v1/health
+    autoDeploy: true
+
+  # Frontend (React static site)
+  - type: web
+    name: automl-frontend
+    runtime: static
+    repo: https://github.com/mayuresh378/automl-platform
+    branch: main
+    buildCommand: cd frontend && npm install && npm run build
+    staticPublishPath: frontend/dist
+    envVars:
+      - key: VITE_API_URL
+        value: https://automl-api-ukq3.onrender.com/api/v1
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    autoDeploy: true
+
+databases:
+  - name: automl-db
+    plan: free
+    databaseName: automl
+    user: automl
+    ipAllowList: []

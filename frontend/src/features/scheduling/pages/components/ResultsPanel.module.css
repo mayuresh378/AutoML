@@ -1,0 +1,538 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* ─── Champion Banner ─── */
+.champion {
+  position: relative;
+  border: 1px solid rgba(245, 158, 11, 0.2);
+  border-radius: 18px;
+  overflow: hidden;
+  background: rgba(17, 24, 39, 0.6);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+.championGlow {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.06), transparent 60%);
+  pointer-events: none;
+}
+
+.championContent {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 24px 28px;
+  gap: 24px;
+}
+
+.championLeft {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.trophyWrap {
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 16px rgba(245, 158, 11, 0.3);
+  flex-shrink: 0;
+}
+
+.trophyIcon {
+  width: 26px;
+  height: 26px;
+  color: white;
+}
+
+.championLabel {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #fbbf24;
+}
+
+.championName {
+  display: block;
+  font-size: 20px;
+  font-weight: 800;
+  color: #f3f4f6;
+  margin-top: 2px;
+}
+
+.championMetrics {
+  display: flex;
+  gap: 20px;
+}
+
+.championMetric {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.championMetricVal {
+  font-size: 16px;
+  font-weight: 700;
+  color: #f3f4f6;
+}
+
+.championMetricLbl {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #6b7280;
+}
+
+/* ─── Stats Row ─── */
+.statsRow {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 12px;
+}
+
+.statCard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 16px 12px;
+  border: 1px solid rgba(39, 42, 42, 0.8);
+  border-radius: 14px;
+  background: rgba(17, 24, 39, 0.4);
+  text-align: center;
+}
+
+.statCardErr {
+  border-color: rgba(239, 68, 68, 0.3);
+  background: rgba(239, 68, 68, 0.06);
+}
+
+.statVal {
+  font-size: 16px;
+  font-weight: 700;
+  color: #f3f4f6;
+}
+
+.statLabel {
+  font-size: 11px;
+  font-weight: 500;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* ─── Leaderboard ─── */
+.leaderboard {
+  background: rgba(17, 24, 39, 0.6);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(39, 42, 42, 0.8);
+  border-radius: 18px;
+  overflow: hidden;
+}
+
+.lbHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 18px 24px;
+  border-bottom: 1px solid rgba(39, 42, 42, 0.6);
+}
+
+.lbHeaderIcon {
+  width: 18px;
+  height: 18px;
+  color: #8b5cf6;
+}
+
+.lbHeaderTitle {
+  font-size: 16px;
+  font-weight: 600;
+  color: #f3f4f6;
+  flex: 1;
+}
+
+.lbHeaderCount {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 2px 10px;
+  border-radius: 20px;
+  background: linear-gradient(135deg, #7c3aed, #6d28d9);
+  color: white;
+}
+
+.lbList {
+  display: flex;
+  flex-direction: column;
+}
+
+.lbRow {
+  border-bottom: 1px solid rgba(39, 42, 42, 0.4);
+}
+
+.lbRow:last-child { border-bottom: none; }
+
+.lbRowBest {
+  background: rgba(139, 92, 246, 0.03);
+}
+
+.lbMain {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 24px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.lbMain:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.lbRank {
+  width: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.rankGold { width: 26px; height: 26px; color: #fbbf24; filter: drop-shadow(0 1px 4px rgba(251,191,36,0.4)); }
+.rankSilver { width: 24px; height: 24px; color: #94a3b8; }
+.rankBronze { width: 22px; height: 22px; color: #d97706; }
+.rankNum { font-size: 14px; font-weight: 600; color: #6b7280; }
+
+.lbInfo {
+  flex: 1;
+  min-width: 0;
+}
+
+.lbName {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #e5e7eb;
+}
+
+.bestBadge {
+  display: inline-flex;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: linear-gradient(135deg, #fbbf24, #d97706);
+  color: white;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.lbTime {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: #6b7280;
+  margin-top: 2px;
+}
+
+.lbTimeIcon {
+  width: 12px;
+  height: 12px;
+}
+
+.lbMetrics {
+  display: flex;
+  gap: 8px;
+}
+
+.lbMetricPill {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 6px 12px;
+  border: 1px solid rgba(39, 42, 42, 0.6);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.2);
+  min-width: 72px;
+}
+
+.lbPillLabel {
+  font-size: 10px;
+  font-weight: 500;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.lbPillVal {
+  font-size: 13px;
+  font-weight: 700;
+  color: #e5e7eb;
+  margin-top: 1px;
+}
+
+.lbExpand {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #6b7280;
+  padding: 4px;
+  border-radius: 6px;
+  transition: all 0.15s;
+}
+
+.lbExpand:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: #e5e7eb;
+}
+
+.lbExpandIcon {
+  width: 16px;
+  height: 16px;
+}
+
+/* ─── Expanded Details ─── */
+.lbDetails {
+  padding: 20px 24px 24px;
+  background: rgba(0, 0, 0, 0.15);
+  border-top: 1px solid rgba(39, 42, 42, 0.4);
+  overflow: hidden;
+}
+
+.metricsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.detailMetric {
+  padding: 12px;
+  border: 1px solid rgba(39, 42, 42, 0.6);
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.2);
+  text-align: center;
+}
+
+.detailMetricVal {
+  display: block;
+  font-size: 16px;
+  font-weight: 700;
+  color: #f3f4f6;
+}
+
+.detailMetricLbl {
+  display: block;
+  font-size: 10px;
+  font-weight: 500;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-top: 2px;
+}
+
+/* ─── Feature Importance ─── */
+.fiSection {
+  margin-bottom: 20px;
+}
+
+.sectionTitle {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #6b7280;
+  margin: 0 0 12px;
+}
+
+.fiList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fiRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fiRank {
+  width: 18px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #6b7280;
+  text-align: center;
+}
+
+.fiName {
+  width: 120px;
+  font-size: 12px;
+  color: #9ca3af;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fiBarWrap {
+  flex: 1;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.fiBar {
+  height: 100%;
+  background: linear-gradient(90deg, #7c3aed, #8b5cf6);
+  border-radius: 10px;
+}
+
+.fiVal {
+  width: 48px;
+  text-align: right;
+  font-size: 12px;
+  font-weight: 600;
+  color: #6b7280;
+}
+
+/* ─── Parameters ─── */
+.paramsSection { margin-top: 4px; }
+
+.paramsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+.paramItem {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  border: 1px solid rgba(39, 42, 42, 0.6);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.paramKey {
+  font-size: 12px;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.paramVal {
+  font-size: 12px;
+  font-weight: 700;
+  color: #e5e7eb;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* ─── Failed ─── */
+.failedSection {
+  background: rgba(17, 24, 39, 0.6);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: 18px;
+  padding: 18px 24px;
+}
+
+.failedHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #f87171;
+  margin-bottom: 12px;
+}
+
+.failedIcon {
+  width: 18px;
+  height: 18px;
+}
+
+.failedList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.failedItem {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1px solid rgba(239, 68, 68, 0.15);
+  border-radius: 10px;
+  background: rgba(239, 68, 68, 0.04);
+}
+
+.failedName {
+  font-size: 13px;
+  font-weight: 600;
+  color: #e5e7eb;
+  min-width: 100px;
+  flex-shrink: 0;
+}
+
+.failedError {
+  font-size: 12px;
+  color: #6b7280;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ─── Empty ─── */
+.emptyState {
+  text-align: center;
+  padding: 40px 20px;
+  border: 1px dashed rgba(39, 42, 42, 0.8);
+  border-radius: 18px;
+}
+
+.emptyIcon {
+  width: 40px;
+  height: 40px;
+  color: #4b5563;
+  margin-bottom: 12px;
+}
+
+.emptyText {
+  font-size: 14px;
+  color: #6b7280;
+  margin: 0;
+}
+
+@media (max-width: 768px) {
+  .championContent {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .championMetrics {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .lbMetrics {
+    display: none;
+  }
+  .lbMain {
+    padding: 12px 16px;
+  }
+}

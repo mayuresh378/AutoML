@@ -1,0 +1,40 @@
+.page {
+  padding: 24px 0;
+  max-width: 1600px;
+  margin: 0 auto;
+}
+
+.loadingState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 400px;
+  gap: 16px;
+  color: #6b7280;
+  font-size: 14px;
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Row 2: Traffic (70%) + Latency (30%) */
+.row7030 {
+  display: grid;
+  grid-template-columns: 7fr 3fr;
+  gap: 20px;
+  margin-bottom: 32px;
+}
+
+@media (max-width: 1024px) {
+  .row7030 {
+    grid-template-columns: 1fr;
+  }
+}

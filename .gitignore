@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+backend/.venv/
+backend/*.db
+backend/*.json
+
+# Node
+node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/.venv_front/
+
+# Dataset files
+dataset/*.csv
+dataset/archive/
+dataset/tmp*.csv
+
+# Models (generated build artifacts)
+models/*.pkl
+models/*_meta.json
+
+# Environment
+.env
+.venv
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Reports
+reports/
+
+# Misc
+response.txt
+*.tsbuildinfo
+backend/tests/
+frontend/dev-server.log
+*.log

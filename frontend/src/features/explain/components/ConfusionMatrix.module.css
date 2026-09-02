@@ -1,0 +1,119 @@
+.container {
+  background: var(--color-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+
+  backdrop-filter: blur(var(--glass-blur-sm)) saturate(160%);
+  -webkit-backdrop-filter: blur(var(--glass-blur-sm)) saturate(160%);}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-5) var(--space-6);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.title {
+  font-size: var(--text-body-lg);
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-full);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  font-size: var(--text-tiny);
+  font-weight: 600;
+  font-family: var(--font-mono);
+
+  backdrop-filter: blur(var(--glass-blur-sm)) saturate(160%);
+  -webkit-backdrop-filter: blur(var(--glass-blur-sm)) saturate(160%);}
+
+.matrixWrapper {
+  display: grid;
+  padding: var(--space-5) var(--space-6);
+  gap: 3px;
+  overflow-x: auto;
+}
+
+.cornerCell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 100px;
+  padding: var(--space-2);
+}
+
+.cornerLabel {
+  font-size: 9px;
+  color: var(--color-text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 500;
+}
+
+.colHeader {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 70px;
+  height: 32px;
+  font-size: var(--text-tiny);
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  text-align: center;
+}
+
+.rowHeader {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 100px;
+  height: 48px;
+  padding-right: var(--space-3);
+  font-size: var(--text-tiny);
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  text-align: right;
+}
+
+.cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 70px;
+  height: 48px;
+  border-radius: var(--radius-md);
+  transition: transform var(--transition-fast);
+}
+
+.cell:hover {
+  transform: scale(1.05);
+  z-index: 1;
+}
+
+.cellValue {
+  font-size: var(--text-body);
+  font-weight: 600;
+  color: var(--color-text);
+  line-height: 1.2;
+}
+
+.cellPct {
+  font-size: 9px;
+  color: var(--color-text-tertiary);
+  margin-top: 1px;
+}
+
+.totalCell {
+  background: var(--color-surface) !important;
+  font-weight: 600;
+}
