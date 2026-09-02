@@ -1,0 +1,428 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                 String    @id @default(uuid())
+  email              String    @unique
+  name               String
+  password_hash      String
+  role               String?   @default("member")
+  is_active          Boolean?  @default(true)
+  email_verified     Boolean?  @default(false)
+  verification_token String?
+  reset_token        String?
+  reset_token_expiry DateTime?
+  google_id          String?   @unique
+  avatar_url         String?
+  preferences        Json?
+  mfa_enabled        Boolean?  @default(false)
+  deleted_at         DateTime?
+  created_at         DateTime? @default(now())
+  updated_at         DateTime? @default(now())
+
+  teams           TeamMember[]
+  api_keys        ApiKey[]
+  audit_logs      AuditLog[]
+  pipelines       Pipeline[]
+  experiments     Experiment[]
+  model_registry  ModelRegistry[]
+  deployments     Deployment[]
+  datasets        Dataset[]
+  prediction_logs PredictionLog[]
+  notifications   Notification[]
+  projects        Project[]
+  webhooks        Webhook[]
+  sessions        UserSession[]
+  activity_logs   ActivityLog[]
+
+  @@map("users")
+}
+
+model Team {
+  id         String    @id @default(uuid())
+  name       String
+  slug       String?   @unique
+  plan       String?   @default("free")
+  deleted_at DateTime?
+  created_at DateTime? @default(now())
+  updated_at DateTime? @default(now())
+
+  members TeamMember[]
+
+  @@map("teams")
+}
+
+model TeamMember {
+  id        String    @id @default(uuid())
+  role      String?   @default("member")
+  joined_at DateTime? @default(now())
+
+  user_id String
+  user    User   @relation(fields: [user_id], references: [id])
+  team_id String
+  team    Team   @relation(fields: [team_id], references: [id])
+
+  @@unique([user_id, team_id])
+  @@map("team_members")
+}
+
+model Project {
+  id           String    @id @default(uuid())
+  name         String
+  description  String?
+  status       String?   @default("development")
+  problem_type String?   @default("classification")
+  visibility   String?   @default("private")
+  version      Int?      @default(1)
+  notes        String?
+  tags         Json?
+  deleted_at   DateTime?
+  created_at   DateTime? @default(now())
+  updated_at   DateTime? @default(now())
+
+  user_id String?
+  user    User?   @relation(fields: [user_id], references: [id])
+
+  experiments    Experiment[]
+  model_registry ModelRegistry[]
+  deployments    Deployment[]
+  datasets       Dataset[]
+
+  @@map("projects")
+}
+
+model ApiKey {
+  id           String    @id @default(uuid())
+  name         String
+  key_prefix   String
+  key_hash     String
+  status       String?   @default("active")
+  last_used_at DateTime?
+  expires_at   DateTime?
+  deleted_at   DateTime?
+  created_at   DateTime? @default(now())
+  updated_at   DateTime? @default(now())
+
+  user_id String
+  user    User   @relation(fields: [user_id], references: [id])
+
+  @@map("api_keys")
+}
+
+model Experiment {
+  id                 String    @id @default(uuid())
+  name               String
+  model              String
+  task_type          String?
+  dataset            String?
+  dataset_version    String?
+  target             String?
+  cv_score           Float?
+  metrics            Json?
+  training_time      Float?
+  total_time         Float?
+  memory_usage       Float?
+  cpu_usage          Float?
+  status             String?   @default("success")
+  params             Json?
+  notes              String?
+  feature_importance Json?
+  confusion_matrix   Json?
+  run_at             DateTime?
+  updated_at         DateTime?
+  deleted_at         DateTime?
+  created_at         DateTime? @default(now())
+
+  user_id    String?
+  user       User?    @relation(fields: [user_id], references: [id])
+  project_id String?
+  project    Project? @relation(fields: [project_id], references: [id])
+
+  model_registry ModelRegistry[]
+
+  @@map("experiments")
+}
+
+model ModelRegistry {
+  id           String    @id @default(uuid())
+  name         String
+  version      Int?      @default(1)
+  model_type   String?
+  task_type    String?
+  framework    String?   @default("sklearn")
+  file_path    String?
+  file_size_kb Float?
+  cv_score     Float?
+  metrics      Json?
+  params       Json?
+  status       String?   @default("staging")
+  tags         Json?
+  description  String?
+  deleted_at   DateTime?
+  created_at   DateTime? @default(now())
+  updated_at   DateTime? @default(now())
+
+  experiment_id String?
+  experiment    Experiment? @relation(fields: [experiment_id], references: [id])
+  user_id       String?
+  user          User?       @relation(fields: [user_id], references: [id])
+  project_id    String?
+  project       Project?    @relation(fields: [project_id], references: [id])
+
+  deployments Deployment[]
+
+  @@map("model_registry")
+}
+
+model Deployment {
+  id               String    @id @default(uuid())
+  name             String
+  endpoint_url     String?
+  status           String?   @default("active")
+  environment      String?   @default("production")
+  requests_count   Int?      @default(0)
+  avg_latency_ms   Float?
+  config           Json?
+  deleted_at       DateTime?
+  created_at       DateTime? @default(now())
+  updated_at       DateTime? @default(now())
+  deployment_type  String?   @default("rest_api")
+  allow_anonymous  Boolean?  @default(false)
+  allowed_users    Json?
+  allowed_ips      Json?
+  rate_limit       Int?
+  api_key_required Boolean?  @default(true)
+  docker_image     String?
+  docker_port      Int?      @default(8080)
+  docker_compose   String?
+  fastapi_code     String?
+  onnx_model_path  String?
+  download_url     String?
+  health_check_url String?
+
+  model_id   String?
+  model      ModelRegistry? @relation(fields: [model_id], references: [id])
+  user_id    String?
+  user       User?          @relation(fields: [user_id], references: [id])
+  project_id String?
+  project    Project?       @relation(fields: [project_id], references: [id])
+
+  history DeploymentHistory[]
+
+  @@map("deployments")
+}
+
+model Pipeline {
+  id          String    @id @default(uuid())
+  name        String
+  description String?
+  steps       Json?
+  status      String?   @default("draft")
+  schedule    String?
+  deleted_at  DateTime?
+  created_at  DateTime? @default(now())
+  updated_at  DateTime? @default(now())
+
+  user_id         String?
+  created_by_user User?   @relation(fields: [user_id], references: [id])
+
+  runs PipelineRun[]
+
+  @@map("pipelines")
+}
+
+model PipelineRun {
+  id           String    @id @default(uuid())
+  status       String?   @default("pending")
+  current_step String?
+  results      Json?
+  error        String?
+  started_at   DateTime?
+  completed_at DateTime?
+  created_at   DateTime? @default(now())
+
+  pipeline_id String
+  pipeline    Pipeline @relation(fields: [pipeline_id], references: [id])
+
+  @@map("pipeline_runs")
+}
+
+model Dataset {
+  id                String    @id @default(uuid())
+  filename          String
+  original_filename String?
+  file_path         String?
+  file_size_kb      Float?
+  rows              Int?
+  columns           Json?
+  status            String?   @default("uploaded")
+  description       String?
+  tags              Json?
+  version           Int?      @default(1)
+  source            String?   @default("upload")
+  source_url        String?
+  deleted_at        DateTime?
+  created_at        DateTime? @default(now())
+  updated_at        DateTime? @default(now())
+
+  project_id String?
+  project    Project? @relation(fields: [project_id], references: [id])
+  user_id    String?
+  user       User?    @relation(fields: [user_id], references: [id])
+
+  @@map("datasets")
+}
+
+model DatasetShare {
+  id                  String    @id @default(uuid())
+  dataset_id          String
+  shared_with_user_id String?
+  shared_with_email   String?
+  permission          String?   @default("view")
+  created_at          DateTime? @default(now())
+
+  dataset Dataset @relation(fields: [dataset_id], references: [id])
+
+  @@map("dataset_shares")
+}
+
+model PredictionLog {
+  id            String    @id @default(uuid())
+  model_name    String
+  input_preview String?
+  prediction    String?
+  confidence    Float?
+  batch_size    Int?      @default(1)
+  latency_ms    Float?
+  created_at    DateTime? @default(now())
+
+  user_id String?
+  user    User?   @relation(fields: [user_id], references: [id])
+
+  @@map("prediction_logs")
+}
+
+model Notification {
+  id            String    @id @default(uuid())
+  title         String
+  message       String?
+  type          String?   @default("info")
+  category      String?   @default("system")
+  resource_type String?
+  resource_id   String?
+  read          Boolean?  @default(false)
+  deleted_at    DateTime?
+  created_at    DateTime? @default(now())
+
+  user_id String?
+  user    User?   @relation(fields: [user_id], references: [id])
+
+  @@map("notifications")
+}
+
+model Webhook {
+  id                String    @id @default(uuid())
+  name              String
+  url               String
+  events            Json?
+  secret            String?
+  status            String?   @default("active")
+  last_triggered_at DateTime?
+  deleted_at        DateTime?
+  created_at        DateTime? @default(now())
+  updated_at        DateTime? @default(now())
+
+  user_id String?
+  user    User?   @relation(fields: [user_id], references: [id])
+
+  @@map("webhooks")
+}
+
+model UserSession {
+  id                 String    @id @default(uuid())
+  token_hash         String
+  refresh_token_hash String?
+  device_info        String?
+  ip_address         String?
+  is_active          Boolean?  @default(true)
+  last_used_at       DateTime? @default(now())
+  expires_at         DateTime?
+  created_at         DateTime? @default(now())
+
+  user_id String
+  user    User   @relation(fields: [user_id], references: [id])
+
+  @@map("user_sessions")
+}
+
+model MarketplaceItem {
+  id          String    @id @default(uuid())
+  name        String
+  item_type   String
+  description String?
+  category    String?
+  author      String?
+  tags        Json?
+  downloads   Int?      @default(0)
+  rating      Float?    @default(0.0)
+  featured    Boolean?  @default(false)
+  config      Json?
+  deleted_at  DateTime?
+  created_at  DateTime? @default(now())
+
+  @@map("marketplace_items")
+}
+
+model AuditLog {
+  id            String    @id @default(uuid())
+  actor         String?
+  action        String
+  target        String?
+  resource_type String?
+  resource_id   String?
+  details       Json?
+  ip_address    String?
+  status        String?   @default("success")
+  severity      String?   @default("info")
+  created_at    DateTime? @default(now())
+
+  user_id String?
+  user    User?   @relation(fields: [user_id], references: [id])
+
+  @@map("audit_logs")
+}
+
+model ActivityLog {
+  id            String    @id @default(uuid())
+  action        String
+  resource_type String?
+  resource_id   String?
+  details       Json?
+  created_at    DateTime? @default(now())
+
+  user_id String?
+  user    User?   @relation(fields: [user_id], references: [id])
+
+  @@map("activity_logs")
+}
+
+model DeploymentHistory {
+  id            String    @id @default(uuid())
+  deployment_id String
+  action        String
+  old_status    String?
+  new_status    String?
+  details       Json?
+  actor         String?
+  created_at    DateTime? @default(now())
+
+  deployment Deployment @relation(fields: [deployment_id], references: [id])
+
+  @@map("deployment_history")
+}

@@ -10,13 +10,17 @@ FROM python:3.11-slim
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libpq5 curl && \
+    libpq5 curl nodejs npm && \
     rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /install /usr/local
 
 COPY backend/ /app/backend/
+COPY prisma/ /app/prisma/
+COPY package.json /app/package.json
+
 RUN mkdir -p /app/dataset /app/models /app/reports && \
+    chmod +x /app/backend/start.sh && \
     addgroup --system --gid 1001 app && \
     adduser --system --uid 1001 --gid 1001 app && \
     chown -R app:app /app
@@ -30,4 +34,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 
 EXPOSE 10000
 
-CMD uvicorn main:app --host 0.0.0.0 --port ${PORT:-10000} --workers 2 --limit-max-requests 10000
+CMD ["/bin/sh", "/app/backend/start.sh"]

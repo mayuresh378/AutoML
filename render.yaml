@@ -6,9 +6,9 @@ services:
     dockerfilePath: ./Dockerfile
     envVars:
       - key: DATABASE_URL
-        fromDatabase:
-          name: automl-db
-          property: connectionString
+        sync: false # Neon PostgreSQL Connection String (postgresql://user:password@ep-xxxx.neon.tech/automl?sslmode=require)
+      - key: REDIS_URL
+        sync: false # Production Redis Caching URL (e.g. rediss://... or redis://...)
       - key: SECRET_KEY
         generateValue: true
       - key: CORS_ORIGINS
@@ -17,6 +17,8 @@ services:
         value: '*.onrender.com,localhost,127.0.0.1'
       - key: PORT
         value: "10000"
+      - key: ENVIRONMENT
+        value: "production"
     healthCheckPath: /api/v1/health
     autoDeploy: true
 
@@ -37,9 +39,3 @@ services:
         destination: /index.html
     autoDeploy: true
 
-databases:
-  - name: automl-db
-    plan: free
-    databaseName: automl
-    user: automl
-    ipAllowList: []

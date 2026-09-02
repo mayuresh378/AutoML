@@ -8,18 +8,23 @@ from sqlalchemy.orm import sessionmaker, DeclarativeBase
 load_dotenv()
 
 _raw_url = os.getenv("DATABASE_URL", "")
-if _raw_url and not re.match(r"^(postgresql|sqlite)://", _raw_url.strip()):
+if _raw_url and not re.match(r"^(postgresql|postgres|sqlite)://", _raw_url.strip()):
     _raw_url = ""
 
+if _raw_url.startswith("postgres://"):
+    _raw_url = _raw_url.replace("postgres://", "postgresql://", 1)
+
 DATABASE_URL = _raw_url or f"sqlite:///{os.path.join(os.path.dirname(os.path.abspath(__file__)), 'automl.db')}"
+
+is_postgres = "postgresql" in DATABASE_URL or "postgres" in DATABASE_URL
 
 engine = create_engine(
     DATABASE_URL,
     echo=False,
     pool_pre_ping=True,
-    pool_size=10 if "postgresql" in DATABASE_URL else 5,
-    max_overflow=20 if "postgresql" in DATABASE_URL else 10,
-    pool_recycle=3600 if "postgresql" in DATABASE_URL else -1,
+    pool_size=10 if is_postgres else 5,
+    max_overflow=20 if is_postgres else 10,
+    pool_recycle=3600 if is_postgres else -1,
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
