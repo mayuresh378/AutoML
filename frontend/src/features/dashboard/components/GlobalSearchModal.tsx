@@ -1,4 +1,4 @@
-// GlobalSearchModal component using Framer Motion
+// GlobalSearchModal - Corrected Framer Motion imports
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
