@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'react-router-dom';
+import { motion, AnimatePresence } from "framer-motion";
 import { useNavigate } from 'react-router-dom';
 import { Search, Database, Cpu, FlaskConical, Folder, Command, X } from 'lucide-react';
 
