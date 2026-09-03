@@ -442,6 +442,9 @@ export interface SearchResults {
   projects: Project[];
   datasets: Dataset[];
   models: Model[];
+  experiments?: Array<Record<string, any>>;
+  predictions?: Array<Record<string, any>>;
+  registry_models?: Array<Record<string, any>>;
 }
 
 export interface MonitoringMetrics {

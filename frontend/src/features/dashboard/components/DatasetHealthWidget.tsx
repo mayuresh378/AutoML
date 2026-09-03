@@ -1,15 +1,21 @@
-import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { Database, AlertTriangle, CheckCircle2, ArrowRight } from 'lucide-react';
+import { Database, AlertTriangle, ArrowRight } from 'lucide-react';
 
-export default function DatasetHealthWidget() {
+interface Props {
+  datasets?: any[];
+}
+
+export default function DatasetHealthWidget({ datasets = [] }: Props) {
   const navigate = useNavigate();
 
-  const total = 12;
-  const healthy = 10;
-  const warnings = 2;
-  const healthyPercent = (healthy / total) * 100;
-  const warningPercent = (warnings / total) * 100;
+  const allDatasets = datasets || [];
+  const healthy = allDatasets.filter((d) => d.status === 'ready' || d.status === 'uploaded').length;
+  const warnings = allDatasets.filter((d) => d.status === 'error' || d.status === 'processing').length;
+  const total = allDatasets.length;
+  const healthyPercent = total > 0 ? (healthy / total) * 100 : 0;
+  const warningPercent = total > 0 ? (warnings / total) * 100 : 0;
+
+  const attentionDatasets = allDatasets.filter((d) => d.status === 'error').slice(0, 2);
 
   return (
     <div className="p-4 rounded-xl bg-zinc-900/60 border border-zinc-800 backdrop-blur-md mb-6">
@@ -21,39 +27,45 @@ export default function DatasetHealthWidget() {
         <span className="text-xs font-mono text-zinc-400">{total} Datasets Monitored</span>
       </div>
 
-      <div className="h-2.5 w-full bg-zinc-950 rounded-full overflow-hidden flex gap-0.5 mb-3 p-0.5 border border-zinc-800">
-        <div className="h-full bg-emerald-500 rounded-l-full" style={{ width: `${healthyPercent}%` }} />
-        <div className="h-full bg-amber-500 rounded-r-full" style={{ width: `${warningPercent}%` }} />
-      </div>
-
-      <div className="flex items-center justify-between text-xs font-mono mb-4">
-        <span className="flex items-center gap-1.5 text-emerald-400">
-          <span className="w-2 h-2 rounded-full bg-emerald-500" />
-          {healthy} Healthy
-        </span>
-        <span className="flex items-center gap-1.5 text-amber-400">
-          <span className="w-2 h-2 rounded-full bg-amber-500" />
-          {warnings} Warnings
-        </span>
-      </div>
-
-      <div className="space-y-2 mb-4">
-        <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-start gap-2 text-xs">
-          <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
-          <div>
-            <span className="font-semibold text-amber-200">customer_data.csv</span>
-            <p className="text-[11px] text-amber-300/80">8.4% missing values detected in target feature</p>
+      {total > 0 ? (
+        <>
+          <div className="h-2.5 w-full bg-zinc-950 rounded-full overflow-hidden flex gap-0.5 mb-3 p-0.5 border border-zinc-800">
+            {healthyPercent > 0 && (
+              <div className="h-full bg-emerald-500 rounded-l-full" style={{ width: `${healthyPercent}%` }} />
+            )}
+            {warningPercent > 0 && (
+              <div className="h-full bg-amber-500 rounded-r-full" style={{ width: `${warningPercent}%` }} />
+            )}
           </div>
-        </div>
 
-        <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-start gap-2 text-xs">
-          <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
-          <div>
-            <span className="font-semibold text-amber-200">sales_quarterly.csv</span>
-            <p className="text-[11px] text-amber-300/80">14 duplicate rows identified</p>
+          <div className="flex items-center justify-between text-xs font-mono mb-4">
+            <span className="flex items-center gap-1.5 text-emerald-400">
+              <span className="w-2 h-2 rounded-full bg-emerald-500" />
+              {healthy} Healthy
+            </span>
+            <span className="flex items-center gap-1.5 text-amber-400">
+              <span className="w-2 h-2 rounded-full bg-amber-500" />
+              {warnings} Warnings
+            </span>
           </div>
+        </>
+      ) : (
+        <p className="text-xs text-zinc-500 font-mono mb-4">No datasets uploaded yet</p>
+      )}
+
+      {attentionDatasets.length > 0 && (
+        <div className="space-y-2 mb-4">
+          {attentionDatasets.map((d, i) => (
+            <div key={d.id || i} className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-start gap-2 text-xs">
+              <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+              <div>
+                <span className="font-semibold text-amber-200">{d.name || d.filename || 'unknown'}</span>
+                <p className="text-[11px] text-amber-300/80">Dataset is in error state</p>
+              </div>
+            </div>
+          ))}
         </div>
-      </div>
+      )}
 
       <button
         onClick={() => navigate('/app/datasets')}

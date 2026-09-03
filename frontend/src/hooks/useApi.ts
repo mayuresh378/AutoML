@@ -18,14 +18,16 @@ import { marketplaceService } from '../services/marketplace.service';
 import { apiKeysService } from '../services/apiKeys.service';
 import { teamsService } from '../services/teams.service';
 import { aiService } from '../services/ai.service';
+import { notificationsService } from '../services/notifications.service';
+import { http } from '../services/http';
 
 export function useExperiments() {
   return useQuery({
     queryKey: ['experiments'],
     queryFn: () => experimentsService.list(),
     select: (data) => data.experiments,
-    staleTime: 30_000,
-    refetchInterval: 120_000,
+    staleTime: 3_000,
+    refetchInterval: 5_000,
   });
 }
 
@@ -34,8 +36,8 @@ export function useModels() {
     queryKey: ['models'],
     queryFn: () => modelsService.list(),
     select: (data) => data.models,
-    staleTime: 30_000,
-    refetchInterval: 120_000,
+    staleTime: 3_000,
+    refetchInterval: 5_000,
   });
 }
 
@@ -76,8 +78,8 @@ export function useDeployments() {
     queryKey: ['deployments'],
     queryFn: () => deploymentsService.list(),
     select: (data) => data.deployments,
-    staleTime: 30_000,
-    refetchInterval: 120_000,
+    staleTime: 3_000,
+    refetchInterval: 5_000,
   });
 }
 
@@ -139,8 +141,8 @@ export function useDatasets() {
     queryKey: ['datasets'],
     queryFn: () => datasetsService.list(),
     select: (data) => data.datasets,
-    staleTime: 30_000,
-    refetchInterval: 120_000,
+    staleTime: 3_000,
+    refetchInterval: 5_000,
   });
 }
 
@@ -380,8 +382,8 @@ export function useActivity() {
     queryKey: ['activity'],
     queryFn: () => activityService.list(),
     select: (data) => data.activities,
-    staleTime: 30_000,
-    refetchInterval: 120_000,
+    staleTime: 3_000,
+    refetchInterval: 5_000,
   });
 }
 
@@ -389,8 +391,8 @@ export function useMonitoringMetrics() {
   return useQuery({
     queryKey: ['monitoring', 'metrics'],
     queryFn: () => monitoringService.metrics(),
-    staleTime: 30_000,
-    refetchInterval: 120_000,
+    staleTime: 3_000,
+    refetchInterval: 5_000,
   });
 }
 
@@ -398,8 +400,8 @@ export function useMonitoringStats() {
   return useQuery({
     queryKey: ['monitoring', 'stats'],
     queryFn: () => monitoringService.stats(),
-    staleTime: 30_000,
-    refetchInterval: 120_000,
+    staleTime: 3_000,
+    refetchInterval: 5_000,
   });
 }
 
@@ -407,8 +409,8 @@ export function useMonitoringDashboard() {
   return useQuery({
     queryKey: ['monitoring', 'dashboard'],
     queryFn: () => monitoringService.dashboard(),
-    staleTime: 30_000,
-    refetchInterval: 60_000,
+    staleTime: 3_000,
+    refetchInterval: 5_000,
   });
 }
 
@@ -418,7 +420,68 @@ export function useAISuggestions() {
     queryFn: () => aiService.suggestions(),
     select: (data) => data.suggestions,
     staleTime: 30_000,
-    refetchInterval: 120_000,
+    refetchInterval: 60_000,
+  });
+}
+
+export function useNotifications() {
+  return useQuery({
+    queryKey: ['notifications'],
+    queryFn: () => notificationsService.list(),
+    select: (data) => data.notifications,
+    staleTime: 3_000,
+    refetchInterval: 5_000,
+  });
+}
+
+export function useUnreadNotificationCount() {
+  return useQuery({
+    queryKey: ['notifications', 'unread-count'],
+    queryFn: () => notificationsService.unreadCount(),
+    select: (data) => data.count,
+    staleTime: 3_000,
+    refetchInterval: 5_000,
+  });
+}
+
+export function useMarkNotificationRead() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => notificationsService.markRead(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['notifications'] });
+      qc.invalidateQueries({ queryKey: ['notifications', 'unread-count'] });
+    },
+  });
+}
+
+export function useMarkAllNotificationsRead() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => notificationsService.markAllRead(),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['notifications'] });
+      qc.invalidateQueries({ queryKey: ['notifications', 'unread-count'] });
+    },
+  });
+}
+
+export function useTrainingQueue() {
+  return useQuery({
+    queryKey: ['training', 'queue'],
+    queryFn: () => trainingService.queue(),
+    select: (data) => data.jobs,
+    staleTime: 3_000,
+    refetchInterval: 5_000,
+  });
+}
+
+export function useHealthCheck() {
+  return useQuery({
+    queryKey: ['health'],
+    queryFn: () => http.get<{ status: string; message?: string; data?: Record<string, any> }>('/health'),
+    staleTime: 5_000,
+    refetchInterval: 10_000,
   });
 }
 
@@ -428,6 +491,13 @@ export function useDashboardData() {
   const datasets = useDatasets();
   const deployments = useDeployments();
   const activity = useActivity();
+  const monitoringStats = useMonitoringStats();
+  const monitoringDashboard = useMonitoringDashboard();
+  const trainingQueue = useTrainingQueue();
+  const notifications = useNotifications();
+  const unreadCount = useUnreadNotificationCount();
+  const aiSuggestions = useAISuggestions();
+  const healthCheck = useHealthCheck();
 
   return {
     experiments: experiments.data ?? [],
@@ -435,8 +505,17 @@ export function useDashboardData() {
     datasets: datasets.data ?? [],
     deployments: deployments.data ?? [],
     activity: activity.data ?? [],
+    monitoringStats: monitoringStats.data ?? null,
+    monitoringDashboard: monitoringDashboard.data ?? null,
+    trainingQueue: trainingQueue.data ?? [],
+    notifications: notifications.data ?? [],
+    unreadCount: unreadCount.data ?? 0,
+    aiSuggestions: aiSuggestions.data ?? [],
+    healthCheck: healthCheck.data ?? null,
     isLoading: experiments.isLoading || models.isLoading || datasets.isLoading || deployments.isLoading || activity.isLoading,
     isError: experiments.isError || models.isError || datasets.isError || deployments.isError || activity.isError,
     error: experiments.error || models.error || datasets.error || deployments.error || activity.error,
+    isFetching: experiments.isFetching || models.isFetching || datasets.isFetching || deployments.isFetching || activity.isFetching || monitoringStats.isFetching || monitoringDashboard.isFetching,
+    lastUpdated: new Date(),
   };
 }

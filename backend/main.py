@@ -323,8 +323,9 @@ def get_csrf_token(current_user: dict = Depends(get_current_user)):
 # ── Search ──────────────────────────────────────────────────────────
 
 @app.get("/api/v1/search", tags=["Search"], summary="Global search", description="Search across datasets, experiments, models, and projects.")
-def search(q: str = Query("", min_length=1), db: Session = Depends(get_db)):
-    results = global_search(db, q, DATASET_DIR)
+def search(q: str = Query("", min_length=1), db: Session = Depends(get_db), current_user: dict = Depends(get_optional_user)):
+    uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
+    results = global_search(db, q, DATASET_DIR, user_id=uid)
     return results
 
 
@@ -360,6 +361,12 @@ def read_notification_post(notif_id: str, db: Session = Depends(get_db)):
 
 @app.put("/api/v1/notifications/read-all", tags=["Notifications"], summary="Mark all read", description="Mark all notifications as read for the current user.")
 def read_all_notifications(db: Session = Depends(get_db), current_user: dict = Depends(get_optional_user)):
+    uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
+    mark_all_notifications_read(db, uid)
+    return {"status": "ok"}
+
+@app.post("/api/v1/notifications/read-all", tags=["Notifications"], summary="Mark all read (POST alias)", description="Mark all notifications as read for the current user (POST alias).")
+def read_all_notifications_post(db: Session = Depends(get_db), current_user: dict = Depends(get_optional_user)):
     uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
     mark_all_notifications_read(db, uid)
     return {"status": "ok"}
@@ -2730,17 +2737,21 @@ def monitoring_metrics():
     return ok(collect_system_metrics())
 
 @app.get("/api/v1/monitoring/dashboard", tags=["Monitoring"], summary="Full monitoring dashboard", description="Return all monitoring data: predictions, latency, CPU, RAM, traffic, drift, alerts, logs, error rate.")
-def monitoring_dashboard(db: Session = Depends(get_db)):
-    import psutil, random
+def monitoring_dashboard(db: Session = Depends(get_db), current_user: dict = Depends(get_optional_user)):
+    import psutil
     from datetime import timedelta
 
+    uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
     system = collect_system_metrics()
     cpu = system["cpu"]["percent"]
     ram = system["memory"]["percent"]
     disk = system["disk"]["percent"]
 
-    # Prediction metrics from logs
-    all_preds = db.query(PredictionLog).order_by(PredictionLog.created_at.desc()).limit(500).all()
+    # Prediction metrics from logs (scoped to the authenticated user)
+    pred_q = db.query(PredictionLog).order_by(PredictionLog.created_at.desc()).limit(500)
+    if uid:
+        pred_q = pred_q.filter(PredictionLog.user_id == uid)
+    all_preds = pred_q.all()
     now = datetime.now(timezone.utc)
 
     total_predictions = len(all_preds)
@@ -2790,7 +2801,7 @@ def monitoring_dashboard(db: Session = Depends(get_db)):
         else: latency_buckets["500+"] += 1
     latency_histogram = [{"bucket": k, "count": v} for k, v in latency_buckets.items()]
 
-    # Model Drift (simulated based on confidence trends)
+    # Model Drift (based on confidence trends from actual predictions)
     recent_conf = [p.confidence for p in recent_preds[:50] if p.confidence is not None]
     old_conf = [p.confidence for p in all_preds[50:100] if p.confidence is not None]
     recent_avg_conf = sum(recent_conf) / max(len(recent_conf), 1)
@@ -2798,18 +2809,26 @@ def monitoring_dashboard(db: Session = Depends(get_db)):
     model_drift = round(abs(recent_avg_conf - old_avg_conf) * 100, 2)
     model_drift_status = "healthy" if model_drift < 5 else ("warning" if model_drift < 15 else "critical")
 
-    # Data Drift (simulated from input variance)
-    data_drift_score = round(random.uniform(0.5, 3.5), 2)
+    # Data Drift (derived deterministically from prediction activity — no random values)
+    data_drift_score = round(model_drift, 2)
     data_drift_status = "healthy" if data_drift_score < 2 else ("warning" if data_drift_score < 3 else "critical")
 
-    # Drift timeline (24 data points)
+    # Drift timeline (deterministic from actual latency/confidence, not random)
     drift_timeline = []
+    conf_series = [p.confidence for p in all_preds if p.confidence is not None]
+    conf_series.reverse()
     for i in range(24):
         t = now - timedelta(hours=23 - i)
+        if conf_series:
+            seg = conf_series[i * len(conf_series) // 24:(i + 1) * len(conf_series) // 24]
+            seg_avg = sum(seg) / max(len(seg), 1) if seg else 0
+            drift_score = round(abs(seg_avg - (sum(conf_series) / max(len(conf_series), 1))) * 100, 2)
+        else:
+            drift_score = 0
         drift_timeline.append({
             "time": t.strftime("%H:00"),
-            "model_drift": round(random.uniform(0, max(model_drift + 2, 5)), 2),
-            "data_drift": round(random.uniform(0, max(data_drift_score + 1, 4)), 2),
+            "model_drift": drift_score,
+            "data_drift": drift_score,
         })
 
     # Alerts
@@ -2896,18 +2915,22 @@ def monitoring_dashboard(db: Session = Depends(get_db)):
     }
 
 @app.get("/api/v1/monitoring/stats", tags=["Monitoring"], summary="Live stats", description="Return live aggregate statistics for models and experiments.")
-def live_stats(db: Session = Depends(get_db)):
-    exps = list_experiments(db)
+def live_stats(db: Session = Depends(get_db), current_user: dict = Depends(get_optional_user)):
+    uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
+    exps = list_experiments(db, user_id=uid)
     models = [f for f in os.listdir(MODELS_DIR) if f.endswith(".pkl")]
     today_prefix = datetime.now().strftime("%Y-%m-%d")
     today_exps = [e for e in exps if e.run_at and e.run_at.strftime("%Y-%m-%d") == today_prefix]
     success_exps = [e for e in exps if e.status == "success"]
     from crud import list_dataset_records
-    datasets = list_dataset_records(db)
+    datasets = list_dataset_records(db, user_id=uid)
     pred_count = 0
     try:
         from models import PredictionLog
-        pred_count = db.query(PredictionLog).count()
+        from sqlalchemy import func as sa_func
+        pred_count = db.query(sa_func.count(PredictionLog.id)).filter(
+            (PredictionLog.user_id == uid) if uid else (PredictionLog.user_id.is_(None))
+        ).scalar() or 0
     except Exception:
         pass
     avg_train_time = round(sum((e.training_time or 0) for e in exps) / max(len(exps), 1), 1)
@@ -3250,8 +3273,9 @@ def get_activity_api(log_id: str, db: Session = Depends(get_db)):
 
 
 @app.get("/api/v1/analytics", tags=["Analytics"], summary="Dashboard analytics", description="Return aggregate analytics for the dashboard over a given number of days.")
-def analytics(db: Session = Depends(get_db), days: int = 30):
-    return dashboard_analytics(db, days)
+def analytics(db: Session = Depends(get_db), days: int = 30, current_user: dict = Depends(get_optional_user)):
+    uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
+    return dashboard_analytics(db, days, user_id=uid)
 
 
 # ── Admin ────────────────────────────────────────────────────────────

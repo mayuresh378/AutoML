@@ -2,8 +2,20 @@ import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { Bot, Sparkles, ArrowRight, Lightbulb } from 'lucide-react';
 
-export default function AiInsights() {
+interface Props {
+  suggestions?: any[];
+}
+
+function extractText(s: any): string {
+  if (typeof s === 'string') return s;
+  if (!s) return '';
+  return s.text || s.message || s.body || s.suggestion || s.title || '';
+}
+
+export default function AiInsights({ suggestions = [] }: Props) {
   const navigate = useNavigate();
+
+  const insights = (suggestions || []).slice(0, 3).map(extractText).filter(Boolean);
 
   return (
     <div className="p-4 rounded-xl bg-gradient-to-br from-indigo-950/30 via-zinc-900/60 to-purple-950/20 border border-purple-500/20 backdrop-blur-md">
@@ -19,22 +31,20 @@ export default function AiInsights() {
         </span>
       </div>
 
-      <div className="space-y-2.5 mb-4">
-        <div className="flex items-start gap-2.5 text-xs text-zinc-300">
-          <Lightbulb className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
-          <span>XGBoost Classifier performed <strong>8.2% better</strong> than Logistic Regression on customer churn dataset.</span>
+      {insights.length > 0 ? (
+        <div className="space-y-2.5 mb-4">
+          {insights.map((text, idx) => (
+            <div key={idx} className="flex items-start gap-2.5 text-xs text-zinc-300">
+              <Lightbulb className={`w-4 h-4 ${['text-amber-400', 'text-indigo-400', 'text-emerald-400'][idx % 3]} flex-shrink-0 mt-0.5`} />
+              <span>{text}</span>
+            </div>
+          ))}
         </div>
-
-        <div className="flex items-start gap-2.5 text-xs text-zinc-300">
-          <Lightbulb className="w-4 h-4 text-indigo-400 flex-shrink-0 mt-0.5" />
-          <span>Feature <strong>"monthly_charges"</strong> demonstrated the highest feature importance (0.34 SHAP impact score).</span>
-        </div>
-
-        <div className="flex items-start gap-2.5 text-xs text-zinc-300">
-          <Lightbulb className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
-          <span>Removing 3 highly correlated collinear features improved validation F1 score by <strong>2.1%</strong>.</span>
-        </div>
-      </div>
+      ) : (
+        <p className="text-xs text-zinc-500 font-mono mb-4">
+          No insights available yet. Run experiments to generate AI-powered insights.
+        </p>
+      )}
 
       <button
         onClick={() => navigate('/app/explain')}

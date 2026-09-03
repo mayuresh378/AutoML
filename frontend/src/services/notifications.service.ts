@@ -6,7 +6,7 @@ export const notificationsService = {
 
   markRead: (id: string) => http.post(`/notifications/${id}/read`),
 
-  markAllRead: () => http.post('/notifications/read-all'),
+  markAllRead: () => http.put('/notifications/read-all'),
 
   dismiss: (id: string) => http.delete(`/notifications/${id}`),
 

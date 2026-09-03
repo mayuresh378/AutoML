@@ -8,10 +8,10 @@ from crud import list_experiments, list_models, list_dataset_records
 from models import PredictionLog, AuditLog, Dataset, UserSession
 
 
-def dashboard_analytics(db: Session, days: int = 30) -> dict:
-    experiments = list_experiments(db)
-    models = list_models(db)
-    datasets = list_dataset_records(db)
+def dashboard_analytics(db: Session, days: int = 30, user_id: str = None) -> dict:
+    experiments = list_experiments(db, user_id=user_id)
+    models = list_models(db, user_id=user_id)
+    datasets = list_dataset_records(db, user_id=user_id)
 
     now = datetime.now(timezone.utc)
     cutoff = now - timedelta(days=days)
@@ -47,7 +47,10 @@ def dashboard_analytics(db: Session, days: int = 30) -> dict:
     total_training_hours = sum((e.training_time or 0) for e in experiments) / 3600
     total_storage_mb = sum((d.file_size_kb or 0) for d in datasets) / 1024
 
-    prediction_logs = db.query(PredictionLog).filter(PredictionLog.created_at >= cutoff).all()
+    pred_q = db.query(PredictionLog).filter(PredictionLog.created_at >= cutoff)
+    if user_id:
+        pred_q = pred_q.filter(PredictionLog.user_id == user_id)
+    prediction_logs = pred_q.all()
     total_predictions = len(prediction_logs)
 
     pred_daily: dict = {}
@@ -75,7 +78,10 @@ def dashboard_analytics(db: Session, days: int = 30) -> dict:
         key=lambda x: x["date"]
     )
 
-    audit_logs = db.query(AuditLog).filter(AuditLog.created_at >= cutoff).all()
+    audit_q = db.query(AuditLog).filter(AuditLog.created_at >= cutoff)
+    if user_id:
+        audit_q = audit_q.filter(AuditLog.user_id == user_id)
+    audit_logs = audit_q.all()
     user_activity_daily: dict = {}
     for a in audit_logs:
         day = a.created_at.strftime("%Y-%m-%d") if a.created_at else "unknown"
@@ -85,10 +91,13 @@ def dashboard_analytics(db: Session, days: int = 30) -> dict:
         key=lambda x: x["date"]
     )
 
-    active_sessions = db.query(UserSession).filter(
+    session_q = db.query(UserSession).filter(
         UserSession.is_active == True,
         UserSession.last_used_at >= cutoff
-    ).count()
+    )
+    if user_id:
+        session_q = session_q.filter(UserSession.user_id == user_id)
+    active_sessions = session_q.count()
 
     success_rate = round(
         sum(1 for e in experiments if e.status == "success") / max(len(experiments), 1) * 100, 1

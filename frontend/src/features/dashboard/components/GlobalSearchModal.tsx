@@ -1,17 +1,26 @@
-// GlobalSearchModal - Corrected Framer Motion imports
+// GlobalSearchModal - uses real global search API
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { Search, Database, Cpu, FlaskConical, Folder, Command, X } from 'lucide-react';
+import { Search, Database, Cpu, FlaskConical, Folder, Command, X, Loader2, FileText, Boxes } from 'lucide-react';
+import { useGlobalSearch } from '../../../hooks/useApi';
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
 }
 
+interface SearchItem {
+  title: string;
+  category: string;
+  path: string;
+  icon: any;
+}
+
 export default function GlobalSearchModal({ isOpen, onClose }: Props) {
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
+  const { data: searchResults, isFetching } = useGlobalSearch(query);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -30,18 +39,25 @@ export default function GlobalSearchModal({ isOpen, onClose }: Props) {
 
   if (!isOpen) return null;
 
-  const mockItems = [
-    { title: 'Customer Churn Prediction', type: 'project', category: 'PROJECTS', path: '/app/projects', icon: Folder },
-    { title: 'customer_data.csv', type: 'dataset', category: 'DATASETS', path: '/app/datasets', icon: Database },
-    { title: 'customer_churn_xgb_v3', type: 'model', category: 'MODELS', path: '/app/models', icon: Cpu },
-    { title: 'Iris Classification Experiment #12', type: 'experiment', category: 'EXPERIMENTS', path: '/app/experiments', icon: FlaskConical },
-    { title: 'housing_data.csv', type: 'dataset', category: 'DATASETS', path: '/app/datasets', icon: Database },
-    { title: 'random_forest_regressor_v1', type: 'model', category: 'MODELS', path: '/app/models', icon: Cpu },
-  ];
+  const items: SearchItem[] = [];
+  if (searchResults) {
+    (searchResults.projects || []).forEach((p: any) =>
+      items.push({ title: p.name || '', category: 'PROJECTS', path: '/app/projects', icon: Folder }));
+    (searchResults.datasets || []).forEach((d: any) =>
+      items.push({ title: d.filename || '', category: 'DATASETS', path: '/app/datasets', icon: Database }));
+    (searchResults.models || []).forEach((m: any) =>
+      items.push({ title: m.name || m.filename || '', category: 'MODELS', path: '/app/models', icon: Cpu }));
+    (searchResults.registry_models || []).forEach((m: any) =>
+      items.push({ title: m.name || '', category: 'MODELS', path: '/app/models', icon: Boxes }));
+    (searchResults.experiments || []).forEach((e: any) =>
+      items.push({ title: e.name || '', category: 'EXPERIMENTS', path: '/app/experiments', icon: FlaskConical }));
+    (searchResults.predictions || []).forEach((p: any) =>
+      items.push({ title: p.model_name || '', category: 'PREDICTIONS', path: '/app/monitoring', icon: FileText }));
+  }
 
   const filtered = query.trim()
-    ? mockItems.filter((item) => item.title.toLowerCase().includes(query.toLowerCase()))
-    : mockItems;
+    ? items.filter((item) => item.title.toLowerCase().includes(query.toLowerCase()))
+    : items.slice(0, 8);
 
   return (
     <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-start justify-center pt-20 px-4">
@@ -59,6 +75,7 @@ export default function GlobalSearchModal({ isOpen, onClose }: Props) {
             onChange={(e) => setQuery(e.target.value)}
             className="w-full bg-transparent text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none"
           />
+          {isFetching && <Loader2 className="w-4 h-4 text-zinc-500 animate-spin flex-shrink-0" />}
           <button
             onClick={onClose}
             className="p-1 rounded hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-colors"
@@ -68,7 +85,11 @@ export default function GlobalSearchModal({ isOpen, onClose }: Props) {
         </div>
 
         <div className="max-h-80 overflow-y-auto p-2 space-y-1">
-          {filtered.length === 0 ? (
+          {!query.trim() ? (
+            <div className="p-6 text-center text-xs text-zinc-500 font-mono">
+              Type to search across your workspace
+            </div>
+          ) : filtered.length === 0 ? (
             <div className="p-6 text-center text-xs text-zinc-500 font-mono">
               No matching resources found for "{query}"
             </div>

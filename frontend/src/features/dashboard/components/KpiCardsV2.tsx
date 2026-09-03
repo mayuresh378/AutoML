@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { FlaskConical, Database, Cpu, Server, TrendingUp, ArrowUpRight } from 'lucide-react';
+import { FlaskConical, Database, Cpu, Server, TrendingUp } from 'lucide-react';
 import AnimatedNumber from '../../../components/motion/AnimatedNumber';
 
 interface KpiData {
@@ -8,65 +8,95 @@ interface KpiData {
   datasetsCount: number;
   modelsCount: number;
   deploymentsCount: number;
+  completedCount: number;
+  runningCount: number;
+  failedCount: number;
+  healthyDatasets: number;
+  needsAttentionDatasets: number;
+  bestAccuracy: number | null;
+  healthyDeployments: number;
 }
 
-export default function KpiCardsV2({ data }: { data: KpiData }) {
+export default function KpiCardsV2({
+  data,
+  stats,
+}: {
+  data: KpiData;
+  stats?: {
+    total_predictions?: number;
+    total_models?: number;
+    total_datasets?: number;
+    total_experiments?: number;
+    avg_training_time?: number;
+    success_rate?: number;
+    modelsTrained?: number;
+    activeDeployments?: number;
+  } | null;
+}) {
   const navigate = useNavigate();
+
+  const experimentsCount = data.experimentsCount || 0;
+  const datasetsCount = data.datasetsCount || 0;
+  const modelsCount = data.modelsCount || 0;
+  const deploymentsCount = data.deploymentsCount || 0;
+  const completedCount = data.completedCount;
+  const runningCount = data.runningCount;
+  const failedCount = data.failedCount;
 
   const cards = [
     {
       key: 'experiments',
       title: 'EXPERIMENTS',
-      value: data.experimentsCount || 18,
-      trend: '↑ 24% this month',
+      value: experimentsCount,
+      trend: 'this month',
       path: '/app/experiments',
       icon: FlaskConical,
       color: 'text-indigo-400',
       bg: 'bg-indigo-500/10 border-indigo-500/20',
       breakdown: [
-        { label: 'completed', count: 12, color: 'text-emerald-400' },
-        { label: 'running', count: 4, color: 'text-amber-400' },
-        { label: 'failed', count: 2, color: 'text-rose-400' },
+        { label: 'completed', count: completedCount, color: 'text-emerald-400' },
+        { label: 'running', count: runningCount, color: 'text-amber-400' },
+        { label: 'failed', count: failedCount, color: 'text-rose-400' },
       ],
     },
     {
       key: 'datasets',
       title: 'DATASETS',
-      value: data.datasetsCount || 12,
-      trend: '↑ 4 this month',
+      value: datasetsCount,
+      trend: 'monitored',
       path: '/app/datasets',
       icon: Database,
       color: 'text-cyan-400',
       bg: 'bg-cyan-500/10 border-cyan-500/20',
       breakdown: [
-        { label: 'healthy', count: 10, color: 'text-emerald-400' },
-        { label: 'need attention', count: 2, color: 'text-amber-400' },
+        { label: 'ready', count: data.healthyDatasets, color: 'text-emerald-400' },
+        { label: 'attention', count: data.needsAttentionDatasets, color: 'text-amber-400' },
       ],
     },
     {
       key: 'models',
       title: 'MODELS',
-      value: data.modelsCount || 18,
-      trend: '↑ 6 this month',
+      value: modelsCount,
+      trend: 'trained',
       path: '/app/models',
       icon: Cpu,
       color: 'text-emerald-400',
       bg: 'bg-emerald-500/10 border-emerald-500/20',
-      breakdown: [
-        { label: 'Best accuracy', count: '96.7%', color: 'text-emerald-400 font-semibold' },
-      ],
+      breakdown: data.bestAccuracy != null
+        ? [{ label: 'Best score', count: typeof data.bestAccuracy === 'number' ? `${(data.bestAccuracy * 100).toFixed(1)}%` : String(data.bestAccuracy), color: 'text-emerald-400 font-semibold' }]
+        : [{ label: 'loaded', count: modelsCount, color: 'text-emerald-400' }],
     },
     {
       key: 'deployments',
       title: 'DEPLOYMENTS',
-      value: data.deploymentsCount || 3,
-      trend: '● 3 healthy',
+      value: deploymentsCount,
+      trend: 'deployed',
       path: '/app/deployments',
       icon: Server,
       color: 'text-amber-400',
       bg: 'bg-amber-500/10 border-amber-500/20',
       breakdown: [
-        { label: 'uptime', count: '99.98%', color: 'text-emerald-400' },
+        { label: 'healthy', count: data.healthyDeployments, color: 'text-emerald-400' },
       ],
     },
   ];

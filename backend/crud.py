@@ -608,7 +608,7 @@ def remove_dataset_share(db: Session, share_id: str) -> bool:
 
 # ─── Global Search ────────────────────────────────────────────────────
 
-def global_search(db: Session, query: str, dataset_dir: str) -> dict:
+def global_search(db: Session, query: str, dataset_dir: str, user_id: str = None) -> dict:
     term = f"%{query}%"
     users = db.query(User).filter(
         (User.name.ilike(term)) | (User.email.ilike(term))
@@ -616,38 +616,55 @@ def global_search(db: Session, query: str, dataset_dir: str) -> dict:
         selectinload(User.teams),
         selectinload(User.api_keys),
     ).limit(10).all()
-    projects = db.query(Project).filter(
+    proj_q = db.query(Project).filter(
         (Project.name.ilike(term)) | (Project.description.ilike(term))
     ).options(
         selectinload(Project.experiments),
         selectinload(Project.model_registry),
         selectinload(Project.deployments),
         selectinload(Project.datasets),
-    ).limit(10).all()
-    datasets = db.query(Dataset).filter(Dataset.filename.ilike(term)).options(
+    )
+    if user_id:
+        proj_q = proj_q.filter(Project.user_id == user_id)
+        projects = proj_q.limit(10).all()
+    else:
+        projects = proj_q.limit(10).all()
+    ds_q = db.query(Dataset).filter(Dataset.filename.ilike(term)).options(
         selectinload(Dataset.user),
         selectinload(Dataset.project),
-    ).limit(10).all()
+    )
+    if user_id:
+        ds_q = ds_q.filter(Dataset.user_id == user_id)
+    datasets = ds_q.limit(10).all()
 
-    experiments = db.query(Experiment).options(
+    exp_q = db.query(Experiment).options(
         selectinload(Experiment.user),
         selectinload(Experiment.project),
         selectinload(Experiment.model_registry),
     ).filter(
         (Experiment.name.ilike(term)) | (Experiment.model.ilike(term)) | (Experiment.dataset.ilike(term))
-    ).limit(10).all()
+    )
+    if user_id:
+        exp_q = exp_q.filter(Experiment.user_id == user_id)
+    experiments = exp_q.limit(10).all()
 
-    predictions = db.query(PredictionLog).filter(
+    pred_q = db.query(PredictionLog).filter(
         (PredictionLog.model_name.ilike(term)) | (PredictionLog.input_preview.ilike(term)) | (PredictionLog.prediction.ilike(term))
-    ).limit(10).all()
+    )
+    if user_id:
+        pred_q = pred_q.filter(PredictionLog.user_id == user_id)
+    predictions = pred_q.limit(10).all()
 
-    registry_models = db.query(ModelRegistry).options(
+    reg_q = db.query(ModelRegistry).options(
         selectinload(ModelRegistry.user),
         selectinload(ModelRegistry.project),
         selectinload(ModelRegistry.experiment),
     ).filter(
         (ModelRegistry.name.ilike(term)) | (ModelRegistry.model_type.ilike(term)) | (ModelRegistry.task_type.ilike(term))
-    ).limit(10).all()
+    )
+    if user_id:
+        reg_q = reg_q.filter(ModelRegistry.user_id == user_id)
+    registry_models = reg_q.limit(10).all()
 
     model_files = []
     if os.path.isdir(dataset_dir):
