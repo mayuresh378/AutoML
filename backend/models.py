@@ -18,9 +18,10 @@ class User(Base):
     __tablename__ = "users"
 
     id = Column(String, primary_key=True, default=_uuid)
+    firebase_uid = Column(String, unique=True, nullable=True, index=True)
     email = Column(String, unique=True, nullable=False, index=True)
     name = Column(String, nullable=False)
-    password_hash = Column(String, nullable=False)
+    password_hash = Column(String, nullable=True)
     role = Column(String, default="member")
     is_active = Column(Boolean, default=True)
     email_verified = Column(Boolean, default=False)
@@ -29,6 +30,8 @@ class User(Base):
     reset_token_expiry = Column(DateTime, nullable=True)
     google_id = Column(String, nullable=True, unique=True)
     avatar_url = Column(String, nullable=True)
+    profile_picture = Column(String, nullable=True)
+    last_login_at = Column(DateTime, nullable=True)
     preferences = Column(JSON, default=dict)
     mfa_enabled = Column(Boolean, default=False)
     deleted_at = Column(DateTime, nullable=True)
@@ -86,17 +89,17 @@ class Project(Base):
     id = Column(String, primary_key=True, default=_uuid)
     name = Column(String, nullable=False)
     description = Column(Text, nullable=True)
-    status = Column(String, default="development")
+    status = Column(String, default="development", index=True)
     problem_type = Column(String, default="classification")
     visibility = Column(String, default="private")
     version = Column(Integer, default=1)
     notes = Column(Text, nullable=True)
     tags = Column(JSON, default=list)
-    deleted_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=_now)
+    deleted_at = Column(DateTime, nullable=True, index=True)
+    created_at = Column(DateTime, default=_now, index=True)
     updated_at = Column(DateTime, default=_now, onupdate=_now)
 
-    user_id = Column(String, ForeignKey("users.id"), nullable=True)
+    user_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
     user = relationship("User", back_populates="projects")
     experiments = relationship("Experiment", back_populates="project")
     model_registry = relationship("ModelRegistry", back_populates="project")
@@ -111,14 +114,14 @@ class ApiKey(Base):
     name = Column(String, nullable=False)
     key_prefix = Column(String(8), nullable=False)
     key_hash = Column(String, nullable=False)
-    status = Column(String, default="active")
+    status = Column(String, default="active", index=True)
     last_used_at = Column(DateTime, nullable=True)
     expires_at = Column(DateTime, nullable=True)
-    deleted_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=_now)
+    deleted_at = Column(DateTime, nullable=True, index=True)
+    created_at = Column(DateTime, default=_now, index=True)
     updated_at = Column(DateTime, default=_now, onupdate=_now)
 
-    user_id = Column(String, ForeignKey("users.id"), nullable=False)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
     user = relationship("User", back_populates="api_keys")
 
 
@@ -138,19 +141,19 @@ class Experiment(Base):
     total_time = Column(Float, nullable=True)
     memory_usage = Column(Float, nullable=True)
     cpu_usage = Column(Float, nullable=True)
-    status = Column(String, default="success")
+    status = Column(String, default="success", index=True)
     params = Column(JSON, nullable=True)
     notes = Column(String, nullable=True)
     feature_importance = Column(JSON, nullable=True)
     confusion_matrix = Column(JSON, nullable=True)
     run_at = Column(DateTime, nullable=True)
     updated_at = Column(DateTime, nullable=True)
-    deleted_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=_now)
+    deleted_at = Column(DateTime, nullable=True, index=True)
+    created_at = Column(DateTime, default=_now, index=True)
 
-    user_id = Column(String, ForeignKey("users.id"), nullable=True)
+    user_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
     user = relationship("User", back_populates="experiments")
-    project_id = Column(String, ForeignKey("projects.id"), nullable=True)
+    project_id = Column(String, ForeignKey("projects.id"), nullable=True, index=True)
     project = relationship("Project", back_populates="experiments")
     model_registry = relationship("ModelRegistry", back_populates="experiment")
 
@@ -169,18 +172,18 @@ class ModelRegistry(Base):
     cv_score = Column(Float, nullable=True)
     metrics = Column(JSON, nullable=True)
     params = Column(JSON, nullable=True)
-    status = Column(String, default="staging")
+    status = Column(String, default="staging", index=True)
     tags = Column(JSON, default=list)
     description = Column(Text, nullable=True)
-    deleted_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=_now)
+    deleted_at = Column(DateTime, nullable=True, index=True)
+    created_at = Column(DateTime, default=_now, index=True)
     updated_at = Column(DateTime, default=_now, onupdate=_now)
 
-    experiment_id = Column(String, ForeignKey("experiments.id"), nullable=True)
+    experiment_id = Column(String, ForeignKey("experiments.id"), nullable=True, index=True)
     experiment = relationship("Experiment", back_populates="model_registry")
-    user_id = Column(String, ForeignKey("users.id"), nullable=True)
+    user_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
     user = relationship("User", back_populates="model_registry")
-    project_id = Column(String, ForeignKey("projects.id"), nullable=True)
+    project_id = Column(String, ForeignKey("projects.id"), nullable=True, index=True)
     project = relationship("Project", back_populates="model_registry")
     deployments = relationship("Deployment", back_populates="model")
 
@@ -191,13 +194,13 @@ class Deployment(Base):
     id = Column(String, primary_key=True, default=_uuid)
     name = Column(String, nullable=False)
     endpoint_url = Column(String, nullable=True)
-    status = Column(String, default="active")
+    status = Column(String, default="active", index=True)
     environment = Column(String, default="production")
     requests_count = Column(Integer, default=0)
     avg_latency_ms = Column(Float, nullable=True)
     config = Column(JSON, nullable=True)
-    deleted_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=_now)
+    deleted_at = Column(DateTime, nullable=True, index=True)
+    created_at = Column(DateTime, default=_now, index=True)
     updated_at = Column(DateTime, default=_now, onupdate=_now)
 
     deployment_type = Column(String, default="rest_api")
@@ -214,11 +217,11 @@ class Deployment(Base):
     download_url = Column(String, nullable=True)
     health_check_url = Column(String, nullable=True)
 
-    model_id = Column(String, ForeignKey("model_registry.id"), nullable=True)
+    model_id = Column(String, ForeignKey("model_registry.id"), nullable=True, index=True)
     model = relationship("ModelRegistry", back_populates="deployments")
-    user_id = Column(String, ForeignKey("users.id"), nullable=True)
+    user_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
     user = relationship("User", back_populates="deployments")
-    project_id = Column(String, ForeignKey("projects.id"), nullable=True)
+    project_id = Column(String, ForeignKey("projects.id"), nullable=True, index=True)
     project = relationship("Project", back_populates="deployments")
     history = relationship("DeploymentHistory", back_populates="deployment", order_by="desc(DeploymentHistory.created_at)")
 
@@ -230,13 +233,13 @@ class Pipeline(Base):
     name = Column(String, nullable=False)
     description = Column(Text, nullable=True)
     steps = Column(JSON, default=list)
-    status = Column(String, default="draft")
+    status = Column(String, default="draft", index=True)
     schedule = Column(String, nullable=True)
-    deleted_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=_now)
+    deleted_at = Column(DateTime, nullable=True, index=True)
+    created_at = Column(DateTime, default=_now, index=True)
     updated_at = Column(DateTime, default=_now, onupdate=_now)
 
-    user_id = Column(String, ForeignKey("users.id"), nullable=True)
+    user_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
     created_by_user = relationship("User", back_populates="pipelines")
     runs = relationship("PipelineRun", back_populates="pipeline")
 
@@ -245,15 +248,15 @@ class PipelineRun(Base):
     __tablename__ = "pipeline_runs"
 
     id = Column(String, primary_key=True, default=_uuid)
-    status = Column(String, default="pending")
+    status = Column(String, default="pending", index=True)
     current_step = Column(String, nullable=True)
     results = Column(JSON, nullable=True)
     error = Column(Text, nullable=True)
     started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=_now)
+    created_at = Column(DateTime, default=_now, index=True)
 
-    pipeline_id = Column(String, ForeignKey("pipelines.id"), nullable=False)
+    pipeline_id = Column(String, ForeignKey("pipelines.id"), nullable=False, index=True)
     pipeline = relationship("Pipeline", back_populates="runs")
 
 
@@ -267,19 +270,19 @@ class Dataset(Base):
     file_size_kb = Column(Float, nullable=True)
     rows = Column(Integer, nullable=True)
     columns = Column(JSON, nullable=True)
-    status = Column(String, default="uploaded")
+    status = Column(String, default="uploaded", index=True)
     description = Column(Text, nullable=True)
     tags = Column(JSON, default=list)
     version = Column(Integer, default=1)
     source = Column(String, default="upload")
     source_url = Column(String, nullable=True)
-    deleted_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=_now)
+    deleted_at = Column(DateTime, nullable=True, index=True)
+    created_at = Column(DateTime, default=_now, index=True)
     updated_at = Column(DateTime, default=_now, onupdate=_now)
 
-    project_id = Column(String, ForeignKey("projects.id"), nullable=True)
+    project_id = Column(String, ForeignKey("projects.id"), nullable=True, index=True)
     project = relationship("Project", back_populates="datasets")
-    user_id = Column(String, ForeignKey("users.id"), nullable=True)
+    user_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
     user = relationship("User", back_populates="datasets")
 
 
@@ -287,11 +290,11 @@ class DatasetShare(Base):
     __tablename__ = "dataset_shares"
 
     id = Column(String, primary_key=True, default=_uuid)
-    dataset_id = Column(String, ForeignKey("datasets.id"), nullable=False)
-    shared_with_user_id = Column(String, ForeignKey("users.id"), nullable=True)
+    dataset_id = Column(String, ForeignKey("datasets.id"), nullable=False, index=True)
+    shared_with_user_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
     shared_with_email = Column(String, nullable=True)
     permission = Column(String, default="view")
-    created_at = Column(DateTime, default=_now)
+    created_at = Column(DateTime, default=_now, index=True)
 
     dataset = relationship("Dataset")
 
@@ -306,9 +309,9 @@ class PredictionLog(Base):
     confidence = Column(Float, nullable=True)
     batch_size = Column(Integer, default=1)
     latency_ms = Column(Float, nullable=True)
-    created_at = Column(DateTime, default=_now)
+    created_at = Column(DateTime, default=_now, index=True)
 
-    user_id = Column(String, ForeignKey("users.id"), nullable=True)
+    user_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
     user = relationship("User", back_populates="prediction_logs")
 
 
@@ -322,11 +325,11 @@ class Notification(Base):
     category = Column(String, default="system")
     resource_type = Column(String, nullable=True)
     resource_id = Column(String, nullable=True)
-    read = Column(Boolean, default=False)
-    deleted_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=_now)
+    read = Column(Boolean, default=False, index=True)
+    deleted_at = Column(DateTime, nullable=True, index=True)
+    created_at = Column(DateTime, default=_now, index=True)
 
-    user_id = Column(String, ForeignKey("users.id"), nullable=True)
+    user_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
     user = relationship("User", back_populates="notifications")
 
 
@@ -338,13 +341,13 @@ class Webhook(Base):
     url = Column(String, nullable=False)
     events = Column(JSON, default=list)
     secret = Column(String, nullable=True)
-    status = Column(String, default="active")
+    status = Column(String, default="active", index=True)
     last_triggered_at = Column(DateTime, nullable=True)
-    deleted_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=_now)
+    deleted_at = Column(DateTime, nullable=True, index=True)
+    created_at = Column(DateTime, default=_now, index=True)
     updated_at = Column(DateTime, default=_now, onupdate=_now)
 
-    user_id = Column(String, ForeignKey("users.id"), nullable=True)
+    user_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
     user = relationship("User", back_populates="webhooks")
 
 
@@ -352,16 +355,16 @@ class UserSession(Base):
     __tablename__ = "user_sessions"
 
     id = Column(String, primary_key=True, default=_uuid)
-    token_hash = Column(String, nullable=False)
+    token_hash = Column(String, nullable=False, index=True)
     refresh_token_hash = Column(String, nullable=True)
     device_info = Column(String, nullable=True)
     ip_address = Column(String, nullable=True)
-    is_active = Column(Boolean, default=True)
+    is_active = Column(Boolean, default=True, index=True)
     last_used_at = Column(DateTime, default=_now)
     expires_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=_now)
+    created_at = Column(DateTime, default=_now, index=True)
 
-    user_id = Column(String, ForeignKey("users.id"), nullable=False)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
     user = relationship("User", back_populates="sessions")
 
 
@@ -379,8 +382,8 @@ class MarketplaceItem(Base):
     rating = Column(Float, default=0.0)
     featured = Column(Boolean, default=False)
     config = Column(JSON, nullable=True)
-    deleted_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=_now)
+    deleted_at = Column(DateTime, nullable=True, index=True)
+    created_at = Column(DateTime, default=_now, index=True)
 
 
 class AuditLog(Base):
@@ -394,11 +397,11 @@ class AuditLog(Base):
     resource_id = Column(String, nullable=True)
     details = Column(JSON, nullable=True)
     ip_address = Column(String, nullable=True)
-    status = Column(String, default="success")
+    status = Column(String, default="success", index=True)
     severity = Column(String, default="info")
-    created_at = Column(DateTime, default=_now)
+    created_at = Column(DateTime, default=_now, index=True)
 
-    user_id = Column(String, ForeignKey("users.id"), nullable=True)
+    user_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
     user = relationship("User", back_populates="audit_logs")
 
 
@@ -410,9 +413,9 @@ class ActivityLog(Base):
     resource_type = Column(String, nullable=True)
     resource_id = Column(String, nullable=True)
     details = Column(JSON, nullable=True)
-    created_at = Column(DateTime, default=_now)
+    created_at = Column(DateTime, default=_now, index=True)
 
-    user_id = Column(String, ForeignKey("users.id"), nullable=True)
+    user_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
     user = relationship("User", back_populates="activity_logs")
 
 
@@ -420,12 +423,12 @@ class DeploymentHistory(Base):
     __tablename__ = "deployment_history"
 
     id = Column(String, primary_key=True, default=_uuid)
-    deployment_id = Column(String, ForeignKey("deployments.id"), nullable=False)
+    deployment_id = Column(String, ForeignKey("deployments.id"), nullable=False, index=True)
     action = Column(String, nullable=False)
     old_status = Column(String, nullable=True)
     new_status = Column(String, nullable=True)
     details = Column(JSON, nullable=True)
     actor = Column(String, nullable=True)
-    created_at = Column(DateTime, default=_now)
+    created_at = Column(DateTime, default=_now, index=True)
 
     deployment = relationship("Deployment", back_populates="history")

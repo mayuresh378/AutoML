@@ -2,19 +2,25 @@ import type { ApiResponse } from '../types/api';
 
 export const BASE = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL) || '/api/v1';
 
-let _tokenGetter: (() => string | null) | null = null;
+let _tokenGetter: (() => string | null | Promise<string | null>) | null = null;
 let _onUnauthorized: (() => void) | null = null;
 
 export function configureHttp(config: {
-  tokenGetter: () => string | null;
+  tokenGetter: () => string | null | Promise<string | null>;
   onUnauthorized?: () => void;
 }) {
   _tokenGetter = config.tokenGetter;
   _onUnauthorized = config.onUnauthorized ?? null;
 }
 
-function getToken(): string | null {
-  return _tokenGetter ? _tokenGetter() : null;
+async function getToken(): Promise<string | null> {
+  if (!_tokenGetter) return null;
+  try {
+    const res = _tokenGetter();
+    return res instanceof Promise ? await res : res;
+  } catch {
+    return null;
+  }
 }
 
 export class HttpError extends Error {
@@ -41,6 +47,10 @@ export function getErrorMessage(err: unknown, fallback = 'An unexpected error oc
 }
 
 async function handleResponse<T>(res: Response): Promise<T> {
+  if (res.status === 401 && _onUnauthorized) {
+    _onUnauthorized();
+  }
+
   if (!res.ok) {
     let body: any;
     try {
@@ -75,9 +85,9 @@ function buildUrl(path: string, params?: Record<string, string | number | boolea
   return url;
 }
 
-function buildHeaders(custom?: Record<string, string>): Record<string, string> {
+async function buildHeaders(custom?: Record<string, string>): Promise<Record<string, string>> {
   const headers: Record<string, string> = { ...custom };
-  const token = getToken();
+  const token = await getToken();
   if (token) headers['Authorization'] = `Bearer ${token}`;
   return headers;
 }
@@ -85,9 +95,10 @@ function buildHeaders(custom?: Record<string, string>): Record<string, string> {
 export const http = {
   async get<T = any>(path: string, params?: Record<string, any>, init?: RequestInit): Promise<T> {
     const url = buildUrl(path, params);
+    const headers = await buildHeaders(init?.headers as Record<string, string>);
     const res = await fetch(url, {
       method: 'GET',
-      headers: buildHeaders(init?.headers as Record<string, string>),
+      headers,
       signal: init?.signal,
     });
     return handleResponse<T>(res);
@@ -96,7 +107,7 @@ export const http = {
   async post<T = any>(path: string, body?: any, init?: RequestInit): Promise<T> {
     const url = buildUrl(path);
     const isFormData = body instanceof FormData;
-    const headers = buildHeaders(init?.headers as Record<string, string>);
+    const headers = await buildHeaders(init?.headers as Record<string, string>);
     if (isFormData) delete headers['Content-Type'];
     else if (body != null) headers['Content-Type'] = 'application/json';
     const res = await fetch(url, {
@@ -111,7 +122,7 @@ export const http = {
   async put<T = any>(path: string, body?: any, init?: RequestInit): Promise<T> {
     const url = buildUrl(path);
     const isFormData = body instanceof FormData;
-    const headers = buildHeaders(init?.headers as Record<string, string>);
+    const headers = await buildHeaders(init?.headers as Record<string, string>);
     if (isFormData) delete headers['Content-Type'];
     else if (body != null) headers['Content-Type'] = 'application/json';
     const res = await fetch(url, {
@@ -126,7 +137,7 @@ export const http = {
   async patch<T = any>(path: string, body?: any, init?: RequestInit): Promise<T> {
     const url = buildUrl(path);
     const isFormData = body instanceof FormData;
-    const headers = buildHeaders(init?.headers as Record<string, string>);
+    const headers = await buildHeaders(init?.headers as Record<string, string>);
     if (isFormData) delete headers['Content-Type'];
     else if (body != null) headers['Content-Type'] = 'application/json';
     const res = await fetch(url, {
@@ -140,9 +151,10 @@ export const http = {
 
   async delete<T = any>(path: string, init?: RequestInit): Promise<T> {
     const url = buildUrl(path);
+    const headers = await buildHeaders(init?.headers as Record<string, string>);
     const res = await fetch(url, {
       method: 'DELETE',
-      headers: buildHeaders(init?.headers as Record<string, string>),
+      headers,
       signal: init?.signal,
     });
     return handleResponse<T>(res);
@@ -165,11 +177,8 @@ export const http = {
 };
 
 export function downloadUrl(path: string): string {
-  const token = getToken();
   const url = `${BASE}${path}`;
-  if (!token) return url;
-  const sep = path.includes('?') ? '&' : '?';
-  return `${url}${sep}token=${token}`;
+  return url;
 }
 
 export function downloadBlob(data: Record<string, any>[], filename: string) {

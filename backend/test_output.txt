@@ -1,0 +1,25 @@
+﻿============================= test session starts =============================
+platform win32 -- Python 3.14.2, pytest-9.1.1, pluggy-1.6.0 -- C:\Users\mayuresh\Downloads\automl-platform-main\automl-platform-main\backend\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\mayuresh\Downloads\automl-platform-main\automl-platform-main\backend
+configfile: pytest.ini
+plugins: anyio-4.14.2, cov-7.1.0
+collecting ... collected 15 items
+
+tests/test_api.py::TestHealth::test_health_endpoint PASSED               [  6%]
+tests/test_api.py::TestAuth::test_register_and_login PASSED              [ 13%]
+tests/test_api.py::TestAuth::test_register_duplicate PASSED              [ 20%]
+tests/test_api.py::TestAuth::test_login_invalid PASSED                   [ 26%]
+tests/test_api.py::TestDatasets::test_list_datasets PASSED               [ 33%]
+tests/test_api.py::TestDatasets::test_upload_and_list PASSED             [ 40%]
+tests/test_api.py::TestDatasets::test_preview PASSED                     [ 46%]
+tests/test_api.py::TestExperiments::test_list_experiments PASSED         [ 53%]
+tests/test_api.py::TestModels::test_list_models PASSED                   [ 60%]
+tests/test_api.py::TestMonitoring::test_metrics PASSED                   [ 66%]
+tests/test_api.py::TestMonitoring::test_stats PASSED                     [ 73%]
+tests/test_api.py::TestPipelines::test_create_and_list PASSED            [ 80%]
+tests/test_api.py::TestPipelines::test_run_pipeline PASSED               [ 86%]
+tests/test_api.py::TestWebhooks::test_crud PASSED                        [ 93%]
+tests/test_api.py::TestActivity::test_activity PASSED                    [100%]
+
+============================= 15 passed in 3.87s ==============================

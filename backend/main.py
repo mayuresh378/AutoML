@@ -141,7 +141,7 @@ csrf_secret = os.getenv("CSRF_SECRET", os.getenv("JWT_SECRET", ""))
 if csrf_secret:
     app.add_middleware(CSRFMiddleware, secret=csrf_secret)
 
-trusted_hosts = os.getenv("TRUSTED_HOSTS", "*.onrender.com,localhost,127.0.0.1,0.0.0.0")
+trusted_hosts = os.getenv("TRUSTED_HOSTS", "*.onrender.com,localhost,127.0.0.1,0.0.0.0,testserver")
 app.add_middleware(
     TrustedHostMiddleware,
     allowed_hosts=[h.strip() for h in trusted_hosts.split(",") if h.strip()],
@@ -380,8 +380,9 @@ def get_unread_count(db: Session = Depends(get_db), current_user: dict = Depends
 # ── Datasets ─────────────────────────────────────────────────────────
 
 @app.get("/api/v1/datasets", tags=["Datasets"], summary="List datasets", description="List all uploaded datasets with metadata.")
-def list_datasets(db: Session = Depends(get_db), offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=500)):
-    db_records = {r.filename: r for r in list_dataset_records(db)}
+def list_datasets(db: Session = Depends(get_db), offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=500), current_user: dict = Depends(get_optional_user)):
+    uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
+    db_records = {r.filename: r for r in list_dataset_records(db, user_id=uid)}
     files = []
     for f in sorted(os.listdir(DATASET_DIR)):
         if not any(f.endswith(e) for e in ALLOWED_EXTENSIONS):
@@ -729,6 +730,7 @@ def remove_share_api(name: str, share_id: str, db: Session = Depends(get_db), cu
 
 @app.get("/api/v1/experiments", tags=["Experiments"], summary="List experiments", description="Return a list of all training experiment records.")
 def list_experiments_api(db: Session = Depends(get_db), offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=500), current_user: dict = Depends(get_optional_user)):
+    uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
     experiments = [{
         "id": e.id, "name": e.name, "model": e.model,
         "task_type": e.task_type, "dataset": e.dataset, "target": e.target,
@@ -741,7 +743,7 @@ def list_experiments_api(db: Session = Depends(get_db), offset: int = Query(0, g
         "confusion_matrix": e.confusion_matrix,
         "user_id": e.user_id, "project_id": getattr(e, "project_id", None),
         "created_at": e.created_at.isoformat() if e.created_at else None,
-    } for e in list_experiments(db)]
+    } for e in list_experiments(db, user_id=uid)]
     total = len(experiments)
     experiments = experiments[offset:offset + limit]
     return paginated(experiments, total, offset, limit, key="experiments")
@@ -1509,8 +1511,9 @@ def compare_models_api(names: str = Form(...), db: Session = Depends(get_db)):
 
 
 @app.get("/api/v1/models/registry", tags=["Models"], summary="List model registry", description="List all registered models from the database registry.")
-def list_model_registry_api(db: Session = Depends(get_db), offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=500)):
-    db_models = list_model_registry_entries(db)
+def list_model_registry_api(db: Session = Depends(get_db), offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=500), current_user: dict = Depends(get_optional_user)):
+    uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
+    db_models = list_model_registry_entries(db, user_id=uid)
     items = [{
         "id": m.id, "name": m.name, "version": m.version,
         "model_type": m.model_type, "task_type": m.task_type,
@@ -1986,7 +1989,8 @@ def engine_get_result(job_id: str):
 
 @app.get("/api/v1/deployments", tags=["Deployments"], summary="List deployments", description="List all model deployments.")
 def list_deployments_api(db: Session = Depends(get_db), offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=500), current_user: dict = Depends(get_optional_user)):
-    deps = list_deployments(db)
+    uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
+    deps = list_deployments(db, user_id=uid)
     items = [{
         "id": d.id, "model_name": d.name, "endpoint_name": d.name,
         "endpoint_url": d.endpoint_url, "status": d.status,
@@ -2441,7 +2445,8 @@ def batch_predict(
 
 @app.get("/api/v1/predictions/history", tags=["Predictions"], summary="Prediction history", description="Return a history of all past prediction requests.")
 def prediction_history(db: Session = Depends(get_db), offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=500), current_user: dict = Depends(get_optional_user)):
-    logs = list_prediction_logs(db)
+    uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
+    logs = list_prediction_logs(db, user_id=uid)
     items = [{
         "id": l.id, "model_name": l.model_name,
         "input_preview": l.input_preview,
@@ -2458,7 +2463,8 @@ def prediction_history(db: Session = Depends(get_db), offset: int = Query(0, ge=
 
 @app.get("/api/v1/predictions", tags=["Predictions"], summary="List predictions", description="List all prediction logs with pagination.")
 def list_predictions_api(db: Session = Depends(get_db), offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=500), current_user: dict = Depends(get_optional_user)):
-    logs = list_prediction_logs(db)
+    uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
+    logs = list_prediction_logs(db, user_id=uid)
     items = [{
         "id": l.id, "model_name": l.model_name,
         "input_preview": l.input_preview,
@@ -2503,7 +2509,8 @@ def delete_prediction_api(pred_id: str, db: Session = Depends(get_db), current_u
 
 @app.get("/api/v1/pipelines", tags=["Pipelines"], summary="List pipelines", description="List all ML pipelines.")
 def list_pipelines_api(db: Session = Depends(get_db), offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=500), current_user: dict = Depends(get_optional_user)):
-    pipes = list_pipelines(db)
+    uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
+    pipes = list_pipelines(db, user_id=uid)
     items = [{
         "id": p.id, "name": p.name, "description": p.description,
         "steps": p.steps, "status": p.status, "schedule": p.schedule,
@@ -2605,7 +2612,8 @@ def get_run_api(run_id: str, db: Session = Depends(get_db)):
 
 @app.get("/api/v1/webhooks", tags=["Webhooks"], summary="List webhooks", description="List all configured webhooks.")
 def list_webhooks_api(db: Session = Depends(get_db), offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=500), current_user: dict = Depends(get_optional_user)):
-    whs = list_webhooks(db)
+    uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
+    whs = list_webhooks(db, user_id=uid)
     items = [{
         "id": w.id, "name": w.name, "url": w.url,
         "events": w.events, "status": w.status,

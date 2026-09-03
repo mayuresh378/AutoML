@@ -18,14 +18,13 @@ DATABASE_URL = _raw_url or f"sqlite:///{os.path.join(os.path.dirname(os.path.abs
 
 is_postgres = "postgresql" in DATABASE_URL or "postgres" in DATABASE_URL
 
-engine = create_engine(
-    DATABASE_URL,
-    echo=False,
-    pool_pre_ping=True,
-    pool_size=10 if is_postgres else 5,
-    max_overflow=20 if is_postgres else 10,
-    pool_recycle=3600 if is_postgres else -1,
-)
+_engine_kwargs: dict = {"echo": False, "pool_pre_ping": True}
+if is_postgres:
+    _engine_kwargs["pool_size"] = 10
+    _engine_kwargs["max_overflow"] = 20
+    _engine_kwargs["pool_recycle"] = 3600
+
+engine = create_engine(DATABASE_URL, **_engine_kwargs)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 shared_metadata = MetaData(
@@ -166,6 +165,32 @@ def _migrate_projects_table():
         pass
 
 
+def _migrate_users_table():
+    is_pg = "postgresql" in DATABASE_URL
+    try:
+        with engine.connect() as conn:
+            if is_pg:
+                result = conn.execute(text(
+                    "SELECT column_name FROM information_schema.columns WHERE table_name='users'"
+                ))
+                existing = {row[0] for row in result}
+            else:
+                result = conn.execute(text("PRAGMA table_info(users)"))
+                existing = {row[1] for row in result}
+
+            migrations = [
+                ("firebase_uid", "VARCHAR" if is_pg else "TEXT", "NULL"),
+                ("profile_picture", "VARCHAR" if is_pg else "TEXT", "NULL"),
+                ("last_login_at", "TIMESTAMP" if is_pg else "DATETIME", "NULL"),
+            ]
+            for col, col_type, default in migrations:
+                if col not in existing:
+                    conn.execute(text(f"ALTER TABLE users ADD COLUMN {col} {col_type} DEFAULT {default}"))
+                    conn.commit()
+    except Exception:
+        pass
+
+
 def init_db():
     from models import (User, Team, TeamMember, ApiKey, Experiment, ModelRegistry,
                         Deployment, DeploymentHistory, Pipeline, PipelineRun, Webhook, AuditLog,
@@ -174,6 +199,7 @@ def init_db():
     for attempt in range(30):
         try:
             Base.metadata.create_all(bind=engine)
+            _migrate_users_table()
             _migrate_datasets_table()
             _migrate_deployments_table()
             _migrate_experiments_table()

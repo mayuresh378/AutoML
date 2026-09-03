@@ -22,7 +22,8 @@ models/*_meta.json
 
 # Environment
 .env
-.venv
+.env.*
+*.env
 
 # IDE
 .vscode/
@@ -32,8 +33,12 @@ models/*_meta.json
 .DS_Store
 Thumbs.db
 
-# Reports
+# Reports & Test Output Logs
 reports/
+*_output.txt
+test_output.txt
+backend/test_output.txt
+frontend/test_output_frontend.txt
 
 # Misc
 response.txt

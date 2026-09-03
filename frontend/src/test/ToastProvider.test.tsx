@@ -9,6 +9,8 @@ vi.mock('framer-motion', () => ({
     p: ({ children, ...props }: any) => <p {...props}>{children}</p>,
   },
   AnimatePresence: ({ children }: any) => <>{children}</>,
+  useMotionValue: (init: any) => ({ get: () => init, set: () => {}, onChange: () => () => {} }),
+  useTransform: (_v: any, _in: any, out: any) => (Array.isArray(out) ? out[0] : 0),
 }));
 
 function TestConsumer({ fireImmediate }: { fireImmediate?: boolean }) {

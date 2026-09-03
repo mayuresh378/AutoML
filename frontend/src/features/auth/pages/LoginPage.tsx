@@ -1,16 +1,18 @@
 import { useState } from 'react';
+import { signInWithPopup } from 'firebase/auth';
 import { useUIStore } from '../../../store/useUIStore';
 import { useLogin, useGoogleLogin } from '../hooks/useLogin';
 import { Button } from '../../../components/ui/Button';
 import { Input } from '../../../components/ui/Input';
-import { Card, CardHeader, CardTitle } from '../../../components/ui/Card';
+import { Card } from '../../../components/ui/Card';
 import { PageContainer } from '../../../components/layout/PageContainer';
 import { ErrorState } from '../../../components/ui/ErrorState';
 import { motion } from 'framer-motion';
-import { LogIn, Brain, Eye, EyeOff } from 'lucide-react';
+import { LogIn, Brain, Eye, EyeOff, AlertCircle } from 'lucide-react';
 import { loginSchema } from '../../../lib/validators';
 import { useNotification } from '../../../hooks/useNotification';
 import { getErrorMessage } from '../../../services/http';
+import { auth, googleProvider, isFirebaseConfigured } from '../../../lib/firebase';
 
 export default function LoginPage() {
   const setActivePage = useUIStore((s) => s.setActivePage);
@@ -21,21 +23,40 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
 
-  const handleGoogleSignIn = () => {
-    const googleUserData = JSON.stringify({
-      email: 'user.google@gmail.com',
-      name: 'Google User',
-      sub: '108273645192837465',
-      picture: 'https://lh3.googleusercontent.com/a/default-user',
-    });
-    googleLogin.mutate(googleUserData, {
-      onSuccess: (data) => {
-        notifySuccess('Google Sign-In Successful', `Welcome back, ${data.user.name}!`);
-        setActivePage('Dashboard');
-      },
-      onError: (err) => notifyError('Google Sign-In Failed', getErrorMessage(err)),
-    });
+  const handleGoogleSignIn = async () => {
+    if (!isFirebaseConfigured) {
+      notifyError(
+        'Firebase Not Configured',
+        'Firebase environment variables (VITE_FIREBASE_*) are missing. Please check configuration.'
+      );
+      return;
+    }
+
+    setIsGoogleLoading(true);
+    try {
+      const result = await signInWithPopup(auth, googleProvider);
+      const idToken = await result.user.getIdToken();
+      
+      googleLogin.mutate(idToken, {
+        onSuccess: (data) => {
+          notifySuccess('Google Sign-In Successful', `Welcome back, ${data.user.name}!`);
+          setActivePage('Dashboard');
+        },
+        onError: (err) => {
+          notifyError('Authentication Failed', getErrorMessage(err));
+        },
+      });
+    } catch (error: any) {
+      if (error?.code === 'auth/popup-closed-by-user' || error?.code === 'auth/cancelled-popup-request') {
+        // User intentionally closed popup, no intrusive error alert needed
+      } else {
+        notifyError('Google Sign-In Failed', error?.message || 'Failed to authenticate with Google');
+      }
+    } finally {
+      setIsGoogleLoading(false);
+    }
   };
 
   const validate = () => {
@@ -89,20 +110,29 @@ export default function LoginPage() {
               <div className="w-14 h-14 rounded-2xl liquid-glass flex items-center justify-center mb-4">
                 <Brain className="w-7 h-7 text-white" />
               </div>
-              <h1 className="text-2xl text-zinc-100">Welcome back</h1>
-              <p className="text-sm text-zinc-400 mt-1">Sign in to your AutoML account</p>
+              <h1 className="text-2xl text-zinc-100 font-bold">Welcome to AutoML</h1>
+              <p className="text-sm text-zinc-400 mt-1">Sign in to access your models & workspace</p>
             </div>
+
+            {!isFirebaseConfigured && (
+              <div className="mb-4 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-start space-x-2 text-xs text-amber-300">
+                <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                <span>
+                  Demo Mode: Firebase Web configuration variables (VITE_FIREBASE_*) are not set yet. Set them to enable Google Auth.
+                </span>
+              </div>
+            )}
 
             <Button
               type="button"
               variant="secondary"
               onClick={handleGoogleSignIn}
-              loading={googleLogin.isPending}
+              loading={isGoogleLoading || googleLogin.isPending}
               className="w-full mb-6 border-zinc-700 bg-zinc-900/50 hover:bg-zinc-800 text-zinc-200"
               size="lg"
             >
               <GoogleIcon />
-              Sign in with Google
+              Continue with Google
             </Button>
 
             <div className="relative mb-6">
@@ -169,7 +199,7 @@ function LockIcon() { return <svg className="w-4 h-4" fill="none" viewBox="0 0 2
 
 function GoogleIcon() {
   return (
-    <svg className="w-4 h-4 mr-2 inline-block" viewBox="0 0 24 24">
+    <svg className="w-4 h-4 mr-2 inline-block shrink-0" viewBox="0 0 24 24">
       <path
         fill="#4285F4"
         d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"

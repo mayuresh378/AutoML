@@ -95,7 +95,7 @@ def get_user_by_id(db: Session, user_id: str) -> Optional[User]:
 
 # ─── Experiments ──────────────────────────────────────────────────────
 
-def list_experiments(db: Session, limit: int = 100, offset: int = 0, project_id: str = None) -> list:
+def list_experiments(db: Session, limit: int = 100, offset: int = 0, project_id: str = None, user_id: str = None) -> list:
     q = db.query(Experiment).options(
         selectinload(Experiment.user),
         selectinload(Experiment.project),
@@ -103,6 +103,8 @@ def list_experiments(db: Session, limit: int = 100, offset: int = 0, project_id:
     ).order_by(desc(Experiment.created_at))
     if project_id:
         q = q.filter(Experiment.project_id == project_id)
+    if user_id:
+        q = q.filter((Experiment.user_id == user_id) | (Experiment.user_id == None))
     return q.offset(offset).limit(limit).all()
 
 
@@ -122,7 +124,7 @@ def create_experiment(db: Session, data: dict) -> Experiment:
 
 # ─── Model Registry ─────────────────────────────────────────────────
 
-def list_models(db: Session, limit: int = 100, offset: int = 0, project_id: str = None) -> list:
+def list_models(db: Session, limit: int = 100, offset: int = 0, project_id: str = None, user_id: str = None) -> list:
     q = db.query(ModelRegistry).options(
         selectinload(ModelRegistry.user),
         selectinload(ModelRegistry.project),
@@ -130,6 +132,8 @@ def list_models(db: Session, limit: int = 100, offset: int = 0, project_id: str 
     ).order_by(desc(ModelRegistry.created_at))
     if project_id:
         q = q.filter(ModelRegistry.project_id == project_id)
+    if user_id:
+        q = q.filter((ModelRegistry.user_id == user_id) | (ModelRegistry.user_id == None))
     return q.offset(offset).limit(limit).all()
 
 
@@ -180,7 +184,7 @@ def update_model_meta(db: Session, name: str, status: str = None, tags: list = N
 
 # ─── Deployments ──────────────────────────────────────────────────────
 
-def list_deployments(db: Session, limit: int = 100, offset: int = 0, project_id: str = None) -> list:
+def list_deployments(db: Session, limit: int = 100, offset: int = 0, project_id: str = None, user_id: str = None) -> list:
     q = db.query(Deployment).options(
         selectinload(Deployment.model),
         selectinload(Deployment.user),
@@ -188,6 +192,8 @@ def list_deployments(db: Session, limit: int = 100, offset: int = 0, project_id:
     ).order_by(desc(Deployment.created_at))
     if project_id:
         q = q.filter(Deployment.project_id == project_id)
+    if user_id:
+        q = q.filter((Deployment.user_id == user_id) | (Deployment.user_id == None))
     return q.offset(offset).limit(limit).all()
 
 
@@ -222,11 +228,14 @@ def delete_deployment(db: Session, dep_id: str) -> bool:
 
 # ─── Pipelines ────────────────────────────────────────────────────────
 
-def list_pipelines(db: Session, limit: int = 100, offset: int = 0) -> list:
-    return db.query(Pipeline).options(
+def list_pipelines(db: Session, limit: int = 100, offset: int = 0, user_id: str = None) -> list:
+    q = db.query(Pipeline).options(
         selectinload(Pipeline.runs),
         selectinload(Pipeline.created_by_user),
-    ).order_by(desc(Pipeline.created_at)).offset(offset).limit(limit).all()
+    ).order_by(desc(Pipeline.created_at))
+    if user_id:
+        q = q.filter((Pipeline.user_id == user_id) | (Pipeline.user_id == None))
+    return q.offset(offset).limit(limit).all()
 
 
 def create_pipeline(db: Session, user_id: str, name: str, steps: list,
@@ -340,8 +349,11 @@ def get_pipeline_run(db: Session, run_id: str) -> Optional[PipelineRun]:
 
 # ─── Webhooks ─────────────────────────────────────────────────────────
 
-def list_webhooks(db: Session, limit: int = 100) -> list:
-    return db.query(Webhook).order_by(desc(Webhook.created_at)).limit(limit).all()
+def list_webhooks(db: Session, limit: int = 100, user_id: str = None) -> list:
+    q = db.query(Webhook).order_by(desc(Webhook.created_at))
+    if user_id:
+        q = q.filter((Webhook.user_id == user_id) | (Webhook.user_id == None))
+    return q.limit(limit).all()
 
 
 def create_webhook(db: Session, data: dict) -> Webhook:
@@ -349,7 +361,7 @@ def create_webhook(db: Session, data: dict) -> Webhook:
     db.add(wh)
     db.commit()
     db.refresh(wh)
-    log_audit(db, "system", "webhook.created", wh.name, "webhook", wh.id)
+    log_audit(db, data.get("user_id", "system"), "webhook.created", wh.name, "webhook", wh.id)
     return wh
 
 
@@ -427,8 +439,11 @@ def list_audit_logs(db: Session, limit: int = 100) -> list:
 
 # ─── Projects ─────────────────────────────────────────────────────────
 
-def list_projects(db: Session) -> list:
-    return db.query(Project).order_by(desc(Project.created_at)).all()
+def list_projects(db: Session, user_id: str = None) -> list:
+    q = db.query(Project).order_by(desc(Project.created_at))
+    if user_id:
+        q = q.filter((Project.user_id == user_id) | (Project.user_id == None))
+    return q.all()
 
 
 def create_project(db: Session, name: str, user_id: str = None, description: str = None,
@@ -505,13 +520,15 @@ def create_dataset_record(db: Session, filename: str, size_kb: float = None,
     return record
 
 
-def list_dataset_records(db: Session, project_id: str = None, limit: int = 100, offset: int = 0) -> list:
+def list_dataset_records(db: Session, project_id: str = None, limit: int = 100, offset: int = 0, user_id: str = None) -> list:
     q = db.query(Dataset).options(
         selectinload(Dataset.user),
         selectinload(Dataset.project),
     ).order_by(desc(Dataset.created_at))
     if project_id:
         q = q.filter(Dataset.project_id == project_id)
+    if user_id:
+        q = q.filter((Dataset.user_id == user_id) | (Dataset.user_id == None))
     return q.offset(offset).limit(limit).all()
 
 
@@ -684,8 +701,11 @@ def create_prediction_log(db: Session, data: dict) -> PredictionLog:
     return log
 
 
-def list_prediction_logs(db: Session, limit: int = 100) -> list:
-    return db.query(PredictionLog).order_by(desc(PredictionLog.created_at)).limit(limit).all()
+def list_prediction_logs(db: Session, limit: int = 100, user_id: str = None) -> list:
+    q = db.query(PredictionLog).order_by(desc(PredictionLog.created_at))
+    if user_id:
+        q = q.filter((PredictionLog.user_id == user_id) | (PredictionLog.user_id == None))
+    return q.limit(limit).all()
 
 
 def get_prediction_log(db: Session, pred_id: str) -> Optional[PredictionLog]:
