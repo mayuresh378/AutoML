@@ -220,6 +220,12 @@ def liveness():
     return {"status": "alive"}
 
 
+@app.get("/health", tags=["Health"],
+         summary="Health check", description="Lightweight liveness check for Render/Docker. No auth, no ML, no database, no Firebase, no Redis dependency.")
+def liveness_check():
+    return {"status": "healthy"}
+
+
 @app.get("/api/v1/health/ready", tags=["Health"],
          summary="Readiness probe", description="Readiness check including database connectivity.")
 def readiness():

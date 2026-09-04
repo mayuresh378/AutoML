@@ -19,7 +19,7 @@ services:
         value: "10000"
       - key: ENVIRONMENT
         value: "production"
-    healthCheckPath: /api/v1/health
+    healthCheckPath: /health
     autoDeploy: true
 
   # Frontend (React static site)

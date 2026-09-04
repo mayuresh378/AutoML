@@ -1,18 +1,20 @@
 #!/bin/sh
 set -e
 
-# Run Prisma database migrations in production when DATABASE_URL is provided
-if [ -n "$DATABASE_URL" ]; then
+# Prisma migration step. The repository currently ships NO prisma/migrations and the
+# backend runtime is SQLAlchemy-based, so there is nothing for `prisma migrate deploy`
+# to apply. If Prisma migrations are ever added, this step runs them here and any
+# failure aborts the boot (no `|| true`, no silent continue).
+if [ -d "/app/prisma/migrations" ] && command -v prisma >/dev/null 2>&1; then
   echo "Deploying production database migrations with Prisma..."
-  if command -v npx >/dev/null 2>&1; then
-    npx prisma migrate deploy || true
-  elif command -v prisma >/dev/null 2>&1; then
-    prisma migrate deploy || true
-  fi
+  prisma migrate deploy
+else
+  echo "No Prisma migrations present; schema is managed by SQLAlchemy init_db()"
 fi
 
-# Run database schema initialization & migrations fallback
-python -c "from database import init_db; init_db()" || true
+# Create missing tables/columns. Idempotent: creates only what is absent,
+# never drops or resets production data. Fails loudly if the DB is unreachable.
+python -c "from database import init_db; init_db()"
 
 PORT="${PORT:-10000}"
-exec uvicorn main:app --host 0.0.0.0 --port "$PORT" --workers 2 --limit-max-requests 10000
+exec uvicorn main:app --host 0.0.0.0 --port "$PORT"
