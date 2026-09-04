@@ -443,7 +443,7 @@ def list_datasets(db: Session = Depends(get_db), offset: int = Query(0, ge=0), l
 def load_sample_dataset(
     sample_name: str,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_optional_user),
+    current_user: dict = Depends(get_current_user),
 ):
     sample_files = {
         "iris": ("iris.csv", "Iris Flower Classification Dataset", "target"),
@@ -478,7 +478,7 @@ async def upload_dataset(
     file: UploadFile = File(...),
     project_id: str = Form(None),
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_optional_user),
+    current_user: dict = Depends(get_current_user),
 ):
     if not file.filename:
         raise HTTPException(status_code=400, detail="No file provided")
@@ -653,7 +653,7 @@ def update_desc_api(name: str, description: str = Form(...), db: Session = Depen
 
 
 @app.post("/api/v1/datasets/import-url", tags=["Datasets"], summary="Import dataset from URL")
-async def import_from_url(url: str = Form(...), name: str = Form(None), db: Session = Depends(get_db), current_user: dict = Depends(get_optional_user)):
+async def import_from_url(url: str = Form(...), name: str = Form(None), db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     import tempfile
     import urllib.request
     try:
@@ -688,7 +688,7 @@ async def import_from_database(
     query: str = Form(...),
     name: str = Form(None),
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_optional_user),
+    current_user: dict = Depends(get_current_user),
 ):
     try:
         import duckdb
@@ -854,7 +854,7 @@ def train_model(
     task_type: str = Form(None),
     project_id: str = Form(None),
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_optional_user),
+    current_user: dict = Depends(get_current_user),
 ):
     try:
         start = time.time()
@@ -938,7 +938,10 @@ def train_model(
 
 @app.get("/api/v1/training", tags=["Training"], summary="List training jobs", description="List all training experiments as training jobs.")
 def list_training_api(db: Session = Depends(get_db), offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=500), current_user: dict = Depends(get_optional_user)):
-    experiments = list_experiments(db)
+    uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
+    if uid is None:
+        return paginated([], 0, offset, limit, key="jobs")
+    experiments = list_experiments(db, user_id=uid)
     items = [{
         "id": e.id, "experiment_name": e.name,
         "dataset_name": e.dataset, "target_column": e.target,
@@ -1060,7 +1063,7 @@ async def run_training_workflow(
     optimize_hyperparameters: bool = Form(True),
     project_id: str = Form(None),
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_optional_user),
+    current_user: dict = Depends(get_current_user),
 ):
     import uuid as _uuid
     job_id = str(_uuid.uuid4())[:8]
@@ -1559,7 +1562,7 @@ def list_model_registry_api(db: Session = Depends(get_db), offset: int = Query(0
 
 
 @app.post("/api/v1/models/registry", tags=["Models"], summary="Register model", description="Register a model file in the model registry.")
-def register_model_api(model_name: str = Form(...), version: str = Form(None), db: Session = Depends(get_db), current_user: dict = Depends(get_optional_user)):
+def register_model_api(model_name: str = Form(...), version: str = Form(None), db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     fpath = os.path.join(MODELS_DIR, model_name)
     if not os.path.exists(fpath):
         raise HTTPException(status_code=404, detail=f"Model '{model_name}' not found")
@@ -1619,7 +1622,7 @@ def run_tuning_endpoint(
     task_type: str = Form(None),
     project_id: str = Form(None),
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_optional_user),
+    current_user: dict = Depends(get_current_user),
 ):
     try:
         import json
@@ -1716,7 +1719,7 @@ def run_hpo(
     task_type: str = Form(None),
     project_id: str = Form(None),
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_optional_user),
+    current_user: dict = Depends(get_current_user),
 ):
     try:
         model_list = json.loads(models)
@@ -1881,7 +1884,7 @@ def engine_run(
     preprocess: str = Form("{}"),
     validation: str = Form("{}"),
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_optional_user),
+    current_user: dict = Depends(get_current_user),
 ):
     job_id = f"engine_{uuid.uuid4().hex[:12]}"
     model_list = json.loads(models) if models else []
@@ -2037,7 +2040,7 @@ def create_deployment_api(
     endpoint_name: str = Form(...),
     project_id: str = Form(None),
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_optional_user),
+    current_user: dict = Depends(get_current_user),
 ):
     fpath = os.path.join(MODELS_DIR, model_name)
     if not os.path.exists(fpath):
@@ -2411,6 +2414,7 @@ def predict(model_name: str = Form(...), payload: str = Form(...), db: Session =
         import time
         t0 = time.time()
         input_data = json.loads(payload)
+        uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
         result = make_prediction(model_name, input_data)
         elapsed = round((time.time() - t0) * 1000, 1)
         log_audit(db, current_user.get("name", "User"), "prediction.made", model_name, "prediction")
@@ -2422,7 +2426,7 @@ def predict(model_name: str = Form(...), payload: str = Form(...), db: Session =
                 "confidence": result.get("confidence"),
                 "batch_size": 1,
                 "latency_ms": elapsed,
-                "user_id": current_user.get("id"),
+                "user_id": uid,
             })
         except Exception:
             pass
@@ -2445,6 +2449,7 @@ def batch_predict(
         import csv
         t0 = time.time()
         df = _get_dataset_df(file_name)
+        uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
         predictions = []
         for _, row in df.iterrows():
             result = make_prediction(model_name, row.to_dict())
@@ -2462,7 +2467,7 @@ def batch_predict(
                 "prediction": str(predictions[0].get("prediction", "")) if predictions else "",
                 "batch_size": len(predictions),
                 "latency_ms": elapsed,
-                "user_id": current_user.get("id"),
+                "user_id": uid,
             })
         except Exception:
             pass
@@ -2551,7 +2556,7 @@ def list_pipelines_api(db: Session = Depends(get_db), offset: int = Query(0, ge=
     return paginated(items, total, offset, limit, key="pipelines")
 
 @app.post("/api/v1/pipelines", tags=["Pipelines"], summary="Create pipeline", description="Create a new ML pipeline with steps and optional schedule.")
-def create_pipeline_api(data: PipelineCreate, db: Session = Depends(get_db), current_user: dict = Depends(get_optional_user)):
+def create_pipeline_api(data: PipelineCreate, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     pipe = create_pipeline(db, user_id=current_user.get("id") or "system",
                            name=data.name, steps=data.steps,
                            description=data.description, schedule=data.schedule)
@@ -2653,7 +2658,7 @@ def list_webhooks_api(db: Session = Depends(get_db), offset: int = Query(0, ge=0
     return paginated(items, total, offset, limit, key="webhooks")
 
 @app.post("/api/v1/webhooks", tags=["Webhooks"], summary="Create webhook", description="Register a new webhook for event notifications.")
-def create_webhook_api(data: WebhookCreate, db: Session = Depends(get_db), current_user: dict = Depends(get_optional_user)):
+def create_webhook_api(data: WebhookCreate, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     wh = create_webhook(db, {**data.model_dump(), "user_id": current_user.get("id")})
     return {
         "id": wh.id, "name": wh.name, "url": wh.url,
@@ -2692,7 +2697,7 @@ def list_teams_api(db: Session = Depends(get_db), offset: int = Query(0, ge=0), 
     return paginated(items, total, offset, limit, key="teams")
 
 @app.post("/api/v1/teams", tags=["Teams"], summary="Create team", description="Create a new team.")
-def create_team_api(name: str = Form(...), db: Session = Depends(get_db), current_user: dict = Depends(get_optional_user)):
+def create_team_api(name: str = Form(...), db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     team = create_team(db, name, owner_id=current_user.get("id") or "system")
     return {"id": team.id, "name": team.name, "slug": team.slug, "plan": team.plan}
 
@@ -3030,7 +3035,10 @@ def prometheus_metrics():
 
 @app.get("/api/v1/projects", tags=["Projects"], summary="List projects", description="List all projects with resource counts.")
 def list_projects_api(db: Session = Depends(get_db), offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=500), current_user: dict = Depends(get_optional_user)):
-    projects = list_projects(db)
+    uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
+    if uid is None:
+        return paginated([], 0, offset, limit, key="projects")
+    projects = list_projects(db, user_id=uid)
     datasets = list_dataset_records(db)
     exps = list_experiments(db)
     models = list_models(db)
@@ -3073,7 +3081,7 @@ def create_project_api(name: str = Form(...), description: str = Form(None),
                        problem_type: str = Form("classification"),
                        visibility: str = Form("private"),
                        tags: str = Form(None),
-                       db: Session = Depends(get_db), current_user: dict = Depends(get_optional_user)):
+                       db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     tag_list = None
     if tags:
         try:
@@ -3202,7 +3210,7 @@ def patch_project_api(project_id: str, name: str = Form(None), description: str 
 
 @app.post("/api/v1/projects/{project_id}/duplicate", tags=["Projects"], summary="Duplicate project", description="Create a copy of an existing project.")
 def duplicate_project_api(project_id: str, db: Session = Depends(get_db),
-                          current_user: dict = Depends(get_optional_user)):
+                          current_user: dict = Depends(get_current_user)):
     p = get_project(db, project_id)
     if not p:
         raise HTTPException(status_code=404, detail="Project not found")
