@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { signInWithPopup } from 'firebase/auth';
 import { useUIStore } from '../../../store/useUIStore';
 import { useRegister, useGoogleLogin } from '../hooks/useLogin';
 import { Button } from '../../../components/ui/Button';
@@ -10,9 +12,11 @@ import { UserPlus, Brain, Eye, AlertCircle } from 'lucide-react';
 import { registerSchema } from '../../../lib/validators';
 import { useNotification } from '../../../hooks/useNotification';
 import { getErrorMessage } from '../../../services/http';
+import { auth, googleProvider, isFirebaseConfigured } from '../../../lib/firebase';
 
 export default function RegisterPage() {
   const setActivePage = useUIStore((s) => s.setActivePage);
+  const navigate = useNavigate();
   const register = useRegister();
   const googleLogin = useGoogleLogin();
   const { notifyError, notifySuccess } = useNotification();
@@ -22,21 +26,39 @@ export default function RegisterPage() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
 
-  const handleGoogleSignIn = () => {
-    const googleUserData = JSON.stringify({
-      email: 'user.google@gmail.com',
-      name: 'Google User',
-      sub: '108273645192837465',
-      picture: 'https://lh3.googleusercontent.com/a/default-user',
-    });
-    googleLogin.mutate(googleUserData, {
-      onSuccess: (data) => {
-        notifySuccess('Google Sign-In Successful', `Welcome, ${data.user.name}!`);
-        setActivePage('Dashboard');
-      },
-      onError: (err) => notifyError('Google Sign-In Failed', getErrorMessage(err)),
-    });
+  const handleGoogleSignIn = async () => {
+    if (!isFirebaseConfigured || !auth || !googleProvider) {
+      notifyError(
+        'Firebase Not Configured',
+        'Firebase environment variables (VITE_FIREBASE_*) are missing or invalid. Please check configuration.'
+      );
+      return;
+    }
+
+    setIsGoogleLoading(true);
+    try {
+      const result = await signInWithPopup(auth, googleProvider);
+      const idToken = await result.user.getIdToken();
+
+      googleLogin.mutate(idToken, {
+        onSuccess: (data) => {
+          notifySuccess('Google Sign-In Successful', `Welcome, ${data.user.name}!`);
+          setActivePage('Dashboard');
+          navigate('/app/dashboard', { replace: true });
+        },
+        onError: (err) => notifyError('Google Sign-In Failed', getErrorMessage(err)),
+      });
+    } catch (error: any) {
+      if (error?.code === 'auth/popup-closed-by-user' || error?.code === 'auth/cancelled-popup-request') {
+        // User intentionally closed popup, no intrusive error needed
+      } else {
+        notifyError('Google Sign-In Failed', error?.message || 'Failed to authenticate with Google');
+      }
+    } finally {
+      setIsGoogleLoading(false);
+    }
   };
 
   const validate = () => {
@@ -57,7 +79,10 @@ export default function RegisterPage() {
     register.mutate(
       { name, email, password },
       {
-        onSuccess: () => setActivePage('Dashboard'),
+        onSuccess: () => {
+          setActivePage('Dashboard');
+          navigate('/app/dashboard', { replace: true });
+        },
         onError: (err) => notifyError('Registration failed', getErrorMessage(err)),
       },
     );
@@ -80,7 +105,7 @@ export default function RegisterPage() {
               type="button"
               variant="secondary"
               onClick={handleGoogleSignIn}
-              loading={googleLogin.isPending}
+              loading={isGoogleLoading || googleLogin.isPending}
               className="w-full mb-6 border-zinc-700 bg-zinc-900/50 hover:bg-zinc-800 text-zinc-200"
               size="lg"
             >
@@ -117,7 +142,7 @@ export default function RegisterPage() {
 
             <div className="mt-6 text-center text-sm text-zinc-500">
               Already have an account?{' '}
-              <button onClick={() => setActivePage('Login')} className="text-white hover:text-white/80 font-medium transition-colors">Sign in</button>
+              <button onClick={() => navigate('/login')} className="text-white hover:text-white/80 font-medium transition-colors">Sign in</button>
             </div>
           </Card>
         </motion.div>

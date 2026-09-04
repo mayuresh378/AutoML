@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { signInWithPopup } from 'firebase/auth';
 import { useUIStore } from '../../../store/useUIStore';
 import { useLogin, useGoogleLogin } from '../hooks/useLogin';
@@ -16,6 +17,8 @@ import { auth, googleProvider, isFirebaseConfigured } from '../../../lib/firebas
 
 export default function LoginPage() {
   const setActivePage = useUIStore((s) => s.setActivePage);
+  const navigate = useNavigate();
+  const location = useLocation();
   const login = useLogin();
   const googleLogin = useGoogleLogin();
   const { notifyError, notifySuccess } = useNotification();
@@ -43,6 +46,7 @@ export default function LoginPage() {
         onSuccess: (data) => {
           notifySuccess('Google Sign-In Successful', `Welcome back, ${data.user.name}!`);
           setActivePage('Dashboard');
+          navigate('/app/dashboard', { replace: true });
         },
         onError: (err) => {
           notifyError('Authentication Failed', getErrorMessage(err));
@@ -79,7 +83,10 @@ export default function LoginPage() {
     login.mutate(
       { email, password },
       {
-        onSuccess: () => setActivePage('Dashboard'),
+        onSuccess: () => {
+          setActivePage('Dashboard');
+          navigate('/app/dashboard', { replace: true });
+        },
         onError: (err) => notifyError('Login failed', getErrorMessage(err)),
       },
     );
@@ -177,12 +184,12 @@ export default function LoginPage() {
             </form>
 
             <div className="mt-6 flex flex-col items-center gap-3 text-sm">
-              <button onClick={() => setActivePage('Forgot Password')} className="text-zinc-500 hover:text-white transition-colors">
+              <button onClick={() => navigate('/forgot-password')} className="text-zinc-500 hover:text-white transition-colors">
                 Forgot your password?
               </button>
               <div className="text-zinc-500">
                 Don't have an account?{' '}
-                <button onClick={() => setActivePage('Register')} className="text-white hover:text-white/80 transition-colors font-medium">
+                <button onClick={() => navigate('/register')} className="text-white hover:text-white/80 transition-colors font-medium">
                   Create one
                 </button>
               </div>

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useUIStore } from '../../../store/useUIStore';
+import { useNavigate } from 'react-router-dom';
 import { authService } from '../../../services/auth.service';
 import { Button } from '../../../components/ui/Button';
 import { Input } from '../../../components/ui/Input';
@@ -11,7 +11,7 @@ import { emailSchema } from '../../../lib/validators';
 import { getErrorMessage } from '../../../services/http';
 
 export default function ForgotPasswordPage() {
-  const setActivePage = useUIStore((s) => s.setActivePage);
+  const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -38,7 +38,7 @@ export default function ForgotPasswordPage() {
       <div className="min-h-[80vh] flex items-center justify-center">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full">
           <Card variant="glass" padding="lg" className="w-full">
-            <button onClick={() => setActivePage('Login')} className="flex items-center gap-1.5 text-sm text-zinc-500 hover:text-zinc-300 transition-colors mb-6">
+            <button onClick={() => navigate('/login')} className="flex items-center gap-1.5 text-sm text-zinc-500 hover:text-zinc-300 transition-colors mb-6">
               <ArrowLeft className="w-4 h-4" /> Back to login
             </button>
 

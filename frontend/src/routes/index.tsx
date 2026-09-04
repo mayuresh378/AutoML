@@ -1,9 +1,16 @@
 import { lazy, Suspense } from 'react';
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import AppShell from '../components/AppShell';
+import RequireAuth from '../components/RequireAuth';
 import LoadingSpinner from '../components/LoadingSpinner';
 import Landing from '../pages/Landing';
 import NotFound from '../pages/NotFound';
+
+const Login = lazy(() => import('../features/auth/pages/LoginPage'));
+const Register = lazy(() => import('../features/auth/pages/RegisterPage'));
+const ForgotPassword = lazy(() => import('../features/auth/pages/ForgotPasswordPage'));
+const ResetPassword = lazy(() => import('../features/auth/pages/ResetPasswordPage'));
+const VerifyEmail = lazy(() => import('../features/auth/pages/VerifyEmailPage'));
 
 const Dashboard = lazy(() => import('../features/dashboard/pages/DashboardPage'));
 const Datasets = lazy(() => import('../features/datasets/pages/DatasetsPage'));
@@ -45,8 +52,52 @@ export const router = createBrowserRouter([
     ),
   },
   {
+    path: '/login',
+    element: (
+      <Suspense fallback={<LoadingSpinner />}>
+        <Login />
+      </Suspense>
+    ),
+  },
+  {
+    path: '/register',
+    element: (
+      <Suspense fallback={<LoadingSpinner />}>
+        <Register />
+      </Suspense>
+    ),
+  },
+  {
+    path: '/forgot-password',
+    element: (
+      <Suspense fallback={<LoadingSpinner />}>
+        <ForgotPassword />
+      </Suspense>
+    ),
+  },
+  {
+    path: '/reset-password',
+    element: (
+      <Suspense fallback={<LoadingSpinner />}>
+        <ResetPassword />
+      </Suspense>
+    ),
+  },
+  {
+    path: '/verify-email',
+    element: (
+      <Suspense fallback={<LoadingSpinner />}>
+        <VerifyEmail />
+      </Suspense>
+    ),
+  },
+  {
     path: '/app',
-    element: <AppShell />,
+    element: (
+      <RequireAuth>
+        <AppShell />
+      </RequireAuth>
+    ),
     children: [
       { index: true, element: <Navigate to="/app/dashboard" replace /> },
       { path: 'dashboard', element: <Dashboard /> },

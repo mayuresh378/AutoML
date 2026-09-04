@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useUIStore } from '../../../store/useUIStore';
+import { useNavigate } from 'react-router-dom';
 import { authService } from '../../../services/auth.service';
 import { Button } from '../../../components/ui/Button';
 import { Input } from '../../../components/ui/Input';
@@ -10,7 +10,7 @@ import { Lock, Eye, EyeOff, CheckCircle, AlertCircle } from 'lucide-react';
 import { getErrorMessage } from '../../../services/http';
 
 export default function ResetPasswordPage() {
-  const setActivePage = useUIStore((s) => s.setActivePage);
+  const navigate = useNavigate();
   const [token, setToken] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -46,7 +46,7 @@ export default function ResetPasswordPage() {
             </div>
             <h1 className="text-xl font-bold text-zinc-100 mb-2">Password reset successful</h1>
             <p className="text-sm text-zinc-400 mb-6">Your password has been updated. You can now sign in with your new password.</p>
-            <Button onClick={() => setActivePage('Login')}>Sign In</Button>
+            <Button onClick={() => navigate('/login')}>Sign In</Button>
           </Card>
         </div>
       </PageContainer>

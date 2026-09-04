@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useUIStore } from '../../../store/useUIStore';
+import { useNavigate } from 'react-router-dom';
 import { authService } from '../../../services/auth.service';
 import { Button } from '../../../components/ui/Button';
 import { Card } from '../../../components/ui/Card';
@@ -9,7 +9,7 @@ import { CheckCircle, XCircle, Mail } from 'lucide-react';
 import { getErrorMessage } from '../../../services/http';
 
 export default function VerifyEmailPage() {
-  const setActivePage = useUIStore((s) => s.setActivePage);
+  const navigate = useNavigate();
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [message, setMessage] = useState('');
 
@@ -43,7 +43,7 @@ export default function VerifyEmailPage() {
               </div>
               <h1 className="text-xl font-bold text-zinc-100 mb-2">Email verified</h1>
               <p className="text-sm text-zinc-400 mb-6">{message}</p>
-              <Button onClick={() => setActivePage('Dashboard')}>Go to Dashboard</Button>
+              <Button onClick={() => navigate('/app/dashboard')}>Go to Dashboard</Button>
             </div>
           )}
           {status === 'error' && (
@@ -54,7 +54,7 @@ export default function VerifyEmailPage() {
               <h1 className="text-xl font-bold text-zinc-100 mb-2">Verification failed</h1>
               <p className="text-sm text-zinc-400 mb-6">{message}</p>
               <div className="flex gap-3 justify-center">
-                <Button variant="secondary" onClick={() => setActivePage('Dashboard')}>Dashboard</Button>
+                <Button variant="secondary" onClick={() => navigate('/app/dashboard')}>Dashboard</Button>
                 <Button onClick={() => authService.sendVerification().then(() => setMessage('New verification email sent!')).catch(() => {})} icon={<Mail className="w-4 h-4" />}>Resend Email</Button>
               </div>
             </div>
