@@ -39,7 +39,7 @@ export function useAuth() {
   });
 
   const logout = useCallback(async () => {
-    try { await signOut(auth); } catch {}
+    if (auth) { try { await signOut(auth); } catch {} }
     try { await authService.logout(); } catch {}
     storeLogout();
   }, [storeLogout]);
@@ -64,7 +64,7 @@ export function useAuth() {
 export function initAuth() {
   configureHttp({
     tokenGetter: async () => {
-      if (auth.currentUser) {
+      if (auth?.currentUser) {
         try {
           return await auth.currentUser.getIdToken();
         } catch {
@@ -77,6 +77,13 @@ export function initAuth() {
       useAuthStore.getState().logout();
     },
   });
+
+  // If Firebase is not configured, there is nothing to observe — we simply
+  // mark auth as not-loading so the application can proceed.
+  if (!auth) {
+    useAuthStore.getState().setIsLoading(false);
+    return;
+  }
 
   onAuthStateChanged(auth, async (firebaseUser) => {
     if (firebaseUser) {

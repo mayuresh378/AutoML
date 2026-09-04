@@ -26,10 +26,10 @@ export default function LoginPage() {
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
 
   const handleGoogleSignIn = async () => {
-    if (!isFirebaseConfigured) {
+    if (!isFirebaseConfigured || !auth || !googleProvider) {
       notifyError(
         'Firebase Not Configured',
-        'Firebase environment variables (VITE_FIREBASE_*) are missing. Please check configuration.'
+        'Firebase environment variables (VITE_FIREBASE_*) are missing or invalid. Please check configuration.'
       );
       return;
     }
