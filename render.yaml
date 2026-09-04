@@ -12,9 +12,9 @@ services:
       - key: SECRET_KEY
         generateValue: true
       - key: CORS_ORIGINS
-        value: 'https://automl-platform-1.onrender.com,https://automl-frontend.onrender.com,https://automl-api-ukq3.onrender.com'
+        value: 'https://automl-frontend.onrender.com,https://automl-platform.vercel.app,https://automl-platform-main.vercel.app'
       - key: TRUSTED_HOSTS
-        value: '*.onrender.com,localhost,127.0.0.1'
+        value: '*.onrender.com,*.vercel.app,localhost,127.0.0.1'
       - key: PORT
         value: "10000"
       - key: ENVIRONMENT
@@ -32,7 +32,7 @@ services:
     staticPublishPath: frontend/dist
     envVars:
       - key: VITE_API_URL
-        value: https://automl-api-ukq3.onrender.com/api/v1
+        value: https://automl-api.onrender.com/api/v1
     routes:
       - type: rewrite
         source: /*

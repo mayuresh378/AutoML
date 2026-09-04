@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { Search, Bell, Plus, Upload, Wifi, WifiOff, RefreshCw } from 'lucide-react';
 import { useDashboardData } from '../../../hooks/useApi';
 import { useAuthStore } from '../../../store/useAuthStore';
+import { getErrorMessage } from '../../../services/http';
 
 import WorkspaceStatusBanner from '../components/WorkspaceStatusBanner';
 import RecommendedActions from '../components/RecommendedActions';
@@ -41,6 +42,7 @@ export default function DashboardPage() {
     healthCheck,
     isLoading,
     isError,
+    error,
     isFetching,
   } = useDashboardData();
 
@@ -81,6 +83,17 @@ export default function DashboardPage() {
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
+      {isError && (
+        <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-300 text-sm">
+          <WifiOff className="w-4 h-4 mt-0.5 shrink-0" />
+          <div>
+            <p className="font-semibold">Could not load dashboard data</p>
+            <p className="text-xs text-red-300/80 mt-0.5">
+              {getErrorMessage(error, 'The backend is unreachable. Retrying automatically…')}
+            </p>
+          </div>
+        </div>
+      )}
       {/* Top Welcome Bar */}
       <motion.div
         initial={{ opacity: 0, y: -8 }}

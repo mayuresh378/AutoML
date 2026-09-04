@@ -2,6 +2,8 @@ import type { ApiResponse } from '../types/api';
 
 export const BASE = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL) || '/api/v1';
 
+export const DEFAULT_TIMEOUT_MS = 20_000;
+
 let _tokenGetter: (() => string | null | Promise<string | null>) | null = null;
 let _onUnauthorized: (() => void) | null = null;
 
@@ -92,72 +94,80 @@ async function buildHeaders(custom?: Record<string, string>): Promise<Record<str
   return headers;
 }
 
+function isAbortError(err: unknown): boolean {
+  return err instanceof DOMException && err.name === 'AbortError';
+}
+
+function timedSignal(externalSignal?: AbortSignal | null): { signal: AbortSignal; clear: () => void } {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
+  const onExternalAbort = () => controller.abort();
+  if (externalSignal) {
+    if (externalSignal.aborted) controller.abort();
+    else externalSignal.addEventListener('abort', onExternalAbort, { once: true });
+  }
+  return {
+    signal: controller.signal,
+    clear: () => {
+      clearTimeout(timeoutId);
+      if (externalSignal) externalSignal.removeEventListener('abort', onExternalAbort);
+    },
+  };
+}
+
+async function request<T = any>(method: string, path: string, body?: any, params?: Record<string, any>, init?: RequestInit): Promise<T> {
+  const url = buildUrl(path, params);
+  const isFormData = body instanceof FormData;
+  const headers = await buildHeaders(init?.headers as Record<string, string>);
+  if (!isFormData) {
+    if (body != null && method !== 'GET') headers['Content-Type'] = 'application/json';
+  } else {
+    delete headers['Content-Type'];
+  }
+  const { signal, clear } = timedSignal(init?.signal);
+  try {
+    const res = await fetch(url, {
+      method,
+      headers,
+      body: isFormData ? body : body && method !== 'GET' ? JSON.stringify(body) : undefined,
+    });
+    return await handleResponse<T>(res);
+  } catch (err) {
+    if (isAbortError(err)) {
+      const externallyAborted = Boolean(init?.signal?.aborted);
+      throw new HttpError(
+        0,
+        externallyAborted ? 'ABORTED' : 'TIMEOUT',
+        externallyAborted
+          ? 'Request aborted'
+          : `Request timed out after ${Math.round(DEFAULT_TIMEOUT_MS / 1000)}s`,
+      );
+    }
+    throw err;
+  } finally {
+    clear();
+  }
+}
+
 export const http = {
   async get<T = any>(path: string, params?: Record<string, any>, init?: RequestInit): Promise<T> {
-    const url = buildUrl(path, params);
-    const headers = await buildHeaders(init?.headers as Record<string, string>);
-    const res = await fetch(url, {
-      method: 'GET',
-      headers,
-      signal: init?.signal,
-    });
-    return handleResponse<T>(res);
+    return request<T>('GET', path, undefined, params, init);
   },
 
   async post<T = any>(path: string, body?: any, init?: RequestInit): Promise<T> {
-    const url = buildUrl(path);
-    const isFormData = body instanceof FormData;
-    const headers = await buildHeaders(init?.headers as Record<string, string>);
-    if (isFormData) delete headers['Content-Type'];
-    else if (body != null) headers['Content-Type'] = 'application/json';
-    const res = await fetch(url, {
-      method: 'POST',
-      headers,
-      body: isFormData ? body : body ? JSON.stringify(body) : undefined,
-      signal: init?.signal,
-    });
-    return handleResponse<T>(res);
+    return request<T>('POST', path, body, undefined, init);
   },
 
   async put<T = any>(path: string, body?: any, init?: RequestInit): Promise<T> {
-    const url = buildUrl(path);
-    const isFormData = body instanceof FormData;
-    const headers = await buildHeaders(init?.headers as Record<string, string>);
-    if (isFormData) delete headers['Content-Type'];
-    else if (body != null) headers['Content-Type'] = 'application/json';
-    const res = await fetch(url, {
-      method: 'PUT',
-      headers,
-      body: isFormData ? body : body ? JSON.stringify(body) : undefined,
-      signal: init?.signal,
-    });
-    return handleResponse<T>(res);
+    return request<T>('PUT', path, body, undefined, init);
   },
 
   async patch<T = any>(path: string, body?: any, init?: RequestInit): Promise<T> {
-    const url = buildUrl(path);
-    const isFormData = body instanceof FormData;
-    const headers = await buildHeaders(init?.headers as Record<string, string>);
-    if (isFormData) delete headers['Content-Type'];
-    else if (body != null) headers['Content-Type'] = 'application/json';
-    const res = await fetch(url, {
-      method: 'PATCH',
-      headers,
-      body: isFormData ? body : body ? JSON.stringify(body) : undefined,
-      signal: init?.signal,
-    });
-    return handleResponse<T>(res);
+    return request<T>('PATCH', path, body, undefined, init);
   },
 
   async delete<T = any>(path: string, init?: RequestInit): Promise<T> {
-    const url = buildUrl(path);
-    const headers = await buildHeaders(init?.headers as Record<string, string>);
-    const res = await fetch(url, {
-      method: 'DELETE',
-      headers,
-      signal: init?.signal,
-    });
-    return handleResponse<T>(res);
+    return request<T>('DELETE', path, undefined, undefined, init);
   },
 
   async upload<T = any>(path: string, file: File, fieldName = 'file', extraFields?: Record<string, string>): Promise<T> {
