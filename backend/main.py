@@ -334,6 +334,8 @@ def search(q: str = Query("", min_length=1), db: Session = Depends(get_db), curr
 @app.get("/api/v1/notifications", tags=["Notifications"], summary="List notifications", description="Retrieve notifications for the current user.")
 def get_notifications(db: Session = Depends(get_db), offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=500), current_user: dict = Depends(get_optional_user)):
     uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
+    if uid is None:
+        return paginated([], 0, offset, limit, key="notifications")
     notifs = list_notifications(db, uid, 999999)
     total = len(notifs)
     notifs = notifs[offset:offset + limit]
@@ -380,6 +382,8 @@ def remove_notification(notif_id: str, db: Session = Depends(get_db)):
 @app.get("/api/v1/notifications/unread-count", tags=["Notifications"], summary="Unread count", description="Get the count of unread notifications for the current user.")
 def get_unread_count(db: Session = Depends(get_db), current_user: dict = Depends(get_optional_user)):
     uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
+    if uid is None:
+        return {"count": 0}
     count = count_unread_notifications(db, uid)
     return {"count": count}
 
@@ -389,6 +393,8 @@ def get_unread_count(db: Session = Depends(get_db), current_user: dict = Depends
 @app.get("/api/v1/datasets", tags=["Datasets"], summary="List datasets", description="List all uploaded datasets with metadata.")
 def list_datasets(db: Session = Depends(get_db), offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=500), current_user: dict = Depends(get_optional_user)):
     uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
+    if uid is None:
+        return paginated([], 0, offset, limit, key="datasets")
     db_records = {r.filename: r for r in list_dataset_records(db, user_id=uid)}
     files = []
     for f in sorted(os.listdir(DATASET_DIR)):
@@ -738,6 +744,8 @@ def remove_share_api(name: str, share_id: str, db: Session = Depends(get_db), cu
 @app.get("/api/v1/experiments", tags=["Experiments"], summary="List experiments", description="Return a list of all training experiment records.")
 def list_experiments_api(db: Session = Depends(get_db), offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=500), current_user: dict = Depends(get_optional_user)):
     uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
+    if uid is None:
+        return paginated([], 0, offset, limit, key="experiments")
     experiments = [{
         "id": e.id, "name": e.name, "model": e.model,
         "task_type": e.task_type, "dataset": e.dataset, "target": e.target,
@@ -951,8 +959,11 @@ def _update_progress(job_id: str, data: dict):
 
 
 @app.get("/api/v1/training/queue", tags=["Training"], summary="Training queue", description="Return the training job queue.")
-def training_queue_api(db: Session = Depends(get_db)):
-    experiments = list_experiments(db)
+def training_queue_api(db: Session = Depends(get_db), current_user: dict = Depends(get_optional_user)):
+    uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
+    if uid is None:
+        return {"jobs": []}
+    experiments = list_experiments(db, user_id=uid)
     queued = [{
         "id": e.id, "experiment_name": e.name,
         "dataset_name": e.dataset, "target_column": e.target,
@@ -1180,6 +1191,9 @@ async def run_training_workflow(
 
 @app.get("/api/v1/models", tags=["Models"], summary="List models", description="List all available models from filesystem and registry.")
 def list_models_api(db: Session = Depends(get_db), offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=500), current_user: dict = Depends(get_optional_user)):
+    uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
+    if uid is None:
+        return paginated([], 0, offset, limit, key="models")
     db_models = list_models(db)
     active_deployments = {}
     try:
@@ -1997,6 +2011,8 @@ def engine_get_result(job_id: str):
 @app.get("/api/v1/deployments", tags=["Deployments"], summary="List deployments", description="List all model deployments.")
 def list_deployments_api(db: Session = Depends(get_db), offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=500), current_user: dict = Depends(get_optional_user)):
     uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
+    if uid is None:
+        return paginated([], 0, offset, limit, key="deployments")
     deps = list_deployments(db, user_id=uid)
     items = [{
         "id": d.id, "model_name": d.name, "endpoint_name": d.name,
@@ -2751,6 +2767,8 @@ def monitoring_dashboard(db: Session = Depends(get_db), current_user: dict = Dep
     pred_q = db.query(PredictionLog).order_by(PredictionLog.created_at.desc()).limit(500)
     if uid:
         pred_q = pred_q.filter(PredictionLog.user_id == uid)
+    else:
+        pred_q = pred_q.filter(PredictionLog.user_id == "__anonymous__")
     all_preds = pred_q.all()
     now = datetime.now(timezone.utc)
 
@@ -2917,6 +2935,12 @@ def monitoring_dashboard(db: Session = Depends(get_db), current_user: dict = Dep
 @app.get("/api/v1/monitoring/stats", tags=["Monitoring"], summary="Live stats", description="Return live aggregate statistics for models and experiments.")
 def live_stats(db: Session = Depends(get_db), current_user: dict = Depends(get_optional_user)):
     uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
+    if uid is None:
+        return {
+            "modelsTrained": 0, "activeDeployments": 0, "inferenceRequestsToday": 0,
+            "avgLatencyMs": 0, "total_models": 0, "total_datasets": 0, "total_experiments": 0,
+            "total_predictions": 0, "avg_training_time": 0, "success_rate": 0,
+        }
     exps = list_experiments(db, user_id=uid)
     models = [f for f in os.listdir(MODELS_DIR) if f.endswith(".pkl")]
     today_prefix = datetime.now().strftime("%Y-%m-%d")
@@ -3245,7 +3269,10 @@ def install_marketplace_api(item_id: str, db: Session = Depends(get_db)):
 # ── Activity ─────────────────────────────────────────────────────────
 
 @app.get("/api/v1/activity", tags=["Activity"], summary="Activity log", description="Return recent audit log activity.")
-def activity(db: Session = Depends(get_db), offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=500)):
+def activity(db: Session = Depends(get_db), offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=500), current_user: dict = Depends(get_optional_user)):
+    uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
+    if uid is None:
+        return paginated([], 0, offset, limit, key="activities")
     logs = list_audit_logs(db)
     items = [{
         "id": l.id, "actor": l.actor, "action": l.action,
