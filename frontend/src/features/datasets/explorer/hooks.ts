@@ -34,7 +34,7 @@ export function useExplorerPreview(name: string, rows: number, offset: number) {
     queryKey: ['dataset', name, 'preview', rows, offset],
     queryFn: () => datasetsService.preview(name, rows, offset) as unknown as Promise<DatasetPreview>,
     enabled: !!name,
-    placeholderData: (prev) => prev,
+    placeholderData: (prev, prevQuery) => (prevQuery?.queryKey?.[1] === name ? prev : undefined),
     staleTime: 30_000,
   });
 }
