@@ -2920,11 +2920,12 @@ def monitoring_dashboard(db: Session = Depends(get_db), current_user: dict = Dep
     disk = system["disk"]["percent"]
 
     # Prediction metrics from logs (scoped to the authenticated user)
-    pred_q = db.query(PredictionLog).order_by(PredictionLog.created_at.desc()).limit(500)
+    pred_q = db.query(PredictionLog)
     if uid:
         pred_q = pred_q.filter(PredictionLog.user_id == uid)
     else:
         pred_q = pred_q.filter(PredictionLog.user_id == "__anonymous__")
+    pred_q = pred_q.order_by(PredictionLog.created_at.desc()).limit(500)
     all_preds = pred_q.all()
     now = datetime.now(timezone.utc)
 

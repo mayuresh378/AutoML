@@ -1,7 +1,7 @@
 import os
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from crud import list_experiments, list_models, list_dataset_records
@@ -13,8 +13,9 @@ def dashboard_analytics(db: Session, days: int = 30, user_id: str = None) -> dic
     models = list_models(db, user_id=user_id)
     datasets = list_dataset_records(db, user_id=user_id)
 
-    now = datetime.now(timezone.utc)
-    cutoff = now - timedelta(days=days)
+    # Stored timestamps are naive UTC (TIMESTAMP columns strip tzinfo on read), so
+    # the cutoff must be naive too, otherwise Python raises on aware/naive comparison.
+    cutoff = datetime.utcnow() - timedelta(days=days)
 
     recent_exps = [e for e in experiments if e.created_at and e.created_at >= cutoff]
 
