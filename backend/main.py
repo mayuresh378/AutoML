@@ -2880,9 +2880,7 @@ def delete_team_api(team_id: str, current_user: dict = Depends(get_current_user)
 # ── API Keys ─────────────────────────────────────────────────────────
 
 @app.get("/api/v1/api-keys", tags=["API Keys"], summary="List API keys", description="List all API keys for the current user.")
-def list_api_keys_api(current_user: dict = Depends(get_optional_user), db: Session = Depends(get_db), offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=500)):
-    if current_user.get("id") == "anonymous":
-        raise HTTPException(status_code=401, detail="Authentication required")
+def list_api_keys_api(current_user: dict = Depends(get_current_user), db: Session = Depends(get_db), offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=500)):
     keys = list_api_keys(db, current_user["id"])
     items = [{"id": k.id, "name": k.name, "key_prefix": k.key_prefix,
               "status": k.status, "created_at": k.created_at.isoformat() if k.created_at else None}
@@ -2892,16 +2890,12 @@ def list_api_keys_api(current_user: dict = Depends(get_optional_user), db: Sessi
     return paginated(items, total, offset, limit, key="api_keys")
 
 @app.post("/api/v1/api-keys", tags=["API Keys"], summary="Create API key", description="Generate a new API key for the current user.")
-def create_api_key_api(name: str = Form(...), current_user: dict = Depends(get_optional_user), db: Session = Depends(get_db)):
-    if current_user.get("id") == "anonymous":
-        raise HTTPException(status_code=401, detail="Authentication required")
+def create_api_key_api(name: str = Form(...), current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     result = create_api_key(db, current_user["id"], name)
     return result
 
 @app.delete("/api/v1/api-keys/{key_id}", tags=["API Keys"], summary="Delete API key", description="Delete an API key by ID.")
-def delete_api_key_api(key_id: str, current_user: dict = Depends(get_optional_user), db: Session = Depends(get_db)):
-    if current_user.get("id") == "anonymous":
-        raise HTTPException(status_code=401, detail="Authentication required")
+def delete_api_key_api(key_id: str, current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     if not delete_api_key(db, key_id):
         raise HTTPException(status_code=404, detail="API key not found")
     return {"message": "API key deleted"}
@@ -2911,7 +2905,7 @@ def delete_api_key_api(key_id: str, current_user: dict = Depends(get_optional_us
 
 @app.get("/api/v1/monitoring/metrics", tags=["Monitoring"],
          summary="System metrics", description="Collects CPU, memory, disk, and network metrics.")
-def monitoring_metrics():
+def monitoring_metrics(current_user: dict = Depends(get_current_user)):
     return ok(collect_system_metrics())
 
 @app.get("/api/v1/monitoring/dashboard", tags=["Monitoring"], summary="Full monitoring dashboard", description="Return all monitoring data: predictions, latency, CPU, RAM, traffic, drift, alerts, logs, error rate.")
@@ -3424,7 +3418,7 @@ def list_marketplace_api(category: str = Query(None), db: Session = Depends(get_
     return paginated(items, total, offset, limit, key="items")
 
 @app.post("/api/v1/marketplace/{item_id}/install", tags=["Marketplace"], summary="Install marketplace item", description="Install a marketplace item by ID.")
-def install_marketplace_api(item_id: str, db: Session = Depends(get_db)):
+def install_marketplace_api(item_id: str, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     item = install_marketplace_item(db, item_id)
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
