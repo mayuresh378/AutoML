@@ -391,6 +391,36 @@ export function useActivity() {
   });
 }
 
+export interface DashboardAnalytics {
+  training_trends: { date: string; count: number }[];
+  model_scores: { name: string; model: string; score: number; time: number }[];
+  accuracy_trends: { date: string; score: number }[];
+  model_distribution: { name: string; count: number }[];
+  prediction_trends: { date: string; count: number }[];
+  model_usage: { name: string; count: number }[];
+  dataset_growth: { date: string; count: number }[];
+  user_activity: { date: string; count: number }[];
+  total_experiments: number;
+  total_models: number;
+  total_datasets: number;
+  total_training_hours: number;
+  total_storage_mb: number;
+  total_predictions: number;
+  success_rate: number;
+  active_sessions: number;
+  avg_latency_ms: number;
+  total_dataset_rows: number;
+}
+
+export function useAnalytics(days = 30) {
+  return useQuery({
+    queryKey: ['analytics', days],
+    queryFn: () => http.get<DashboardAnalytics>('/analytics', { days }),
+    staleTime: 60_000,
+    refetchInterval: pollWhenVisible(120_000),
+  });
+}
+
 export function useMonitoringMetrics() {
   return useQuery({
     queryKey: ['monitoring', 'metrics'],
