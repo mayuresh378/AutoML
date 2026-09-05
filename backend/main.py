@@ -408,14 +408,14 @@ def get_notifications(db: Session = Depends(get_db), offset: int = Query(0, ge=0
     } for n in notifs], total, offset, limit, key="notifications")
 
 @app.put("/api/v1/notifications/{notif_id}/read", tags=["Notifications"], summary="Mark notification read", description="Mark a single notification as read.")
-def read_notification(notif_id: str, db: Session = Depends(get_db)):
+def read_notification(notif_id: str, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     n = mark_notification_read(db, notif_id)
     if not n:
         raise HTTPException(status_code=404, detail="Notification not found")
     return {"status": "ok"}
 
 @app.post("/api/v1/notifications/{notif_id}/read", tags=["Notifications"], summary="Mark notification read (POST)", description="Mark a single notification as read (POST alias).")
-def read_notification_post(notif_id: str, db: Session = Depends(get_db)):
+def read_notification_post(notif_id: str, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     n = mark_notification_read(db, notif_id)
     if not n:
         raise HTTPException(status_code=404, detail="Notification not found")
@@ -434,7 +434,7 @@ def read_all_notifications_post(db: Session = Depends(get_db), current_user: dic
     return {"status": "ok"}
 
 @app.delete("/api/v1/notifications/{notif_id}", tags=["Notifications"], summary="Delete notification", description="Delete a notification by ID.")
-def remove_notification(notif_id: str, db: Session = Depends(get_db)):
+def remove_notification(notif_id: str, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     if not delete_notification(db, notif_id):
         raise HTTPException(status_code=404, detail="Notification not found")
     return {"status": "ok"}
@@ -942,7 +942,7 @@ def list_experiments_api(db: Session = Depends(get_db), offset: int = Query(0, g
 
 
 @app.get("/api/v1/experiments/{exp_id}", tags=["Experiments"], summary="Get experiment", description="Retrieve a specific experiment by ID.")
-def get_experiment_api(exp_id: str, db: Session = Depends(get_db)):
+def get_experiment_api(exp_id: str, current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     e = get_experiment(db, exp_id)
     if not e:
         raise HTTPException(status_code=404, detail="Experiment not found")
@@ -982,7 +982,7 @@ def delete_experiment_api(exp_id: str, db: Session = Depends(get_db), current_us
 
 
 @app.post("/api/v1/experiments/compare", tags=["Experiments"], summary="Compare experiments", description="Compare multiple experiments by their IDs.")
-def compare_experiments_api(ids: str = Form(...), db: Session = Depends(get_db)):
+def compare_experiments_api(ids: str = Form(...), current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     try:
         id_list = json.loads(ids)
     except Exception:
@@ -1173,7 +1173,7 @@ def list_algorithms_api():
 
 
 @app.get("/api/v1/training/{exp_id}", tags=["Training"], summary="Get training job", description="Retrieve a specific training job by ID.")
-def get_training_api(exp_id: str, db: Session = Depends(get_db)):
+def get_training_api(exp_id: str, current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     e = get_experiment(db, exp_id)
     if not e:
         raise HTTPException(status_code=404, detail="Training job not found")
@@ -1419,7 +1419,7 @@ def list_models_api(db: Session = Depends(get_db), offset: int = Query(0, ge=0),
     return paginated(all_models, total, offset, limit, key="models")
 
 @app.get("/api/v1/models/{name}", tags=["Models"], summary="Get model detail", description="Retrieve metadata for a specific model.")
-def get_model_detail(name: str):
+def get_model_detail(name: str, current_user: dict = Depends(get_current_user)):
     fpath = os.path.join(MODELS_DIR, name)
     if not os.path.exists(fpath):
         raise HTTPException(status_code=404, detail=f"Model '{name}' not found")
@@ -1427,7 +1427,7 @@ def get_model_detail(name: str):
     return {"name": name, **meta} if meta else {"name": name}
 
 @app.get("/api/v1/models/{name}/download", tags=["Models"], summary="Download model", description="Download a model file by name.")
-def download_model(name: str):
+def download_model(name: str, current_user: dict = Depends(get_current_user)):
     fpath = os.path.join(MODELS_DIR, name)
     if not os.path.exists(fpath):
         raise HTTPException(status_code=404, detail=f"Model '{name}' not found")
@@ -1435,7 +1435,8 @@ def download_model(name: str):
 
 @app.put("/api/v1/models/{name}", tags=["Models"], summary="Update model", description="Update model status, tags, or description.")
 def update_model_meta(name: str, status: str = Form(None), tags: str = Form(None),
-                      description: str = Form(None), db: Session = Depends(get_db)):
+                      description: str = Form(None), current_user: dict = Depends(get_current_user),
+                      db: Session = Depends(get_db)):
     from crud import update_model_meta as _update_model_meta
     tags_list = json.loads(tags) if tags else None
     m = _update_model_meta(db, name, status=status, tags=tags_list, description=description)
@@ -1639,7 +1640,7 @@ def compare_models_api(
 
 
 @app.get("/api/v1/models/{name}/meta", tags=["Models"], summary="Get model metadata", description="Return file stats and metadata JSON for a model.")
-def get_model_meta(name: str):
+def get_model_meta(name: str, current_user: dict = Depends(get_current_user)):
     fpath = os.path.join(MODELS_DIR, name)
     if not os.path.exists(fpath):
         raise HTTPException(status_code=404, detail=f"Model '{name}' not found")
@@ -1688,27 +1689,6 @@ def update_model_tags(name: str, tags: str = Form(...), db: Session = Depends(ge
     if not updated:
         raise HTTPException(status_code=404, detail=f"Model '{name}' not found")
     return {"message": f"Tags updated for '{name}'", "tags": tag_list}
-
-
-@app.post("/api/v1/models/compare", tags=["Models"], summary="Compare models", description="Compare multiple models by name.")
-def compare_models_api(names: str = Form(...), db: Session = Depends(get_db)):
-    try:
-        name_list = json.loads(names)
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid names format")
-    fs_models = []
-    for n in name_list:
-        fpath = os.path.join(MODELS_DIR, n)
-        if os.path.exists(fpath):
-            meta = _load_model_meta(n)
-            fs_models.append({
-                "name": n, "size_kb": round(os.path.getsize(fpath) / 1024, 1),
-                "task_type": meta.get("task_type"),
-                "best_score": meta.get("cv_score"),
-                "metrics": meta.get("metrics"),
-                "created_at": datetime.fromtimestamp(os.path.getmtime(fpath)).isoformat(),
-            })
-    return {"models": fs_models}
 
 
 @app.get("/api/v1/models/registry", tags=["Models"], summary="List model registry", description="List all registered models from the database registry.")
@@ -2253,7 +2233,7 @@ def delete_deployment_api(dep_id: str, db: Session = Depends(get_db), current_us
 
 
 @app.get("/api/v1/deployments/{dep_id}", tags=["Deployments"], summary="Get deployment", description="Retrieve a specific deployment by ID.")
-def get_deployment_api(dep_id: str, db: Session = Depends(get_db)):
+def get_deployment_api(dep_id: str, current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     dep = get_deployment(db, dep_id)
     if not dep:
         raise HTTPException(status_code=404, detail="Deployment not found")
@@ -2294,7 +2274,7 @@ def update_deployment_api(dep_id: str, min_replicas: int = Form(None), max_repli
 
 
 @app.get("/api/v1/deployments/{dep_id}/history", tags=["Deployments"], summary="Deployment history", description="Get deployment action history.")
-def deployment_history_api(dep_id: str, db: Session = Depends(get_db)):
+def deployment_history_api(dep_id: str, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     dep = get_deployment(db, dep_id)
     if not dep:
         raise HTTPException(status_code=404, detail="Deployment not found")
@@ -2346,7 +2326,7 @@ def update_deployment_access_api(
 
 
 @app.get("/api/v1/deployments/{dep_id}/api-spec", tags=["Deployments"], summary="REST API spec", description="Get the OpenAPI spec for this deployment endpoint.")
-def deployment_api_spec_api(dep_id: str, db: Session = Depends(get_db)):
+def deployment_api_spec_api(dep_id: str, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     dep = get_deployment(db, dep_id)
     if not dep:
         raise HTTPException(status_code=404, detail="Deployment not found")
@@ -2370,7 +2350,7 @@ def deployment_api_spec_api(dep_id: str, db: Session = Depends(get_db)):
 
 
 @app.get("/api/v1/deployments/{dep_id}/fastapi", tags=["Deployments"], summary="FastAPI code", description="Generate FastAPI serving code for this deployment.")
-def deployment_fastapi_code_api(dep_id: str, db: Session = Depends(get_db)):
+def deployment_fastapi_code_api(dep_id: str, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     dep = get_deployment(db, dep_id)
     if not dep:
         raise HTTPException(status_code=404, detail="Deployment not found")
@@ -2418,7 +2398,7 @@ def predict(req: PredictionRequest):
 
 
 @app.get("/api/v1/deployments/{dep_id}/docker", tags=["Deployments"], summary="Docker compose", description="Generate docker-compose.yml for this deployment.")
-def deployment_docker_api(dep_id: str, db: Session = Depends(get_db)):
+def deployment_docker_api(dep_id: str, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     dep = get_deployment(db, dep_id)
     if not dep:
         raise HTTPException(status_code=404, detail="Deployment not found")
@@ -2514,7 +2494,7 @@ def export_deployment_pickle_api(dep_id: str, db: Session = Depends(get_db), cur
 
 
 @app.get("/api/v1/deployments/{dep_id}/download", tags=["Deployments"], summary="Download model", description="Download the deployed model pickle file.")
-def download_deployment_model_api(dep_id: str, db: Session = Depends(get_db)):
+def download_deployment_model_api(dep_id: str, current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     dep = get_deployment(db, dep_id)
     if not dep:
         raise HTTPException(status_code=404, detail="Deployment not found")
@@ -2686,7 +2666,7 @@ def list_predictions_api(db: Session = Depends(get_db), offset: int = Query(0, g
 
 
 @app.get("/api/v1/predictions/{pred_id}", tags=["Predictions"], summary="Get prediction", description="Retrieve a specific prediction log by ID.")
-def get_prediction_api(pred_id: str, db: Session = Depends(get_db)):
+def get_prediction_api(pred_id: str, current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     log = get_prediction_log(db, pred_id)
     if not log:
         raise HTTPException(status_code=404, detail="Prediction not found")
@@ -2739,7 +2719,7 @@ def create_pipeline_api(data: PipelineCreate, db: Session = Depends(get_db), cur
     }
 
 @app.get("/api/v1/pipelines/{pipeline_id}", tags=["Pipelines"], summary="Get pipeline", description="Retrieve a specific pipeline by ID.")
-def get_pipeline_api(pipeline_id: str, db: Session = Depends(get_db)):
+def get_pipeline_api(pipeline_id: str, current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     pipe = get_pipeline(db, pipeline_id)
     if not pipe:
         raise HTTPException(status_code=404, detail="Pipeline not found")
@@ -2751,7 +2731,7 @@ def get_pipeline_api(pipeline_id: str, db: Session = Depends(get_db)):
     }
 
 @app.put("/api/v1/pipelines/{pipeline_id}", tags=["Pipelines"], summary="Update pipeline", description="Update pipeline configuration, steps, or schedule.")
-def update_pipeline_api(pipeline_id: str, data: PipelineUpdate, db: Session = Depends(get_db)):
+def update_pipeline_api(pipeline_id: str, data: PipelineUpdate, current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     pipe = update_pipeline(db, pipeline_id, name=data.name, description=data.description,
                            steps=data.steps, schedule=data.schedule)
     if not pipe:
@@ -2764,13 +2744,13 @@ def update_pipeline_api(pipeline_id: str, data: PipelineUpdate, db: Session = De
     }
 
 @app.delete("/api/v1/pipelines/{pipeline_id}", tags=["Pipelines"], summary="Delete pipeline", description="Delete a pipeline by ID.")
-def delete_pipeline_api(pipeline_id: str, db: Session = Depends(get_db)):
+def delete_pipeline_api(pipeline_id: str, current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     if not delete_pipeline(db, pipeline_id):
         raise HTTPException(status_code=404, detail="Pipeline not found")
     return {"status": "deleted"}
 
 @app.post("/api/v1/pipelines/{pipeline_id}/run", tags=["Pipelines"], summary="Run pipeline", description="Execute a pipeline run.")
-def run_pipeline_api(pipeline_id: str, db: Session = Depends(get_db)):
+def run_pipeline_api(pipeline_id: str, current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     try:
         run = run_pipeline(db, pipeline_id)
         return {
@@ -2799,7 +2779,7 @@ def list_runs_api(pipeline_id: str, db: Session = Depends(get_db), offset: int =
     return paginated(items, total, offset, limit, key="runs")
 
 @app.get("/api/v1/pipeline-runs/{run_id}", tags=["Pipelines"], summary="Get pipeline run", description="Retrieve details of a specific pipeline run.")
-def get_run_api(run_id: str, db: Session = Depends(get_db)):
+def get_run_api(run_id: str, current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     run = get_pipeline_run(db, run_id)
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
@@ -2838,13 +2818,13 @@ def create_webhook_api(data: WebhookCreate, db: Session = Depends(get_db), curre
     }
 
 @app.delete("/api/v1/webhooks/{webhook_id}", tags=["Webhooks"], summary="Delete webhook", description="Delete a webhook by ID.")
-def delete_webhook_api(webhook_id: str, db: Session = Depends(get_db)):
+def delete_webhook_api(webhook_id: str, current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     if not delete_webhook(db, webhook_id):
         raise HTTPException(status_code=404, detail="Webhook not found")
     return {"message": f"Deleted webhook '{webhook_id}'"}
 
 @app.post("/api/v1/webhooks/{webhook_id}/test", tags=["Webhooks"], summary="Test webhook", description="Send a test payload to a webhook.")
-def test_webhook_api(webhook_id: str, db: Session = Depends(get_db)):
+def test_webhook_api(webhook_id: str, current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     whs = list_webhooks(db)
     wh = next((w for w in whs if w.id == webhook_id), None)
     if not wh:
@@ -2873,7 +2853,7 @@ def create_team_api(name: str = Form(...), db: Session = Depends(get_db), curren
     return {"id": team.id, "name": team.name, "slug": team.slug, "plan": team.plan}
 
 @app.get("/api/v1/teams/{team_id}", tags=["Teams"], summary="Get team", description="Retrieve a specific team by ID.")
-def get_team_api(team_id: str, db: Session = Depends(get_db)):
+def get_team_api(team_id: str, current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     team = get_team(db, team_id)
     if not team:
         raise HTTPException(status_code=404, detail="Team not found")
@@ -2884,14 +2864,14 @@ def get_team_api(team_id: str, db: Session = Depends(get_db)):
     }
 
 @app.put("/api/v1/teams/{team_id}", tags=["Teams"], summary="Update team", description="Update a team's name.")
-def update_team_api(team_id: str, name: str = Form(None), db: Session = Depends(get_db)):
+def update_team_api(team_id: str, name: str = Form(None), current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     team = update_team(db, team_id, name=name)
     if not team:
         raise HTTPException(status_code=404, detail="Team not found")
     return {"id": team.id, "name": team.name, "slug": team.slug, "plan": team.plan}
 
 @app.delete("/api/v1/teams/{team_id}", tags=["Teams"], summary="Delete team", description="Delete a team by ID.")
-def delete_team_api(team_id: str, db: Session = Depends(get_db)):
+def delete_team_api(team_id: str, current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     if not delete_team(db, team_id):
         raise HTTPException(status_code=404, detail="Team not found")
     return {"status": "deleted"}
@@ -3295,7 +3275,7 @@ def list_my_projects_api(db: Session = Depends(get_db), offset: int = Query(0, g
 
 
 @app.get("/api/v1/projects/{project_id}", tags=["Projects"], summary="Get project", description="Retrieve a project with all associated resources.")
-def get_project_api(project_id: str, db: Session = Depends(get_db)):
+def get_project_api(project_id: str, current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     p = get_project(db, project_id)
     if not p:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -3321,10 +3301,10 @@ def get_project_api(project_id: str, db: Session = Depends(get_db)):
 
 @app.put("/api/v1/projects/{project_id}", tags=["Projects"], summary="Update project", description="Update project name, description, status, or notes.")
 def update_project_api(project_id: str, name: str = Form(None), description: str = Form(None),
-                       status: str = Form(None), notes: str = Form(None),
-                       problem_type: str = Form(None), visibility: str = Form(None),
-                       tags: str = Form(None),
-                       db: Session = Depends(get_db)):
+                        status: str = Form(None), notes: str = Form(None),
+                        problem_type: str = Form(None), visibility: str = Form(None),
+                        tags: str = Form(None),
+                        current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     tag_list = None
     if tags is not None:
         try:
@@ -3343,14 +3323,14 @@ def update_project_api(project_id: str, name: str = Form(None), description: str
 
 @app.put("/api/v1/projects/{project_id}/notes", tags=["Projects"], summary="Update project notes", description="Update only the notes field of a project.")
 def update_project_notes_api(project_id: str, notes: str = Form(""),
-                             db: Session = Depends(get_db)):
+                             current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     p = update_project(db, project_id, notes=notes)
     if not p:
         raise HTTPException(status_code=404, detail="Project not found")
     return {"notes": p.notes, "updated_at": p.updated_at.isoformat() if p.updated_at else None}
 
 @app.delete("/api/v1/projects/{project_id}", tags=["Projects"], summary="Delete project", description="Delete a project by ID.")
-def delete_project_api(project_id: str, db: Session = Depends(get_db)):
+def delete_project_api(project_id: str, current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     p = get_project(db, project_id)
     if not p:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -3360,10 +3340,10 @@ def delete_project_api(project_id: str, db: Session = Depends(get_db)):
 
 @app.patch("/api/v1/projects/{project_id}", tags=["Projects"], summary="Patch project", description="Partially update project fields using PATCH.")
 def patch_project_api(project_id: str, name: str = Form(None), description: str = Form(None),
-                      status: str = Form(None), notes: str = Form(None),
-                      problem_type: str = Form(None), visibility: str = Form(None),
-                      tags: str = Form(None),
-                      db: Session = Depends(get_db)):
+                        status: str = Form(None), notes: str = Form(None),
+                        problem_type: str = Form(None), visibility: str = Form(None),
+                        tags: str = Form(None),
+                        current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     tag_list = None
     if tags is not None:
         try:
@@ -3395,7 +3375,7 @@ def duplicate_project_api(project_id: str, db: Session = Depends(get_db),
             "created_at": dup.created_at.isoformat() if dup.created_at else None}
 
 @app.get("/api/v1/projects/{project_id}/models", tags=["Projects"], summary="Project models", description="List models belonging to a specific project.")
-def project_models_api(project_id: str, db: Session = Depends(get_db)):
+def project_models_api(project_id: str, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     p = get_project(db, project_id)
     if not p:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -3412,7 +3392,7 @@ def project_models_api(project_id: str, db: Session = Depends(get_db)):
     }
 
 @app.get("/api/v1/projects/{project_id}/datasets", tags=["Projects"], summary="Project datasets", description="List datasets belonging to a specific project.")
-def project_datasets_api(project_id: str, db: Session = Depends(get_db)):
+def project_datasets_api(project_id: str, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     p = get_project(db, project_id)
     if not p:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -3471,7 +3451,7 @@ def activity(db: Session = Depends(get_db), offset: int = Query(0, ge=0), limit:
 
 
 @app.get("/api/v1/activity/{log_id}", tags=["Activity"], summary="Get activity", description="Retrieve a specific activity log entry by ID.")
-def get_activity_api(log_id: str, db: Session = Depends(get_db)):
+def get_activity_api(log_id: str, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     log = get_audit_log(db, log_id)
     if not log:
         raise HTTPException(status_code=404, detail="Activity log not found")
@@ -3493,7 +3473,14 @@ def analytics(db: Session = Depends(get_db), days: int = 30, current_user: dict 
 # ── Admin ────────────────────────────────────────────────────────────
 
 @app.get("/api/v1/admin/stats", tags=["Admin"], summary="Admin stats", description="Return platform-wide statistics for administrators.")
-def admin_stats(db: Session = Depends(get_db)):
+def require_admin(current_user: dict) -> dict:
+    if current_user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return current_user
+
+
+def admin_stats(db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    require_admin(current_user)
     from crud import list_projects
     from models import User, AuditLog, Notification, PredictionLog
     users = db.query(User).count()
@@ -3515,7 +3502,8 @@ def admin_stats(db: Session = Depends(get_db)):
 
 
 @app.get("/api/v1/admin/users", tags=["Admin"], summary="List users", description="List all registered users for admin management.")
-def admin_users(db: Session = Depends(get_db), offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=500)):
+def admin_users(db: Session = Depends(get_db), offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=500), current_user: dict = Depends(get_current_user)):
+    require_admin(current_user)
     from models import User
     users = db.query(User).order_by(User.created_at.desc()).all()
     items = [{"id": u.id, "email": u.email, "name": u.name, "role": u.role, "is_active": u.is_active, "created_at": u.created_at.isoformat() if u.created_at else None} for u in users]
@@ -3525,7 +3513,8 @@ def admin_users(db: Session = Depends(get_db), offset: int = Query(0, ge=0), lim
 
 
 @app.put("/api/v1/admin/users/{user_id}/toggle", tags=["Admin"], summary="Toggle user active", description="Toggle a user's active/inactive status.")
-def admin_toggle_user(user_id: str, db: Session = Depends(get_db)):
+def admin_toggle_user(user_id: str, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    require_admin(current_user)
     from models import User
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
@@ -3536,7 +3525,8 @@ def admin_toggle_user(user_id: str, db: Session = Depends(get_db)):
 
 
 @app.get("/api/v1/admin/projects", tags=["Admin"], summary="Admin list projects", description="List all projects with resource counts for admin view.")
-def admin_projects(db: Session = Depends(get_db), offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=500)):
+def admin_projects(db: Session = Depends(get_db), offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=500), current_user: dict = Depends(get_current_user)):
+    require_admin(current_user)
     from crud import list_projects
     projects = list_projects(db)
     result = []
@@ -3557,7 +3547,8 @@ def admin_projects(db: Session = Depends(get_db), offset: int = Query(0, ge=0), 
 
 
 @app.get("/api/v1/admin/datasets", tags=["Admin"], summary="Admin list datasets", description="List all dataset records for admin view.")
-def admin_datasets(db: Session = Depends(get_db), offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=500)):
+def admin_datasets(db: Session = Depends(get_db), offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=500), current_user: dict = Depends(get_current_user)):
+    require_admin(current_user)
     records = list_dataset_records(db)
     items = [{
         "id": d.id, "filename": d.filename, "file_size_kb": d.file_size_kb,
@@ -3571,7 +3562,8 @@ def admin_datasets(db: Session = Depends(get_db), offset: int = Query(0, ge=0), 
 
 
 @app.get("/api/v1/admin/logs", tags=["Admin"], summary="Admin audit logs", description="Return audit logs for admin review.")
-def admin_logs(db: Session = Depends(get_db), offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=500)):
+def admin_logs(db: Session = Depends(get_db), offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=500), current_user: dict = Depends(get_current_user)):
+    require_admin(current_user)
     logs = list_audit_logs(db)
     items = [{
         "id": l.id, "actor": l.actor, "action": l.action,
@@ -3586,7 +3578,8 @@ def admin_logs(db: Session = Depends(get_db), offset: int = Query(0, ge=0), limi
 
 
 @app.get("/api/v1/admin/storage", tags=["Admin"], summary="Storage usage", description="Return disk usage breakdown for models, datasets, and database.")
-def admin_storage(db: Session = Depends(get_db)):
+def admin_storage(db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    require_admin(current_user)
     import os
     from pathlib import Path
     models_dir = os.path.join(BASE_DIR, "..", "models")
