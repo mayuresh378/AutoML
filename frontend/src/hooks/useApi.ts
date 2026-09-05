@@ -21,13 +21,17 @@ import { aiService } from '../services/ai.service';
 import { notificationsService } from '../services/notifications.service';
 import { http } from '../services/http';
 
+function pollWhenVisible(intervalMs: number) {
+  return () => (typeof document !== 'undefined' && document.hidden ? false : intervalMs);
+}
+
 export function useExperiments() {
   return useQuery({
     queryKey: ['experiments'],
     queryFn: () => experimentsService.list(),
     select: (data) => data.experiments,
-    staleTime: 3_000,
-    refetchInterval: 5_000,
+    staleTime: 20_000,
+    refetchInterval: pollWhenVisible(20_000),
   });
 }
 
@@ -36,8 +40,8 @@ export function useModels() {
     queryKey: ['models'],
     queryFn: () => modelsService.list(),
     select: (data) => data.models,
-    staleTime: 3_000,
-    refetchInterval: 5_000,
+    staleTime: 60_000,
+    refetchInterval: pollWhenVisible(60_000),
   });
 }
 
@@ -78,8 +82,8 @@ export function useDeployments() {
     queryKey: ['deployments'],
     queryFn: () => deploymentsService.list(),
     select: (data) => data.deployments,
-    staleTime: 3_000,
-    refetchInterval: 5_000,
+    staleTime: 30_000,
+    refetchInterval: pollWhenVisible(30_000),
   });
 }
 
@@ -141,8 +145,8 @@ export function useDatasets() {
     queryKey: ['datasets'],
     queryFn: () => datasetsService.list(),
     select: (data) => data.datasets,
-    staleTime: 3_000,
-    refetchInterval: 5_000,
+    staleTime: 30_000,
+    refetchInterval: pollWhenVisible(30_000),
   });
 }
 
@@ -382,8 +386,8 @@ export function useActivity() {
     queryKey: ['activity'],
     queryFn: () => activityService.list(),
     select: (data) => data.activities,
-    staleTime: 3_000,
-    refetchInterval: 5_000,
+    staleTime: 30_000,
+    refetchInterval: pollWhenVisible(30_000),
   });
 }
 
@@ -391,8 +395,8 @@ export function useMonitoringMetrics() {
   return useQuery({
     queryKey: ['monitoring', 'metrics'],
     queryFn: () => monitoringService.metrics(),
-    staleTime: 3_000,
-    refetchInterval: 5_000,
+    staleTime: 10_000,
+    refetchInterval: pollWhenVisible(15_000),
   });
 }
 
@@ -400,8 +404,8 @@ export function useMonitoringStats() {
   return useQuery({
     queryKey: ['monitoring', 'stats'],
     queryFn: () => monitoringService.stats(),
-    staleTime: 3_000,
-    refetchInterval: 5_000,
+    staleTime: 10_000,
+    refetchInterval: pollWhenVisible(15_000),
   });
 }
 
@@ -409,8 +413,8 @@ export function useMonitoringDashboard() {
   return useQuery({
     queryKey: ['monitoring', 'dashboard'],
     queryFn: () => monitoringService.dashboard(),
-    staleTime: 3_000,
-    refetchInterval: 5_000,
+    staleTime: 10_000,
+    refetchInterval: pollWhenVisible(15_000),
   });
 }
 
@@ -419,8 +423,8 @@ export function useAISuggestions() {
     queryKey: ['ai', 'suggestions'],
     queryFn: () => aiService.suggestions(),
     select: (data) => data.suggestions,
-    staleTime: 30_000,
-    refetchInterval: 60_000,
+    staleTime: 60_000,
+    refetchInterval: pollWhenVisible(120_000),
   });
 }
 
@@ -429,8 +433,8 @@ export function useNotifications() {
     queryKey: ['notifications'],
     queryFn: () => notificationsService.list(),
     select: (data) => data.notifications,
-    staleTime: 3_000,
-    refetchInterval: 5_000,
+    staleTime: 30_000,
+    refetchInterval: pollWhenVisible(30_000),
   });
 }
 
@@ -439,8 +443,8 @@ export function useUnreadNotificationCount() {
     queryKey: ['notifications', 'unread-count'],
     queryFn: () => notificationsService.unreadCount(),
     select: (data) => data.count,
-    staleTime: 3_000,
-    refetchInterval: 5_000,
+    staleTime: 10_000,
+    refetchInterval: pollWhenVisible(15_000),
   });
 }
 
@@ -471,8 +475,8 @@ export function useTrainingQueue() {
     queryKey: ['training', 'queue'],
     queryFn: () => trainingService.queue(),
     select: (data) => data.jobs,
-    staleTime: 3_000,
-    refetchInterval: 5_000,
+    staleTime: 10_000,
+    refetchInterval: pollWhenVisible(10_000),
   });
 }
 
@@ -480,8 +484,8 @@ export function useHealthCheck() {
   return useQuery({
     queryKey: ['health'],
     queryFn: () => http.get<{ status: string; message?: string; data?: Record<string, any> }>('/health'),
-    staleTime: 5_000,
-    refetchInterval: 10_000,
+    staleTime: 30_000,
+    refetchInterval: pollWhenVisible(30_000),
   });
 }
 

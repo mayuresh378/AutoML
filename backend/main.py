@@ -178,6 +178,59 @@ def _get_dataset_df(name: str) -> pd.DataFrame:
         return pd.read_json(fpath)
 
 
+# Cheap file metadata used by the list endpoint. Keyed by (mtime_ns, size) so a
+# full pandas read is only performed once per file version, never per request.
+_dataset_meta_cache: dict[str, tuple] = {}
+
+
+def _get_dataset_meta(name: str) -> tuple:
+    fpath = os.path.join(DATASET_DIR, name)
+    if not os.path.exists(fpath):
+        return 0, [], {}
+    st = os.stat(fpath)
+    cache_key = f"{name}:{st.st_mtime_ns}:{st.st_size}"
+    cached = _dataset_meta_cache.get(name)
+    if cached and cached[0] == cache_key:
+        return cached[1], cached[2], cached[3]
+    rows: int = 0
+    columns: list = []
+    dtypes: dict = {}
+    try:
+        if name.endswith(".csv"):
+            with open(fpath, encoding="utf-8", errors="ignore") as fh:
+                header = fh.readline()
+                if header:
+                    columns = [c.strip() for c in header.rstrip("\r\n").split(",")]
+                rows = max(0, sum(1 for _ in fh))
+            sample = pd.read_csv(fpath, nrows=50) if os.path.exists(fpath) else pd.DataFrame()
+        elif name.endswith(".parquet"):
+            try:
+                import pyarrow.parquet as pq
+                pf = pq.ParquetFile(fpath)
+                columns = list(pf.schema.names)
+                dtypes = {c: str(pf.schema.field(c).type) for c in columns}
+                rows = pf.metadata.num_rows
+                sample = pd.DataFrame()
+            except Exception:
+                sample = pd.read_parquet(fpath).head(50)
+        elif name.endswith((".xlsx", ".xls")):
+            sample = pd.read_excel(fpath, nrows=50)
+        else:
+            sample = pd.read_json(fpath)
+    except Exception:
+        sample = pd.DataFrame()
+        rows = 0
+        columns = []
+        dtypes = {}
+    if not columns and not sample.empty:
+        columns = list(sample.columns)
+    if not dtypes and not sample.empty:
+        dtypes = {c: str(sample[c].dtype) for c in columns}
+    meta = (rows, columns, dtypes)
+    _dataset_meta_cache[name] = (cache_key, rows, columns, dtypes)
+    return meta
+
+
 # ── Root ────────────────────────────────────────────────────────────
 
 @app.get("/", tags=["Health"], summary="Home", description="Returns API status and version info.")
@@ -409,19 +462,13 @@ def list_datasets(db: Session = Depends(get_db), offset: int = Query(0, ge=0), l
         fpath = os.path.join(DATASET_DIR, f)
         size_kb = round(os.path.getsize(fpath) / 1024, 1)
         try:
-            df = _get_dataset_df(f) if os.path.exists(fpath) else pd.DataFrame()
-            row_count = 0
-            if f.endswith(".csv"):
-                with open(fpath, encoding="utf-8", errors="ignore") as fh:
-                    row_count = max(0, sum(1 for _ in fh) - 1)
-            elif f.endswith(".parquet"):
-                row_count = len(df)
+            rows, columns, dtypes = _get_dataset_meta(f)
             record = db_records.get(f)
             files.append({
                 "name": f, "size_kb": size_kb,
-                "rows": row_count or len(df),
-                "columns": list(df.columns) if not df.empty else [],
-                "dtypes": {c: str(dt) for c, dt in df.dtypes.items()} if not df.empty else {},
+                "rows": rows,
+                "columns": columns,
+                "dtypes": dtypes,
                 "uploaded_at": record.created_at.isoformat() if record else datetime.fromtimestamp(os.path.getmtime(fpath)).isoformat(),
                 "project_id": record.project_id if record else None,
                 "user_id": record.user_id if record else None,

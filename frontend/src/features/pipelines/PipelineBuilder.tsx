@@ -50,7 +50,7 @@ export function PipelineBuilder({ pipeline, onBack, onSaved }: PipelineBuilderPr
   const [invalidJson, setInvalidJson] = useState(false);
 
   const { data: datasets } = useQuery({
-    queryKey: ['datasets', 'builder'],
+    queryKey: ['datasets'],
     queryFn: () => datasetsService.list(),
     staleTime: 60_000,
   });
