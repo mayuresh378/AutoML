@@ -89,9 +89,13 @@ export default function ExplorerPage() {
     }
   }
 
-  function handleExport() {
+  async function handleExport() {
     if (!selectedDataset) return;
-    window.open(downloadUrl(`/datasets/${encodeURIComponent(selectedDataset)}/download`), '_blank');
+    try {
+      const blob = await datasetsService.downloadFile(selectedDataset);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = selectedDataset; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+    } catch (err) { console.error('Download failed:', err); }
   }
 
   function renderTab() {

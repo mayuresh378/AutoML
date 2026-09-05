@@ -1,4 +1,5 @@
 import os
+import asyncio
 import sys
 import json
 import time
@@ -449,6 +450,61 @@ def get_unread_count(db: Session = Depends(get_db), current_user: dict = Depends
 
 # ── Datasets ─────────────────────────────────────────────────────────
 
+def require_dataset_access(db, name, current_user, owner_only=False):
+    uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
+    if uid is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    record = get_dataset_record(db, name)
+    if not record or record.deleted_at is not None:
+        raise HTTPException(status_code=404, detail=f"Dataset '{name}' not found")
+    if record.user_id is not None and record.user_id != uid:
+        raise HTTPException(status_code=403, detail="Access denied")
+    if owner_only and record.user_id != uid:
+        raise HTTPException(status_code=403, detail="Access denied")
+    return record
+
+
+def _preview_df(name: str, rows: int = 50, offset: int = 0) -> pd.DataFrame:
+    fpath = os.path.join(DATASET_DIR, name)
+    if name.endswith(".csv"):
+        skip = lambda i: i != 0 and i <= offset
+        return pd.read_csv(fpath, skiprows=skip, nrows=rows)
+    if name.endswith((".xlsx", ".xls")):
+        return pd.read_excel(fpath, nrows=offset + rows).iloc[offset:offset + rows]
+    if name.endswith(".json"):
+        try:
+            return pd.read_json(fpath, lines=True, skiprows=offset, nrows=rows)
+        except Exception:
+            return pd.read_json(fpath).iloc[offset:offset + rows]
+    if name.endswith(".parquet"):
+        import pyarrow.parquet as pq
+        return pq.read_table(fpath).slice(offset, rows).to_pandas()
+    return pd.read_json(fpath).iloc[offset:offset + rows]
+
+
+def _dataset_total_rows(name: str, fpath: str) -> int:
+    try:
+        if name.endswith(".csv"):
+            with open(fpath, encoding="utf-8", errors="ignore") as fh:
+                return max(0, sum(1 for _ in fh) - 1)
+        if name.endswith(".json"):
+            try:
+                return sum(1 for _ in open(fpath))
+            except Exception:
+                return len(pd.read_json(fpath))
+        if name.endswith((".xlsx", ".xls")):
+            from openpyxl import load_workbook
+            wb = load_workbook(fpath, read_only=True)
+            ws = wb.active
+            return max(0, (ws.max_row or 1) - 1)
+        if name.endswith(".parquet"):
+            import pyarrow.parquet as pq
+            return pq.read_metadata(fpath).num_rows
+    except Exception:
+        pass
+    return -1
+
+
 @app.get("/api/v1/datasets", tags=["Datasets"], summary="List datasets", description="List all uploaded datasets with metadata.")
 def list_datasets(db: Session = Depends(get_db), offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=500), current_user: dict = Depends(get_optional_user)):
     uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
@@ -533,25 +589,57 @@ async def upload_dataset(
     if ext not in ALLOWED_EXTENSIONS:
         raise HTTPException(status_code=400, detail=f"Unsupported file type {ext}")
     content = await file.read()
+    if len(content) == 0:
+        raise HTTPException(status_code=400, detail="File is empty")
     if len(content) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail=f"File exceeds {MAX_UPLOAD_MB}MB limit")
-    filename = sanitize_filename(file.filename)
+    orig_name = sanitize_filename(file.filename)
+    uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
+    existing = get_dataset_record(db, orig_name)
+    if existing and existing.user_id == uid and existing.deleted_at is None and os.path.exists(os.path.join(DATASET_DIR, orig_name)):
+        filename = orig_name
+    else:
+        filename = orig_name
+        i = 1
+        while os.path.exists(os.path.join(DATASET_DIR, filename)) or (get_dataset_record(db, filename) and get_dataset_record(db, filename).user_id != uid):
+            stem, ext_part = os.path.splitext(orig_name)
+            filename = f"{stem}_{uid[:8] if uid else 'anon'}_{i}{ext_part}"
+            i += 1
     file_location = os.path.join(DATASET_DIR, filename)
     with open(file_location, "wb") as f:
         f.write(content)
     try:
-        df = _get_dataset_df(filename)
+        df = await asyncio.get_running_loop().run_in_executor(None, _get_dataset_df, filename)
     except Exception as e:
         os.remove(file_location)
-        raise HTTPException(status_code=400, detail=f"Failed to parse: {str(e)}")
-    uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
-    record = create_dataset_record(db, filename, size_kb=round(len(content) / 1024, 1), rows=len(df), columns=list(df.columns), project_id=project_id, user_id=uid)
+        raise HTTPException(status_code=400, detail=f"Failed to parse dataset: {e}")
+    if len(df.columns) == 0:
+        os.remove(file_location)
+        raise HTTPException(status_code=400, detail="Dataset has no valid columns")
+    rows = len(df)
+    columns = list(df.columns)
+    size_kb = round(len(content) / 1024, 1)
+    if existing and existing.user_id == uid and existing.deleted_at is None:
+        existing.file_size_kb = size_kb
+        existing.rows = rows
+        existing.columns = columns
+        existing.version = (existing.version or 0) + 1
+        existing.updated_at = datetime.now(timezone.utc)
+        existing.status = "ready"
+        db.commit()
+        db.refresh(existing)
+        record = existing
+    else:
+        record = create_dataset_record(db, filename, size_kb=size_kb, rows=rows, columns=columns, project_id=project_id, user_id=uid)
+        record.status = "ready"
+        db.commit()
+        db.refresh(record)
     log_audit(db, current_user.get("name", "User"), "dataset.uploaded", filename, "dataset", record.id)
     try:
         create_notification(db, {
             "user_id": uid,
             "title": "Upload Successful",
-            "message": f"Dataset '{filename}' uploaded with {len(df)} rows and {len(list(df.columns))} features",
+            "message": f"Dataset '{filename}' uploaded with {rows} rows and {len(columns)} features",
             "type": "success",
             "category": "upload",
             "resource_type": "dataset",
@@ -562,68 +650,71 @@ async def upload_dataset(
     return {
         "message": f"Uploaded {filename}",
         "filename": filename,
-        "features": list(df.columns),
-        "rows": len(df),
+        "features": columns,
+        "rows": rows,
         "id": record.id,
         "user_id": uid,
+        "status": "ready",
     }
 
 @app.get("/api/v1/datasets/{name}", tags=["Datasets"], summary="Get dataset", description="Get metadata for a specific dataset.")
-def get_dataset_api(name: str, db: Session = Depends(get_db)):
+def get_dataset_api(name: str, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     fpath = validate_path(name)
     if not os.path.exists(fpath):
         raise HTTPException(status_code=404, detail=f"Dataset '{name}' not found")
+    require_dataset_access(db, name, current_user)
     size_kb = round(os.path.getsize(fpath) / 1024, 1)
-    try:
-        df = _get_dataset_df(name)
-        record = get_dataset_record(db, name)
-        return {
-            "name": name, "size_kb": size_kb,
-            "rows": len(df), "columns": list(df.columns),
-            "dtypes": {c: str(dt) for c, dt in df.dtypes.items()},
-            "uploaded_at": record.created_at.isoformat() if record else datetime.fromtimestamp(os.path.getmtime(fpath)).isoformat(),
-            "project_id": record.project_id if record else None,
-            "status": record.status if record else "ready",
-            "id": record.id if record else None,
-            "description": record.description if record else None,
-            "tags": record.tags if record and record.tags else [],
-            "version": record.version if record else 1,
-            "source": record.source if record else "upload",
-            "source_url": record.source_url if record else None,
-        }
-    except Exception:
-        return {"name": name, "size_kb": size_kb, "rows": 0, "columns": [], "status": "error"}
+    rows, columns, dtypes = _get_dataset_meta(name)
+    record = get_dataset_record(db, name)
+    return {
+        "name": name, "size_kb": size_kb,
+        "rows": rows, "columns": columns,
+        "dtypes": dtypes,
+        "uploaded_at": record.created_at.isoformat() if record else datetime.fromtimestamp(os.path.getmtime(fpath)).isoformat(),
+        "project_id": record.project_id if record else None,
+        "status": record.status if record else "ready",
+        "id": record.id if record else None,
+        "description": record.description if record else None,
+        "tags": record.tags if record and record.tags else [],
+        "version": record.version if record else 1,
+        "source": record.source if record else "upload",
+        "source_url": record.source_url if record else None,
+    }
 
 @app.get("/api/v1/datasets/{name}/download", tags=["Datasets"], summary="Download dataset", description="Download a dataset file by name.")
-def download_dataset(name: str):
+def download_dataset(name: str, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     fpath = validate_path(name)
     if not os.path.exists(fpath):
         raise HTTPException(status_code=404, detail=f"Dataset '{name}' not found")
+    require_dataset_access(db, name, current_user)
     ext = os.path.splitext(name)[1].lower()
     media_map = {".csv": "text/csv", ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", ".parquet": "application/octet-stream", ".json": "application/json"}
     return FileResponse(fpath, filename=name, media_type=media_map.get(ext, "application/octet-stream"))
 
 @app.delete("/api/v1/datasets/{name}", tags=["Datasets"], summary="Delete dataset", description="Delete a dataset file by name.")
-def delete_dataset(name: str, db: Session = Depends(get_db), current_user: dict = Depends(get_optional_user)):
+def delete_dataset(name: str, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     fpath = validate_path(name)
     if not os.path.exists(fpath):
         raise HTTPException(status_code=404, detail=f"Dataset '{name}' not found")
+    require_dataset_access(db, name, current_user, owner_only=True)
     os.remove(fpath)
     delete_dataset_record(db, name)
     log_audit(db, current_user.get("name", "User"), "dataset.deleted", name, "dataset")
     return {"message": f"Deleted '{name}'"}
 
 @app.get("/api/v1/datasets/{name}/preview", tags=["Datasets"], summary="Preview dataset", description="Preview rows from a dataset with pagination.")
-def preview_dataset(name: str, rows: int = Query(50, le=500), offset: int = Query(0, ge=0)):
+def preview_dataset(name: str, rows: int = Query(50, ge=1, le=500), offset: int = Query(0, ge=0, le=100000), db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    fpath = validate_path(name)
+    if not os.path.exists(fpath):
+        raise HTTPException(status_code=404, detail=f"Dataset '{name}' not found")
+    require_dataset_access(db, name, current_user)
     try:
-        from cleaning import load_dataset as _ld
-        df = _ld(name)
-        total = len(df)
-        page = df.iloc[offset:offset + rows]
+        total = _dataset_total_rows(name, fpath)
+        df = _preview_df(name, rows, offset)
         return {
-            "name": name, "total_rows": total, "offset": offset,
-            "rows_returned": len(page), "columns": list(df.columns),
-            "data": page.fillna("").to_dict(orient="records"),
+            "name": name, "total_rows": (total if total >= 0 else None), "offset": offset,
+            "rows_returned": len(df), "columns": list(df.columns),
+            "data": df.fillna("").to_dict(orient="records"),
         }
     except HTTPException:
         raise
@@ -631,20 +722,32 @@ def preview_dataset(name: str, rows: int = Query(50, le=500), offset: int = Quer
         raise HTTPException(status_code=404, detail=str(e))
 
 @app.get("/api/v1/datasets/{name}/profile", tags=["Datasets"], summary="Dataset profile", description="Generate a data quality profile for a dataset.")
-def dataset_profile(name: str):
+def dataset_profile(name: str, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    fpath = validate_path(name)
+    if not os.path.exists(fpath):
+        raise HTTPException(status_code=404, detail=f"Dataset '{name}' not found")
+    require_dataset_access(db, name, current_user)
     return profile_dataset(name)
 
 @app.get("/api/v1/datasets/{name}/analyze", tags=["Datasets"], summary="Analyze dataset", description="Perform statistical analysis on a dataset.")
-def dataset_analyze(name: str, target: str = None):
+def dataset_analyze(name: str, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    fpath = validate_path(name)
+    if not os.path.exists(fpath):
+        raise HTTPException(status_code=404, detail=f"Dataset '{name}' not found")
+    require_dataset_access(db, name, current_user)
     try:
-        return analyze_dataset(name, target)
+        return analyze_dataset(name)
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 @app.post("/api/v1/datasets/{name}/clean", tags=["Datasets"], summary="Clean dataset", description="Apply cleaning operations to a dataset.")
-def clean(name: str, operations: str = Form(...), db: Session = Depends(get_db), current_user: dict = Depends(get_optional_user)):
+def clean(name: str, operations: str = Form(...), db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    fpath = validate_path(name)
+    if not os.path.exists(fpath):
+        raise HTTPException(status_code=404, detail=f"Dataset '{name}' not found")
+    require_dataset_access(db, name, current_user, owner_only=True)
     try:
         ops = json.loads(operations)
         result = clean_dataset(name, ops)
@@ -656,7 +759,11 @@ def clean(name: str, operations: str = Form(...), db: Session = Depends(get_db),
         raise HTTPException(status_code=400, detail=str(e))
 
 @app.post("/api/v1/datasets/{name}/auto-clean", tags=["Datasets"], summary="Auto-clean dataset", description="Automatically detect and clean issues in a dataset.")
-def auto_clean_endpoint(name: str, db: Session = Depends(get_db), current_user: dict = Depends(get_optional_user)):
+def auto_clean_endpoint(name: str, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    fpath = validate_path(name)
+    if not os.path.exists(fpath):
+        raise HTTPException(status_code=404, detail=f"Dataset '{name}' not found")
+    require_dataset_access(db, name, current_user, owner_only=True)
     try:
         result = auto_clean(name)
         log_audit(db, current_user.get("name", "User"), "dataset.auto_cleaned", name, "dataset")
@@ -665,7 +772,11 @@ def auto_clean_endpoint(name: str, db: Session = Depends(get_db), current_user: 
         raise HTTPException(status_code=400, detail=str(e))
 
 @app.post("/api/v1/datasets/{name}/features/generate", tags=["Datasets"], summary="Generate features", description="Generate engineered features for a dataset.")
-def generate(name: str, operations: str = Form(...), db: Session = Depends(get_db), current_user: dict = Depends(get_optional_user)):
+def generate(name: str, operations: str = Form(...), db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    fpath = validate_path(name)
+    if not os.path.exists(fpath):
+        raise HTTPException(status_code=404, detail=f"Dataset '{name}' not found")
+    require_dataset_access(db, name, current_user, owner_only=True)
     try:
         ops = json.loads(operations)
         result = generate_features(name, ops)
@@ -677,24 +788,30 @@ def generate(name: str, operations: str = Form(...), db: Session = Depends(get_d
         raise HTTPException(status_code=400, detail=str(e))
 
 @app.get("/api/v1/datasets/{name}/features/suggest", tags=["Datasets"], summary="Suggest features", description="Suggest potential feature engineering operations for a dataset.")
-def suggest(name: str):
+def suggest(name: str, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    fpath = validate_path(name)
+    if not os.path.exists(fpath):
+        raise HTTPException(status_code=404, detail=f"Dataset '{name}' not found")
+    require_dataset_access(db, name, current_user)
     return suggest_features(name)
 
 
 @app.put("/api/v1/datasets/{name}/tags", tags=["Datasets"], summary="Update dataset tags")
-def update_tags_api(name: str, tags: list = Form(...), db: Session = Depends(get_db), current_user: dict = Depends(get_optional_user)):
-    record = get_dataset_record(db, name)
-    if not record:
+def update_tags_api(name: str, tags: list = Form(...), db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    fpath = validate_path(name)
+    if not os.path.exists(fpath):
         raise HTTPException(status_code=404, detail=f"Dataset '{name}' not found")
+    require_dataset_access(db, name, current_user, owner_only=True)
     update_dataset_tags(db, name, tags)
     return {"message": "Tags updated", "tags": tags}
 
 
 @app.put("/api/v1/datasets/{name}/description", tags=["Datasets"], summary="Update dataset description")
-def update_desc_api(name: str, description: str = Form(...), db: Session = Depends(get_db), current_user: dict = Depends(get_optional_user)):
-    record = get_dataset_record(db, name)
-    if not record:
+def update_desc_api(name: str, description: str = Form(...), db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    fpath = validate_path(name)
+    if not os.path.exists(fpath):
         raise HTTPException(status_code=404, detail=f"Dataset '{name}' not found")
+    require_dataset_access(db, name, current_user, owner_only=True)
     update_dataset_description(db, name, description)
     return {"message": "Description updated"}
 
@@ -769,25 +886,32 @@ async def import_from_database(
 
 @app.post("/api/v1/datasets/{name}/share", tags=["Datasets"], summary="Share dataset")
 def share_dataset_api(name: str, email: str = Form(...), permission: str = Form("view"),
-                      db: Session = Depends(get_db), current_user: dict = Depends(get_optional_user)):
-    record = get_dataset_record(db, name)
-    if not record:
+                       db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    fpath = validate_path(name)
+    if not os.path.exists(fpath):
         raise HTTPException(status_code=404, detail=f"Dataset '{name}' not found")
+    record = require_dataset_access(db, name, current_user, owner_only=True)
     result = share_dataset(db, record.id, shared_with_email=email, permission=permission)
     return {"message": f"Shared with {email}", "share": result}
 
 
 @app.get("/api/v1/datasets/{name}/shares", tags=["Datasets"], summary="List dataset shares")
-def list_shares_api(name: str, db: Session = Depends(get_db)):
-    record = get_dataset_record(db, name)
-    if not record:
+def list_shares_api(name: str, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    fpath = validate_path(name)
+    if not os.path.exists(fpath):
         raise HTTPException(status_code=404, detail=f"Dataset '{name}' not found")
+    require_dataset_access(db, name, current_user, owner_only=True)
+    record = get_dataset_record(db, name)
     shares = list_dataset_shares(db, record.id)
     return [{"id": s.id, "email": s.shared_with_email, "permission": s.permission, "created_at": s.created_at.isoformat()} for s in shares]
 
 
 @app.delete("/api/v1/datasets/{name}/shares/{share_id}", tags=["Datasets"], summary="Remove dataset share")
-def remove_share_api(name: str, share_id: str, db: Session = Depends(get_db), current_user: dict = Depends(get_optional_user)):
+def remove_share_api(name: str, share_id: str, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    fpath = validate_path(name)
+    if not os.path.exists(fpath):
+        raise HTTPException(status_code=404, detail=f"Dataset '{name}' not found")
+    require_dataset_access(db, name, current_user, owner_only=True)
     remove_dataset_share(db, share_id)
     return {"message": "Share removed"}
 

@@ -102,6 +102,7 @@ export const router = createBrowserRouter([
       { index: true, element: <Navigate to="/app/dashboard" replace /> },
       { path: 'dashboard', element: <Dashboard /> },
       { path: 'datasets', element: <Datasets /> },
+      { path: 'datasets/:name', element: <DataProfiling /> },
       { path: 'training', element: <Training /> },
       { path: 'hpo', element: <HPO /> },
       { path: 'engine', element: <AutoMLEngine /> },

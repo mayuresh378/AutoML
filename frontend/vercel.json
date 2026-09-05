@@ -6,7 +6,7 @@
   "rewrites": [
     {
       "source": "/api/v1/:path*",
-      "destination": "https://automl-api.onrender.com/api/v1/:path*"
+      "destination": "https://automl-rihy.onrender.com/api/v1/:path*"
     },
     {
       "source": "/(.*)",

@@ -180,7 +180,7 @@ export default function FeatureEngineeringPage() {
                   <Button
                     variant="secondary" size="sm"
                     icon={<Download className="w-4 h-4" />}
-                    onClick={() => window.open(downloadUrl(`/datasets/${encodeURIComponent(result.enhanced_file)}/download`), '_blank')}
+                    onClick={async () => { try { await datasetsService.downloadFile(result.enhanced_file); } catch (err) { console.error('Download failed:', err); } }}
                   >
                     Download Enhanced File
                   </Button>

@@ -102,6 +102,9 @@ export const datasetsService = {
       `/datasets/${encodeURIComponent(name)}/shares`
     ),
 
-  removeShare: (name: string, shareId: string) =>
+   downloadFile: (name: string) =>
+    http.get<Blob>(`/datasets/${encodeURIComponent(name)}/download`, undefined, { responseType: 'blob' }),
+
+   removeShare: (name: string, shareId: string) =>
     http.delete(`/datasets/${encodeURIComponent(name)}/shares/${shareId}`),
 };

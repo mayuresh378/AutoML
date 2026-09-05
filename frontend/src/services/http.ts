@@ -15,7 +15,7 @@ export function configureHttp(config: {
   _onUnauthorized = config.onUnauthorized ?? null;
 }
 
-async function getToken(): Promise<string | null> {
+export async function getToken(): Promise<string | null> {
   if (!_tokenGetter) return null;
   try {
     const res = _tokenGetter();
@@ -115,7 +115,7 @@ function timedSignal(externalSignal?: AbortSignal | null): { signal: AbortSignal
   };
 }
 
-async function request<T = any>(method: string, path: string, body?: any, params?: Record<string, any>, init?: RequestInit): Promise<T> {
+async function request<T = any>(method: string, path: string, body?: any, params?: Record<string, any>, init?: RequestInit & { responseType?: string }): Promise<T> {
   const url = buildUrl(path, params);
   const isFormData = body instanceof FormData;
   const headers = await buildHeaders(init?.headers as Record<string, string>);
@@ -131,6 +131,7 @@ async function request<T = any>(method: string, path: string, body?: any, params
       headers,
       body: isFormData ? body : body && method !== 'GET' ? JSON.stringify(body) : undefined,
     });
+    if ((init as any)?.responseType === 'blob') return (await res.blob()) as unknown as T;
     return await handleResponse<T>(res);
   } catch (err) {
     if (isAbortError(err)) {
@@ -150,7 +151,7 @@ async function request<T = any>(method: string, path: string, body?: any, params
 }
 
 export const http = {
-  async get<T = any>(path: string, params?: Record<string, any>, init?: RequestInit): Promise<T> {
+  async get<T = any>(path: string, params?: Record<string, any>, init?: RequestInit & { responseType?: string }): Promise<T> {
     return request<T>('GET', path, undefined, params, init);
   },
 

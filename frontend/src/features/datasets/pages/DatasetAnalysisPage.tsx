@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Search } from 'lucide-react';
+import { useParams } from 'react-router-dom';
 import { datasetsService } from '../../../services/datasets.service';
 import { PageContainer, PageHeader } from '../../../components/layout/PageContainer';
 import { Card, CardHeader, CardTitle, CardContent } from '../../../components/ui/Card';
@@ -196,9 +197,11 @@ function ColumnDetail({ col, rows }: { col: ColumnProfile; rows: number }) {
 }
 
 export default function DatasetAnalysisPage() {
-  const [selectedDataset, setSelectedDataset] = useState('');
+  const { name } = useParams<{ name: string }>();
+  const [selectedDataset, setSelectedDataset] = useState(() => name || '');
   const [query, setQuery] = useState('');
   const [selectedCol, setSelectedCol] = useState<ColumnProfile | null>(null);
+  useEffect(() => { if (name) setSelectedDataset(name); }, [name]);
 
   const { data: datasets, isLoading: datasetsLoading } = useQuery({
     queryKey: ['datasets'],

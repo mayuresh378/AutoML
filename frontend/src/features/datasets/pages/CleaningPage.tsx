@@ -177,7 +177,7 @@ export default function CleaningPage() {
               <Button
                 variant="secondary" size="sm"
                 icon={<Download className="w-4 h-4" />}
-                onClick={() => window.open(downloadUrl(`/datasets/${encodeURIComponent(result.cleaned_file)}/download`), '_blank')}
+                 onClick={async () => { try { await datasetsService.downloadFile(result.cleaned_file); } catch (err) { console.error('Download failed:', err); } }}
               >
                 Download
               </Button>

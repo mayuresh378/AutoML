@@ -209,7 +209,7 @@ export default function DatasetsPage() {
                   style={{ listStyle: 'none' }}
                 >
                   <TiltCard glareColor="rgba(79,70,229,0.08)" maxTilt={4} scale={1.01}>
-                    <div className={styles.datasetCard} onClick={() => navigate(`/datasets/${dataset.id || dataset.name}`)}>
+                    <div className={styles.datasetCard} onClick={() => navigate(`/app/datasets/${encodeURIComponent(dataset.name || dataset.id)}`)}>
                       <Card>
                         <div className={styles.cardTop}>
                           <div className={styles.cardTitleRow}>
@@ -255,9 +255,10 @@ export default function DatasetsPage() {
                         <div className={styles.cardFooter}>
                           <span className={styles.createdAt}>{formatDate(dataset.created_at)}</span>
                           <div className={styles.cardActions}>
-                            <button className={styles.viewAction} onClick={(e) => { e.stopPropagation(); navigate(`/datasets/${dataset.id || dataset.name}`); }}>
-                              View →
-                            </button>
+                             <button className={styles.viewAction} onClick={(e) => { e.stopPropagation(); navigate(`/app/datasets/${encodeURIComponent(dataset.name || dataset.id)}`); }}>
+                               View →
+                             </button>
+                             <button className={styles.deleteAction} onClick={(e) => { e.stopPropagation(); handleDelete(dataset.name || dataset.id || '', e); }}>Delete</button>
                           </div>
                         </div>
                       </Card>
