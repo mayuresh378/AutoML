@@ -3,9 +3,10 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   LayoutGrid, Table, Braces, BarChart3, PieChart, Network, ShieldCheck,
   BrainCircuit, GitBranch, History, Search, RefreshCw, Upload, Download,
-  Database, ArrowLeft, Clock, Tag, Sparkles, FileSpreadsheet,
-  SquareTerminal, Rows3, Columns3, Loader2, AlertTriangle, FileUp, X,
-  ChevronRight, type LucideIcon,
+  Database, ArrowLeft, Clock, FileSpreadsheet, SquareTerminal,
+  Rows3, Columns3, Loader2, AlertTriangle, FileUp, X, ChevronRight,
+  ChevronDown, AlertCircle, Copy, Gauge, Eye,
+  type LucideIcon,
 } from 'lucide-react';
 import { datasetsService } from '../../../services/datasets.service';
 import { PageContainer } from '../../../components/layout/PageContainer';
@@ -15,8 +16,8 @@ import { cn } from '../../../lib/cn';
 import {
   useExplorerDatasets, useExplorerAnalyze, useExplorerProfile, useExplorerPreview,
 } from '../explorer/hooks';
-import { fmt, severityHex, severityLabel, dtypeMeta, baseDatasetName, gradeColor, gradeTextCls } from '../explorer/utils';
-import type { DatasetMeta, DatasetPreview, ExplorerTabId, DatasetAnalysisResult, DatasetProfile } from '../explorer/types';
+import { fmt, severityHex, severityLabel, dtypeMeta, baseDatasetName, gradeColor, gradeTextCls, exportRowsToCsv, stripExtension } from '../explorer/utils';
+import type { DatasetMeta, ExplorerTabId, DatasetAnalysisResult, DatasetProfile } from '../explorer/types';
 import { OverviewTab } from '../explorer/tabs/OverviewTab';
 import { PreviewGrid } from '../explorer/components/PreviewGrid';
 import { SchemaTab } from '../explorer/tabs/SchemaTab';
@@ -48,6 +49,8 @@ const SECONDARY_TABS: { id: ExplorerTabId; label: string; icon: LucideIcon }[] =
 
 const ANALYSIS_TABS: ExplorerTabId[] = ['overview', 'schema', 'statistics', 'distribution', 'correlation', 'quality', 'insights'];
 const PROFILE_TABS: ExplorerTabId[] = ['overview', 'schema', 'statistics', 'distribution', 'quality'];
+
+const focusRing = 'focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/60';
 
 export default function ExplorerPage() {
   const navigate = useNavigate();
@@ -101,6 +104,11 @@ export default function ExplorerPage() {
     } catch (err) { console.error('Download failed:', err); }
   }
 
+  function handleExportPreview() {
+    if (!pagePreview.data) return;
+    exportRowsToCsv(pagePreview.data.rows, `${stripExtension(selectedDataset)}-preview.csv`);
+  }
+
   function renderTab() {
     if (!currentDataset) return null;
     const common = {
@@ -143,7 +151,7 @@ export default function ExplorerPage() {
   const pending = !blocked && (profilePending || analysisPending);
 
   return (
-    <PageContainer maxWidth="full">
+    <PageContainer maxWidth="full" className="px-6 xl:px-8 py-8">
       <input
         ref={fileInputRef}
         type="file"
@@ -160,8 +168,10 @@ export default function ExplorerPage() {
         dataset={currentDataset || null}
         uploading={uploading}
         onUploadClick={() => fileInputRef.current?.click()}
-        onRefresh={() => refetchDatasets()}
-        onExport={handleExport}
+        onRefresh={() => { refetchDatasets(); }}
+        onExportDataset={handleExport}
+        onExportPreview={handleExportPreview}
+        canExportPreview={!!pagePreview.data?.rows?.length}
         onOpenSQL={() => navigate(`/app/sql${selectedDataset ? `?dataset=${encodeURIComponent(selectedDataset)}` : ''}`)}
       />
 
@@ -177,56 +187,55 @@ export default function ExplorerPage() {
           onRetry={() => refetchDatasets()}
         />
       ) : datasetsLoading && !currentDataset ? (
-        <div className="flex items-center justify-center h-64 rounded-2xl border border-white/[0.06] bg-card">
-          <LoadingSpinner size="lg" />
-        </div>
+        <PageSkeleton />
       ) : datasetsError && !currentDataset ? (
         <ErrorState
           title="Unable to load datasets"
-          message="Data unavailable. Unable to connect to the backend — check your connection and try again."
+          message="We couldn't load your datasets right now. Check your connection and try again."
           onRetry={() => refetchDatasets()}
         />
       ) : !currentDataset ? (
         <ErrorState
-          title={`Dataset "${selectedDataset}" not found`}
-          message="It may have been removed. Pick another dataset from the library."
+          title="Dataset not found"
+          message={`We couldn't find " ${selectedDataset} ". It may have been removed — pick another dataset from the library.`}
           onRetry={() => refetchDatasets()}
         />
       ) : (
         <>
-          <DatasetSelectorCard
+          <DatasetSummaryBar
             dataset={currentDataset}
             datasets={datasets || []}
+            analysis={analysis.data}
+            analysisPending={!analysis.data && analysis.isFetching}
             onSelect={handleSelectDataset}
             onBack={() => handleSelectDataset('')}
-            onExport={handleExport}
-            onOpenSQL={() => navigate(`/app/sql?dataset=${encodeURIComponent(currentDataset.name)}`)}
           />
 
-          <SummaryCards dataset={currentDataset} analysis={analysis.data} />
+          <KpiGrid
+            dataset={currentDataset}
+            analysis={analysis.data}
+            analysisPending={!analysis.data && analysis.isFetching}
+            analysisError={analysis.isError && !analysis.data}
+          />
 
           <ExplorerTabBar activeTab={activeTab} onSelect={(t) => setActiveTab(t)} />
 
-          <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_340px] gap-6 items-start">
+          <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] gap-8 items-start">
             <main className="min-w-0">
               {blocked ? (
                 <ErrorState
                   title={profileBlocked ? 'Profile unavailable' : 'Analysis unavailable'}
-                  message={profileBlocked
-                    ? 'Unable to load column profiles. Data unavailable — check your connection and try again.'
-                    : 'Unable to load analysis results. Data unavailable — check your connection and try again.'}
+                  message="We couldn't load this dataset analysis right now. Check your connection and try again."
                   onRetry={profileBlocked ? profile.refetch : analysis.refetch}
                 />
               ) : pending ? (
-                <div className="flex items-center justify-center h-72 rounded-2xl border border-white/[0.06] bg-card">
-                  <LoadingSpinner size="lg" />
-                </div>
+                <LoadingPanel rows={8} />
               ) : (
                 renderTab()
               )}
             </main>
 
-            <aside className="space-y-4 xl:sticky xl:top-6 xl:self-start">
+            <aside className="space-y-6 lg:sticky lg:top-8 lg:self-start">
               <DataQualityCard
                 analysis={analysis.data}
                 loading={!analysis.data && analysis.isFetching}
@@ -236,6 +245,7 @@ export default function ExplorerPage() {
               <ColumnSummaryCard
                 dataset={currentDataset}
                 profile={profile.data}
+                analysis={analysis.data}
                 loading={!profile.data && profile.isFetching}
                 error={profile.isError && !profile.data}
                 onRetry={profile.refetch}
@@ -244,29 +254,6 @@ export default function ExplorerPage() {
               <QuickActionsCard dataset={currentDataset} onQuickAction={(to) => navigate(to)} />
             </aside>
           </div>
-
-          {activeTab === 'preview' && (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mt-6">
-              <DataPreviewCard
-                preview={pagePreview.data}
-                loading={!pagePreview.data && pagePreview.isFetching}
-                error={pagePreview.isError && !pagePreview.data}
-                onRetry={pagePreview.refetch}
-              />
-              <DistributionPreviewCard
-                analysis={analysis.data}
-                loading={!analysis.data && analysis.isFetching}
-                error={analysis.isError && !analysis.data}
-                onRetry={analysis.refetch}
-              />
-              <StatisticsPreviewCard
-                profile={profile.data}
-                loading={!profile.data && profile.isFetching}
-                error={profile.isError && !profile.data}
-                onRetry={profile.refetch}
-              />
-            </div>
-          )}
         </>
       )}
 
@@ -291,236 +278,291 @@ export default function ExplorerPage() {
 /* ---------------------------- Header ---------------------------- */
 
 function ExplorerHeader({
-  dataset, uploading, onUploadClick, onRefresh, onExport, onOpenSQL,
+  dataset, uploading, onUploadClick, onRefresh, onExportDataset, onExportPreview, canExportPreview, onOpenSQL,
 }: {
   dataset: DatasetMeta | null;
   uploading: boolean;
   onUploadClick: () => void;
   onRefresh: () => void;
-  onExport: () => void;
+  onExportDataset: () => void;
+  onExportPreview: () => void;
+  canExportPreview: boolean;
   onOpenSQL: () => void;
 }) {
   return (
-    <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
+    <header className="flex flex-wrap items-start justify-between gap-5 mb-8">
       <div>
-        <div className="flex items-center gap-2 text-xs text-zinc-500 mb-1">
-          <span className="text-zinc-400 hover:text-zinc-200 transition-colors">Data</span>
-          <ChevronRight className="w-3 h-3" />
-          <span className="text-zinc-400 hover:text-zinc-200 transition-colors">Data Explorer</span>
+        <nav aria-label="Breadcrumb" className="flex items-center gap-2 text-[13px] text-zinc-500 mb-1.5">
+          <span className="text-zinc-500">Data</span>
+          <ChevronRight className="w-3.5 h-3.5" />
+          <span className="text-zinc-400">Data Explorer</span>
           {dataset && (
             <>
-              <ChevronRight className="w-3 h-3" />
-              <span className="text-cyan-300 font-medium font-mono truncate max-w-[260px]">{dataset.name}</span>
+              <ChevronRight className="w-3.5 h-3.5" />
+              <span className="text-blue-300 font-medium font-mono truncate max-w-[260px]">{dataset.name}</span>
             </>
           )}
-        </div>
-        <h1 className="text-2xl font-bold text-zinc-100 tracking-tight">Data Explorer</h1>
-        <p className="text-sm text-zinc-400 mt-1">
+        </nav>
+        <h1 className="text-3xl font-bold text-zinc-100 tracking-tight">Data Explorer</h1>
+        <p className="text-sm text-zinc-400 mt-1.5">
           {dataset
             ? `Inspecting ${dataset.rows?.toLocaleString() ?? '…'} rows across ${dataset.columns?.length ?? '…'} columns`
             : 'Browse, analyze, and prepare your datasets for modeling'}
         </p>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2.5">
         <button
           onClick={onUploadClick}
           disabled={uploading}
-          className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-cyan-500 to-teal-500 px-4 py-2.5 text-sm font-semibold text-black shadow-md shadow-cyan-500/20 hover:from-cyan-400 hover:to-teal-400 transition-all disabled:opacity-50 disabled:pointer-events-none"
+          className={cn(
+            'inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-500 transition-colors disabled:opacity-50 disabled:pointer-events-none',
+            focusRing,
+          )}
         >
           {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
           {uploading ? 'Uploading…' : 'Upload Data'}
         </button>
         <button
           onClick={onRefresh}
-          className="inline-flex items-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.02] px-4 py-2.5 text-sm font-medium text-zinc-300 hover:border-cyan-400/40 hover:text-zinc-100 transition-colors"
+          className={cn('inline-flex items-center gap-2 rounded-lg border border-white/[0.08] bg-white/[0.02] px-3.5 py-2 text-sm font-medium text-zinc-300 hover:text-zinc-100 hover:border-white/[0.16] transition-colors', focusRing)}
         >
           <RefreshCw className="w-4 h-4" /> Refresh
         </button>
-        <button
-          onClick={onExport}
-          disabled={!dataset}
-          className="inline-flex items-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.02] px-4 py-2.5 text-sm font-medium text-zinc-300 hover:border-cyan-400/40 hover:text-zinc-100 transition-colors disabled:opacity-40 disabled:pointer-events-none"
-        >
-          <Download className="w-4 h-4" /> Export
-        </button>
+
+        <details className="relative">
+          <summary className={cn(
+            'inline-flex items-center gap-2 rounded-lg border border-white/[0.08] bg-white/[0.02] px-3.5 py-2 text-sm font-medium text-zinc-300 hover:text-zinc-100 hover:border-white/[0.16] cursor-pointer list-none',
+            focusRing,
+          )}>
+            <Download className="w-4 h-4" /> Export <ChevronDown className="w-3.5 h-3.5" />
+          </summary>
+          <div className="absolute right-0 top-full mt-1.5 w-64 rounded-lg border border-white/[0.10] bg-[#101014] shadow-lg z-40 p-1.5">
+            <button
+              onClick={onExportDataset}
+              disabled={!dataset}
+              className="w-full rounded-md px-3 py-2 text-left text-[13px] text-zinc-300 hover:bg-white/[0.05] disabled:opacity-40 disabled:pointer-events-none"
+            >
+              Download dataset file
+            </button>
+            <button
+              onClick={onExportPreview}
+              disabled={!canExportPreview}
+              className="w-full rounded-md px-3 py-2 text-left text-[13px] text-zinc-300 hover:bg-white/[0.05] disabled:opacity-40 disabled:pointer-events-none"
+            >
+              Export first 50 rows (CSV)
+            </button>
+          </div>
+        </details>
+
         <button
           onClick={onOpenSQL}
-          className="inline-flex items-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.02] px-4 py-2.5 text-sm font-medium text-zinc-300 hover:border-cyan-400/40 hover:text-zinc-100 transition-colors"
+          className={cn('inline-flex items-center gap-2 rounded-lg border border-white/[0.08] bg-white/[0.02] px-3.5 py-2 text-sm font-medium text-zinc-300 hover:text-zinc-100 hover:border-white/[0.16] transition-colors', focusRing)}
         >
           <SquareTerminal className="w-4 h-4" /> SQL Studio
         </button>
       </div>
-    </div>
+    </header>
   );
 }
 
-/* ---------------------------- Dataset selector card ---------------------------- */
+/* ---------------------------- Dataset summary bar ---------------------------- */
 
-function DatasetSelectorCard({
-  dataset, datasets, onSelect, onBack, onExport, onOpenSQL,
+function DatasetSummaryBar({
+  dataset, datasets, analysis, analysisPending, onSelect, onBack,
 }: {
   dataset: DatasetMeta;
   datasets: DatasetMeta[];
+  analysis?: DatasetAnalysisResult | null;
+  analysisPending: boolean;
   onSelect: (name: string) => void;
   onBack: () => void;
-  onExport: () => void;
-  onOpenSQL: () => void;
 }) {
   const ext = (dataset.filename || dataset.name).match(/\.(\w+)$/)?.[1]?.toUpperCase() || 'DATA';
-  const numeric = Object.values(dataset.dtypes || {}).filter((t) => /int|float|number/.test(t.toLowerCase())).length;
-
+  const qs = analysis?.quality_score;
   return (
-    <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-br from-white/[0.03] to-transparent p-4 mb-6 hover:border-cyan-400/20 transition-colors">
-      <div className="flex flex-wrap items-center gap-3">
+    <section aria-label="Dataset summary" className="mb-8 rounded-xl border border-white/[0.08] bg-card px-5 py-4">
+      <div className="flex flex-wrap items-center gap-x-7 gap-y-3">
         <button
           onClick={onBack}
-          title="Back to library"
-          className="w-9 h-9 rounded-xl border border-white/[0.08] bg-white/[0.02] flex items-center justify-center text-zinc-400 hover:text-cyan-300 hover:border-cyan-400/40 transition-colors shrink-0"
+          aria-label="Back to library"
+          className={cn('w-9 h-9 rounded-lg border border-white/[0.08] flex items-center justify-center text-zinc-400 hover:text-zinc-100 hover:border-white/[0.16] transition-colors shrink-0', focusRing)}
         >
           <ArrowLeft className="w-4 h-4" />
         </button>
 
-        <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-cyan-500/25 to-teal-500/25 text-cyan-300 flex items-center justify-center shrink-0">
+        <div className="w-10 h-10 rounded-lg bg-blue-500/10 text-blue-400 flex items-center justify-center shrink-0">
           <FileSpreadsheet className="w-5 h-5" />
         </div>
 
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
             <h2 className="font-mono font-semibold text-lg text-zinc-100 truncate">{dataset.name}</h2>
             <StatusBadge status={dataset.status} />
-            <span className="rounded-full bg-white/[0.06] border border-white/10 px-2 py-0.5 text-[10px] font-mono text-zinc-400">v{dataset.version ?? 1}</span>
-            <span className="rounded-full bg-cyan-500/10 border border-cyan-500/20 px-2 py-0.5 text-[10px] font-mono text-cyan-300">{ext}</span>
+            <span className="rounded-full bg-white/[0.05] border border-white/10 px-2 py-0.5 text-[10px] font-mono text-zinc-500">v{dataset.version ?? 1}</span>
+            <span className="rounded-full bg-white/[0.05] border border-white/10 px-2 py-0.5 text-[10px] font-mono text-zinc-500">{ext}</span>
           </div>
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1 text-[11px] text-zinc-500">
-            <span className="inline-flex items-center gap-1"><Rows3 className="w-3 h-3" /> {dataset.rows.toLocaleString()} rows</span>
-            <span className="inline-flex items-center gap-1"><Columns3 className="w-3 h-3" /> {dataset.columns.length} columns</span>
-            <span className="inline-flex items-center gap-1"><Database className="w-3 h-3" /> {fmt.bytes(dataset.size_kb)}</span>
-            <span className="inline-flex items-center gap-1"><Clock className="w-3 h-3" /> Updated {fmt.dateTime(dataset.uploaded_at)}</span>
-            <span className="inline-flex items-center gap-1"><Tag className="w-3 h-3" /> {dataset.source || 'upload'}</span>
-            {numeric > 0 && <span className="inline-flex items-center gap-1"><BarChart3 className="w-3 h-3" /> {numeric} numeric</span>}
+          <div className="mt-1.5 flex items-center gap-x-5 gap-y-1 flex-wrap text-[13px] text-zinc-500">
+            <span><span className="font-semibold text-zinc-300">{dataset.rows.toLocaleString()}</span> Rows</span>
+            <span className="w-px h-3 bg-white/[0.10]" />
+            <span><span className="font-semibold text-zinc-300">{dataset.columns.length}</span> Columns</span>
+            <span className="w-px h-3 bg-white/[0.10]" />
+            <span>{fmt.bytes(dataset.size_kb)}</span>
+            <span className="w-px h-3 bg-white/[0.10]" />
+            <span>Uploaded {fmt.date(dataset.uploaded_at)}</span>
+            <span className="w-px h-3 bg-white/[0.10]" />
+            <span className="capitalize">{dataset.source || 'upload'}</span>
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <label className="inline-flex items-center gap-1.5 rounded-xl border border-white/[0.08] bg-white/[0.02] px-3 py-2">
-            <Database className="w-3.5 h-3.5 text-zinc-500" />
-            <span className="text-[10px] uppercase tracking-wider text-zinc-600">Switch</span>
+        <div className="ml-auto flex items-center gap-3">
+          {qs ? (
+            <span className="inline-flex items-center gap-2 rounded-lg bg-white/[0.03] border border-white/[0.08] px-3 py-1.5 text-[13px] font-mono">
+              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: gradeColor(qs.grade) }} />
+              <span style={{ color: gradeColor(qs.grade) }}>{Math.round(qs.total)}%</span>
+              <span className="text-zinc-500">Quality · Grade {qs.grade}</span>
+            </span>
+          ) : analysisPending ? (
+            <span className="inline-flex items-center gap-2 rounded-lg bg-white/[0.03] border border-white/[0.08] px-3 py-1.5">
+              <span className="w-16 h-3 rounded bg-white/[0.08] animate-pulse" />
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-2 rounded-lg bg-white/[0.03] border border-white/[0.08] px-3 py-1.5 text-[13px] text-zinc-600">
+              Quality — 
+            </span>
+          )}
+          <label className="inline-flex items-center gap-2">
+            <span className="text-[11px] uppercase tracking-wider text-zinc-600">Switch</span>
             <select
               value={dataset.name}
               onChange={(e) => onSelect(e.target.value)}
-              className="bg-transparent text-xs font-medium text-zinc-200 focus:outline-none cursor-pointer"
+              aria-label="Switch dataset"
+              className={cn('rounded-md bg-white/[0.04] border border-white/[0.08] px-2 py-1.5 text-[13px] font-medium text-zinc-200', focusRing)}
               style={{ colorScheme: 'dark' }}
             >
               {datasets.map((d) => <option key={d.name} value={d.name}>{d.name}</option>)}
             </select>
           </label>
-          <button onClick={onExport} className="inline-flex items-center gap-1.5 rounded-xl border border-white/[0.08] bg-white/[0.02] px-3 py-2 text-xs font-medium text-zinc-300 hover:border-cyan-400/40 hover:text-zinc-100 transition-colors">
-            <Download className="w-3.5 h-3.5" /> Export
-          </button>
-          <button onClick={onOpenSQL} className="inline-flex items-center gap-1.5 rounded-xl border border-white/[0.08] bg-white/[0.02] px-3 py-2 text-xs font-medium text-zinc-300 hover:border-cyan-400/40 hover:text-zinc-100 transition-colors">
-            <SquareTerminal className="w-3.5 h-3.5" /> Query
-          </button>
         </div>
       </div>
+    </section>
+  );
+}
+
+/* ---------------------------- KPI grid ---------------------------- */
+
+function KpiGrid({
+  dataset, analysis, analysisPending, analysisError,
+}: {
+  dataset: DatasetMeta;
+  analysis?: DatasetAnalysisResult | null;
+  analysisPending: boolean;
+  analysisError: boolean;
+}) {
+  const q = analysis;
+  const unused = analysisPending || analysisError;
+  const missingSev = q?.missing?.severity;
+  const dupSev = q?.duplicates?.severity;
+  const outPct = q?.outliers?.mean_pct ?? 0;
+  const outSev = outPct >= 8 ? 'high' : outPct >= 3 ? 'medium' : 'low';
+
+  const skeleton = <div className="h-7 w-16 rounded bg-white/[0.06] animate-pulse" />;
+
+  return (
+    <section aria-label="Key metrics" className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-4 mb-8">
+      <KpiCard icon={Rows3} label="Rows" value={dataset.rows.toLocaleString()} sub={`${fmt.num(dataset.rows)} records`} />
+      <KpiCard icon={Columns3} label="Columns" value={dataset.columns.length.toLocaleString()} sub="features" />
+      <KpiCard icon={Database} label="Size" value={fmt.bytes(dataset.size_kb)} sub="file size" />
+      <KpiCard
+        icon={AlertCircle}
+        label="Missing Values"
+        value={q ? fmt.int(q.missing?.total_missing) : unused ? skeleton : '—'}
+        sub={q ? <span><SevDot sev={missingSev} />{fmt.pct(q.missing?.missing_pct)} of cells</span> : undefined}
+      />
+      <KpiCard
+        icon={Copy}
+        label="Duplicates"
+        value={q ? fmt.int(q.duplicates?.count) : unused ? skeleton : '—'}
+        sub={q ? <span><SevDot sev={dupSev} />{fmt.pct(q.duplicates?.pct)} of rows</span> : undefined}
+      />
+      <KpiCard
+        icon={Gauge}
+        label="Outliers"
+        value={q ? fmt.int(q.outliers?.total_outliers) : unused ? skeleton : '—'}
+        sub={q ? <span><SevDot sev={outSev} />{fmt.pct(outPct)} avg per column</span> : undefined}
+      />
+      <KpiCard
+        icon={ShieldCheck}
+        label="Quality Score"
+        value={q?.quality_score ? (
+          <span style={{ color: gradeColor(q.quality_score.grade) }}>{Math.round(q.quality_score.total)}%</span>
+        ) : unused ? skeleton : '—'}
+        sub={q?.quality_score ? <span className={gradeTextCls(q.quality_score.grade)}>Grade {q.quality_score.grade}</span> : undefined}
+      />
+    </section>
+  );
+}
+
+function KpiCard({ icon: Icon, label, value, sub }: { icon: LucideIcon; label: string; value: ReactNode; sub?: ReactNode }) {
+  return (
+    <div className="rounded-xl border border-white/[0.06] bg-white/[0.01] px-4 py-4">
+      <div className="flex items-center gap-2 mb-3">
+        <Icon className="w-4 h-4 text-zinc-500" />
+        <span className="text-xs font-medium text-zinc-500">{label}</span>
+      </div>
+      <div className="text-2xl font-semibold text-zinc-100 tabular-nums tracking-tight leading-none">{value}</div>
+      {sub && <div className="mt-2 text-xs text-zinc-600">{sub}</div>}
     </div>
   );
 }
 
-/* ---------------------------- Summary metrics ---------------------------- */
-
-function SummaryCards({ dataset, analysis }: { dataset: DatasetMeta; analysis?: DatasetAnalysisResult | null }) {
-  const qs = analysis?.quality_score;
-  const cards = [
-    {
-      label: 'Rows', value: fmt.int(dataset.rows), sub: 'total records', icon: Rows3,
-      tile: 'from-cyan-500/20 to-cyan-500/5 text-cyan-300', ring: 'hover:border-cyan-400/30',
-    },
-    {
-      label: 'Columns', value: fmt.int(dataset.columns.length), sub: 'features', icon: Columns3,
-      tile: 'from-violet-500/20 to-violet-500/5 text-violet-300', ring: 'hover:border-violet-400/30',
-    },
-    {
-      label: 'Size', value: fmt.bytes(dataset.size_kb), sub: 'on disk', icon: Database,
-      tile: 'from-teal-500/20 to-teal-500/5 text-teal-300', ring: 'hover:border-teal-400/30',
-    },
-  ];
-  return (
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-      {cards.map((c) => (
-        <div key={c.label} className={cn('rounded-2xl border border-white/[0.08] bg-card p-4 transition-all hover:-translate-y-0.5', c.ring)}>
-          <div className={cn('w-9 h-9 rounded-xl bg-gradient-to-br flex items-center justify-center mb-3', c.tile)}>
-            <c.icon className="w-4 h-4" />
-          </div>
-          <div className="text-xl font-bold text-zinc-100 font-mono tracking-tight">{c.value}</div>
-          <div className="text-[11px] uppercase tracking-wider text-zinc-500 mt-0.5">{c.label} · {c.sub}</div>
-        </div>
-      ))}
-      <div className="rounded-2xl border border-white/[0.08] bg-card p-4 transition-all hover:-translate-y-0.5 hover:border-fuchsia-400/30">
-        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-fuchsia-500/20 to-fuchsia-500/5 text-fuchsia-300 flex items-center justify-center mb-3">
-          <Sparkles className="w-4 h-4" />
-        </div>
-        {qs ? (
-          <>
-            <div className="flex items-baseline gap-2">
-              <span className="text-xl font-bold font-mono tracking-tight" style={{ color: gradeColor(qs.grade) }}>
-                {Math.round(qs.total)}
-              </span>
-              <span className="text-xs text-zinc-500">/ 100</span>
-            </div>
-            <div className={cn('text-[11px] uppercase tracking-wider mt-0.5 font-semibold', gradeTextCls(qs.grade))}>
-              Quality Score · Grade {qs.grade}
-            </div>
-          </>
-        ) : (
-          <>
-            <div className="text-xl font-bold text-zinc-500 font-mono tracking-tight animate-pulse">—</div>
-            <div className="text-[11px] uppercase tracking-wider text-zinc-600 mt-0.5">Quality Score · pending</div>
-          </>
-        )}
-      </div>
-    </div>
-  );
+function SevDot({ sev }: { sev?: string }) {
+  const hex = severityHex(sev || 'low');
+  return <span className="inline-block w-1.5 h-1.5 rounded-full mr-1 align-middle" style={{ backgroundColor: hex, boxShadow: `0 0 4px ${hex}66` }} />;
 }
 
 /* ---------------------------- Tab bar ---------------------------- */
 
 function ExplorerTabBar({ activeTab, onSelect }: { activeTab: ExplorerTabId; onSelect: (t: ExplorerTabId) => void }) {
   return (
-    <div className="flex items-center gap-1 overflow-x-auto pb-1 -mx-1 px-1 mb-5">
-      {PRIMARY_TABS.map((t) => (
-        <button
-          key={t.id}
-          onClick={() => onSelect(t.id)}
-          className={cn(
-            'inline-flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-medium transition-all',
-            activeTab === t.id
-              ? 'bg-gradient-to-r from-cyan-500/20 to-teal-500/20 text-cyan-300 border border-cyan-400/40 shadow-sm shadow-cyan-500/10'
-              : 'text-zinc-400 border border-transparent hover:text-zinc-100 hover:bg-white/[0.04]',
-          )}
-        >
-          <t.icon className="w-3.5 h-3.5" />
-          {t.label}
-        </button>
-      ))}
-      <div className="h-5 w-px bg-white/[0.08] mx-2 shrink-0" />
-      <span className="shrink-0 text-[10px] uppercase tracking-wider text-zinc-600 mr-1">Advanced</span>
-      {SECONDARY_TABS.map((t) => (
-        <button
-          key={t.id}
-          onClick={() => onSelect(t.id)}
-          className={cn(
-            'inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-all',
-            activeTab === t.id
-              ? 'bg-gradient-to-r from-cyan-500/20 to-teal-500/20 text-cyan-300 border border-cyan-400/40 shadow-sm shadow-cyan-500/10'
-              : 'text-zinc-500 border border-transparent hover:text-zinc-100 hover:bg-white/[0.04]',
-          )}
-        >
-          <t.icon className="w-3.5 h-3.5" />
-          {t.label}
-        </button>
-      ))}
-    </div>
+    <nav aria-label="Analytics tabs" className="mb-8 -mx-1 overflow-x-auto">
+      <div className="flex items-center gap-6 border-b border-white/[0.08] px-1 min-w-max">
+        {PRIMARY_TABS.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => onSelect(t.id)}
+            aria-current={activeTab === t.id ? 'page' : undefined}
+            className={cn(
+              'inline-flex items-center gap-2 pb-3 -mb-px text-sm font-medium border-b-2 transition-colors',
+              activeTab === t.id ? 'border-blue-400 text-zinc-100' : 'border-transparent text-zinc-500 hover:text-zinc-300',
+              focusRing,
+            )}
+          >
+            <t.icon className="w-4 h-4" />
+            {t.label}
+          </button>
+        ))}
+        <span className="w-px h-4 bg-white/[0.10]" />
+        <span className="text-[11px] uppercase tracking-widest text-zinc-600">Advanced</span>
+        {SECONDARY_TABS.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => onSelect(t.id)}
+            aria-current={activeTab === t.id ? 'page' : undefined}
+            className={cn(
+              'inline-flex items-center gap-1.5 pb-3 -mb-px text-[13px] font-medium border-b-2 transition-colors',
+              activeTab === t.id ? 'border-blue-400 text-zinc-100' : 'border-transparent text-zinc-500 hover:text-zinc-300',
+              focusRing,
+            )}
+          >
+            <t.icon className="w-3.5 h-3.5" />
+            {t.label}
+          </button>
+        ))}
+      </div>
+    </nav>
   );
 }
 
@@ -535,81 +577,93 @@ function DataQualityCard({
   onRetry: () => void;
 }) {
   const qs = analysis?.quality_score;
+  const outPct = analysis?.outliers?.mean_pct ?? 0;
+  const outSev = outPct >= 8 ? 'high' : outPct >= 3 ? 'medium' : 'low';
+
   return (
-    <div className="rounded-2xl border border-white/[0.08] bg-card p-4">
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Data Quality</h3>
-        {qs && <span className={cn('text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-md bg-white/[0.04]', gradeTextCls(qs.grade))}>{qs.grade}</span>}
+    <section aria-label="Data quality" className="rounded-xl border border-white/[0.08] bg-card p-5">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-base font-semibold text-zinc-200">Data Quality</h3>
+        {qs && (
+          <span className={cn('rounded-md bg-white/[0.04] px-2 py-0.5 text-xs font-mono font-semibold', gradeTextCls(qs.grade))}>
+            {qs.grade}
+          </span>
+        )}
       </div>
 
       {error ? (
-        <div className="py-4 text-center">
-          <p className="text-xs text-red-400">Unable to load quality metrics.</p>
-          <button onClick={onRetry} className="mt-2 text-xs text-cyan-300 hover:underline">Try again</button>
+        <div className="py-6 text-center">
+          <p className="text-sm text-zinc-500">Unable to load quality metrics.</p>
+          <button onClick={onRetry} className={cn('mt-2 text-[13px] text-blue-300 hover:text-blue-200 underline underline-offset-2', focusRing)}>
+            Retry
+          </button>
         </div>
       ) : loading || !analysis ? (
-        <div className="flex items-center justify-center py-8">
-          {loading ? <Loader2 className="w-5 h-5 animate-spin text-zinc-600" /> : <p className="text-xs text-zinc-500">Run the analysis to compute a quality score.</p>}
+        <div className="space-y-3 animate-pulse">
+          <div className="flex justify-center py-2"><div className="w-28 h-28 rounded-full bg-white/[0.06]" /></div>
+          {[0, 1, 2, 3].map((i) => <div key={i} className="h-4 rounded bg-white/[0.06]" style={{ width: `${90 - i * 12}%` }} />)}
         </div>
       ) : qs ? (
         <>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-5">
             <QualityGauge
               score={qs.total}
               grade={qs.grade}
-              size={120}
-              stroke={10}
+              size={128}
+              stroke={11}
               centerNode={
                 <div className="flex flex-col items-center">
                   <span className="text-3xl font-bold tracking-tight" style={{ color: gradeColor(qs.grade) }}>{Math.round(qs.total)}</span>
-                  <span className="text-[9px] uppercase tracking-widest text-zinc-500 mt-0.5">Score</span>
-                  <span className="text-xs font-bold mt-0.5" style={{ color: gradeColor(qs.grade) }}>Grade {qs.grade}</span>
+                  <span className="text-[9px] uppercase tracking-widest text-zinc-500 mt-1">Score</span>
+                  <span className="text-xs font-semibold mt-0.5" style={{ color: gradeColor(qs.grade) }}>{qs.grade}</span>
                 </div>
               }
             />
-            <div className="flex-1 space-y-2.5">
-              <MetricRow sev={analysis.missing?.severity} label="Missing cells" value={`${fmt.int(analysis.missing?.total_missing)} (${fmt.pct(analysis.missing?.missing_pct)})`} />
-              <MetricRow sev={analysis.duplicates?.severity} label="Duplicate rows" value={`${fmt.int(analysis.duplicates?.count)} (${fmt.pct(analysis.duplicates?.pct)})`} />
-              {(() => {
-                const pct = analysis.outliers?.mean_pct ?? 0;
-                const sev = pct >= 8 ? 'high' : pct >= 3 ? 'medium' : 'low';
-                return <MetricRow sev={sev} label="Outliers" value={`${fmt.int(analysis.outliers?.total_outliers)} (${fmt.pct(pct)})`} />;
-              })()}
+            <div className="flex-1 min-w-0 space-y-2.5">
+              <MetricRow sev={analysis.missing?.severity} label="Missing" value={`${fmt.int(analysis.missing?.total_missing)} · ${fmt.pct(analysis.missing?.missing_pct)}`} />
+              <MetricRow sev={analysis.duplicates?.severity} label="Duplicates" value={`${fmt.int(analysis.duplicates?.count)} · ${fmt.pct(analysis.duplicates?.pct)}`} />
+              <MetricRow sev={outSev} label="Outliers" value={`${fmt.int(analysis.outliers?.total_outliers)} · ${fmt.pct(outPct)} avg`} />
+              <MetricRow
+                sev={analysis.class_imbalance?.detected ? analysis.class_imbalance.severity : undefined}
+                label="Class balance"
+                value={analysis.class_imbalance?.detected ? severityLabel(analysis.class_imbalance.severity || '') : 'Balanced'}
+              />
             </div>
           </div>
 
-          {Object.keys(qs.components || {}).length > 0 && (
-            <div className="mt-4 pt-3 border-t border-white/[0.06] space-y-2">
-              {Object.entries(qs.components).slice(0, 4).map(([k, v]) => (
-                <div key={k} className="flex items-center gap-2 text-[10px]">
-                  <span className="w-20 truncate text-zinc-500 capitalize">{k.replace(/_/g, ' ')}</span>
-                  <div className="flex-1 h-1 rounded-full bg-white/[0.06] overflow-hidden">
-                    <div className="h-full rounded-full bg-gradient-to-r from-cyan-400 to-teal-400" style={{ width: `${Math.min(100, Math.max(0, v))}%` }} />
-                  </div>
-                  <span className="font-mono text-zinc-400 w-8 text-right">{Math.round(v)}</span>
+          <div className="mt-5 pt-4 border-t border-white/[0.06] space-y-2.5">
+            {Object.entries(qs.components || {}).map(([k, v]) => (
+              <div key={k} className="flex items-center gap-2.5 text-xs">
+                <span className="w-28 truncate text-zinc-500 capitalize">{k.replace(/_/g, ' ')}</span>
+                <div className="flex-1 h-1 rounded-full bg-white/[0.06] overflow-hidden">
+                  <div
+                    className={cn('h-full rounded-full', v >= 90 ? 'bg-emerald-400' : v >= 75 ? 'bg-teal-400' : v >= 65 ? 'bg-amber-400' : 'bg-red-400')}
+                    style={{ width: `${Math.min(100, Math.max(0, v))}%` }}
+                  />
                 </div>
-              ))}
-            </div>
-          )}
+                <span className="font-mono text-zinc-400 w-9 text-right">{Math.round(v)}</span>
+              </div>
+            ))}
+          </div>
 
           {analysis.class_imbalance?.detected && (
-            <div className="mt-3 rounded-lg border border-amber-500/20 bg-amber-500/[0.06] px-3 py-2 text-[10px] text-amber-300 flex items-center gap-2">
-              <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-              <span className="min-w-0">{severityLabel(analysis.class_imbalance.severity || '')} class imbalance on “{analysis.class_imbalance.target}”</span>
+            <div className="mt-4 rounded-lg border border-amber-500/20 bg-amber-500/[0.06] px-3 py-2 text-xs text-amber-300 flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+              <span className="min-w-0">Class imbalance on “{analysis.class_imbalance.target}”</span>
             </div>
           )}
         </>
       ) : null}
-    </div>
+    </section>
   );
 }
 
 function MetricRow({ sev, label, value }: { sev?: string; label: string; value: string }) {
   const hex = severityHex(sev || 'low');
   return (
-    <div className="flex items-center justify-between gap-2 text-[11px]">
-      <span className="inline-flex items-center gap-1.5 text-zinc-500 min-w-0">
-        <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: hex, boxShadow: `0 0 6px ${hex}` }} />
+    <div className="flex items-center justify-between gap-2 text-[13px]">
+      <span className="inline-flex items-center gap-1.5 text-zinc-400 min-w-0">
+        <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: hex }} />
         <span className="truncate">{label}</span>
       </span>
       <span className="font-mono text-zinc-300 shrink-0">{value}</span>
@@ -618,108 +672,127 @@ function MetricRow({ sev, label, value }: { sev?: string; label: string; value: 
 }
 
 function ColumnSummaryCard({
-  dataset, profile, loading, error, onRetry, onInspect,
+  dataset, profile, analysis, loading, error, onRetry, onInspect,
 }: {
   dataset: DatasetMeta;
   profile?: DatasetProfile | null;
+  analysis?: DatasetAnalysisResult | null;
   loading: boolean;
   error: boolean;
   onRetry: () => void;
   onInspect: (col: string) => void;
 }) {
-  const [colSel, setColSel] = useState<string>('');
+  const [colSel, setColSel] = useState('');
   const cols = dataset.columns || [];
-  const col = cols.includes(colSel) ? colSel : (cols[0] ?? '');
-  const cp = profile?.column_details?.find((d) => d.name === col);
-  const dt = dtypeMeta(cp?.dtype ?? profile?.dtypes?.[col], col);
+  const cp = colSel ? profile?.column_details?.find((d) => d.name === colSel) : undefined;
+  const hist = colSel ? analysis?.distributions?.columns?.find((h) => h.column === colSel) : undefined;
+  const dt = cp ? dtypeMeta(cp.dtype ?? profile?.dtypes?.[colSel], colSel) : undefined;
   const topValues = cp?.top_values ? Object.entries(cp.top_values).sort((a, b) => b[1] - a[1]).slice(0, 3) : [];
-  const numeric = dt.kind === 'numeric' && cp?.mean != null;
   const maxTop = Math.max(1, ...topValues.map(([, c]) => c));
+  const numeric = dt?.kind === 'numeric' && cp?.mean != null;
 
   return (
-    <div className="rounded-2xl border border-white/[0.08] bg-card p-4">
-      <div className="flex items-center justify-between gap-2 mb-3">
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Column Summary</h3>
-        <label className="inline-flex items-center gap-1.5">
-          <span className="text-[10px] text-zinc-600 uppercase tracking-wider">Column</span>
-          <select
-            value={col}
-            onChange={(e) => setColSel(e.target.value)}
-            className="rounded-lg bg-white/[0.04] border border-white/[0.08] px-2 py-1 text-xs text-zinc-200 focus:outline-none focus:border-cyan-400/40 max-w-[140px]"
-            style={{ colorScheme: 'dark' }}
-          >
-            {cols.map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
-        </label>
+    <section aria-label="Column summary" className="rounded-xl border border-white/[0.08] bg-card p-5">
+      <div className="flex items-center justify-between gap-2 mb-4">
+        <h3 className="text-base font-semibold text-zinc-200">Column Summary</h3>
+        <select
+          value={colSel}
+          onChange={(e) => setColSel(e.target.value)}
+          aria-label="Select a column"
+          className={cn('rounded-md bg-white/[0.04] border border-white/[0.08] px-2 py-1.5 text-[13px] text-zinc-200 max-w-[180px]', focusRing)}
+          style={{ colorScheme: 'dark' }}
+        >
+          <option value="">Select a column…</option>
+          {cols.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
       </div>
 
       {error ? (
-        <div className="py-4 text-center">
-          <p className="text-xs text-red-400">Unable to load column profile.</p>
-          <button onClick={onRetry} className="mt-2 text-xs text-cyan-300 hover:underline">Try again</button>
+        <div className="py-6 text-center">
+          <p className="text-sm text-zinc-500">Unable to load column statistics.</p>
+          <button onClick={onRetry} className={cn('mt-2 text-[13px] text-blue-300 hover:text-blue-200 underline underline-offset-2', focusRing)}>
+            Retry
+          </button>
         </div>
+      ) : !colSel ? (
+        <p className="py-6 text-center text-sm text-zinc-500">Select a column to view detailed statistics.</p>
       ) : loading || !profile ? (
-        <div className="flex items-center justify-center py-8">
-          {loading ? <Loader2 className="w-5 h-5 animate-spin text-zinc-600" /> : <p className="text-xs text-zinc-500">Profiling this column…</p>}
+        <div className="space-y-3 animate-pulse">
+          {[0, 1, 2, 3, 4].map((i) => <div key={i} className="h-4 rounded bg-white/[0.06]" style={{ width: `${90 - i * 10}%` }} />)}
         </div>
-      ) : (
+      ) : cp && dt ? (
         <>
           <div className="flex items-center gap-2 flex-wrap">
-            <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium', dt.cls)}>
+            <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium', dt.cls)}>
               <dt.Icon className="w-3 h-3" style={{ color: dt.hex }} /> {dt.label}
             </span>
-            {cp && (
-              <>
-                <span className="rounded-full bg-white/[0.05] border border-white/10 px-2 py-0.5 text-[10px] font-mono text-zinc-400">{fmt.int(cp.unique_values)} unique</span>
-                <span className="rounded-full bg-white/[0.05] border border-white/10 px-2 py-0.5 text-[10px] font-mono text-zinc-400">{fmt.int(cp.missing)} missing</span>
-                {cp.outliers != null && <span className="rounded-full bg-white/[0.05] border border-white/10 px-2 py-0.5 text-[10px] font-mono text-zinc-400">{fmt.int(cp.outliers)} outliers</span>}
-              </>
-            )}
+            <span className="rounded-full bg-white/[0.05] border border-white/10 px-2 py-0.5 text-[11px] font-mono text-zinc-500">{fmt.int(cp.unique_values)} unique</span>
+            <span className="rounded-full bg-white/[0.05] border border-white/10 px-2 py-0.5 text-[11px] font-mono text-zinc-500">{fmt.int(cp.missing)} missing</span>
           </div>
 
           {topValues.length > 0 && (
-            <div className="mt-3 space-y-1.5">
-              <span className="text-[10px] uppercase tracking-wider text-zinc-600">Top values</span>
+            <div className="mt-4 space-y-2">
+              <span className="text-[11px] uppercase tracking-wider text-zinc-600">Top values</span>
               {topValues.map(([k, c]) => (
-                <div key={k} className="flex items-center gap-2">
-                  <span className="flex-1 truncate font-mono text-[10px] text-zinc-300">{String(k)}</span>
-                  <div className="w-20 h-1 rounded-full bg-white/[0.06] overflow-hidden">
+                <div key={k} className="flex items-center gap-2.5">
+                  <span className="flex-1 truncate font-mono text-xs text-zinc-400">{String(k)}</span>
+                  <div className="w-24 h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
                     <div className="h-full rounded-full bg-violet-400/70" style={{ width: `${(c / maxTop) * 100}%` }} />
                   </div>
-                  <span className="font-mono text-[10px] text-zinc-500 w-10 text-right">{fmt.num(c)}</span>
+                  <span className="font-mono text-xs text-zinc-500 w-10 text-right">{fmt.num(c)}</span>
                 </div>
               ))}
             </div>
           )}
 
           {numeric && (
-            <div className="mt-3 grid grid-cols-2 gap-2">
+            <div className="mt-4 grid grid-cols-2 gap-2">
               <Stat label="Mean" value={fmt.dec(cp.mean)} />
               <Stat label="Median" value={fmt.dec(cp.median)} />
               <Stat label="Min" value={fmt.dec(cp.min)} />
               <Stat label="Max" value={fmt.dec(cp.max)} />
-              <Stat label="Std" value={fmt.dec(cp.std)} />
+              <Stat label="Std dev" value={fmt.dec(cp.std)} />
               <Stat label="Range" value={fmt.dec((cp.max ?? 0) - (cp.min ?? 0))} />
             </div>
           )}
 
+          {hist?.bins?.length ? (
+            <div className="mt-4">
+              <span className="text-[11px] uppercase tracking-wider text-zinc-600">Distribution</span>
+              <div className="flex items-end gap-[2px] h-14 mt-2" aria-hidden="true">
+                {hist.bins.slice(0, 24).map((b, i) => {
+                  const max = Math.max(1, ...hist.bins);
+                  const step = Math.max(1, Math.round(hist.bins.length / 24));
+                  const show = i % step === 0;
+                  return show ? (
+                    <span key={i} className="flex-1 rounded-sm bg-blue-400/60"
+                      style={{ height: `${Math.max(10, (b / max) * 100)}%`, opacity: 0.35 + 0.65 * (b / max) }} />
+                  ) : null;
+                })}
+              </div>
+            </div>
+          ) : null}
+
           <button
-            onClick={() => onInspect(col)}
-            className="mt-3 w-full rounded-lg border border-cyan-400/30 bg-cyan-500/[0.06] px-3 py-2 text-xs font-medium text-cyan-300 hover:border-cyan-400/50 hover:bg-cyan-500/10 transition-colors"
+            type="button"
+            onClick={() => onInspect(colSel)}
+            className={cn('mt-4 w-full inline-flex items-center justify-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.02] px-3 py-2 text-[13px] font-medium text-zinc-300 hover:text-zinc-100 hover:border-white/[0.16] transition-colors', focusRing)}
           >
-            Inspect “{col}”
+            <Eye className="w-4 h-4" /> Inspect “{colSel}”
           </button>
         </>
+      ) : (
+        <p className="py-6 text-center text-sm text-zinc-500">No statistics available for this column.</p>
       )}
-    </div>
+    </section>
   );
 }
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg bg-white/[0.03] border border-white/[0.05] px-2.5 py-1.5">
-      <div className="text-[9px] uppercase tracking-wider text-zinc-600">{label}</div>
-      <div className="font-mono text-xs text-zinc-200 mt-0.5">{value}</div>
+    <div className="rounded-lg bg-white/[0.03] border border-white/[0.05] px-3 py-2">
+      <div className="text-[10px] uppercase tracking-wider text-zinc-600">{label}</div>
+      <div className="font-mono text-[13px] text-zinc-200 mt-0.5">{value}</div>
     </div>
   );
 }
@@ -732,208 +805,57 @@ function QuickActionsCard({ dataset, onQuickAction }: { dataset: DatasetMeta; on
     { label: 'Train a Model', to: `/app/engine?dataset=${encodeURIComponent(dataset.name)}` },
   ];
   return (
-    <div className="rounded-2xl border border-white/[0.08] bg-card p-4">
-      <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-3">Quick Actions</h3>
-      <div className="space-y-2">
+    <section aria-label="Quick actions" className="rounded-xl border border-white/[0.08] bg-card p-5">
+      <h3 className="text-base font-semibold text-zinc-200 mb-4">Quick Actions</h3>
+      <nav className="space-y-1">
         {actions.map((a) => (
-          <button key={a.label} onClick={() => onQuickAction(a.to)} className="w-full rounded-lg border border-white/[0.08] bg-white/[0.02] px-3 py-2 text-left text-xs text-zinc-300 hover:border-cyan-400/40 hover:text-cyan-200 transition-colors flex items-center justify-between gap-2">
-            {a.label} <Sparkles className="w-3 h-3 text-zinc-600" />
+          <button
+            key={a.label}
+            type="button"
+            onClick={() => onQuickAction(a.to)}
+            className={cn('w-full flex items-center justify-between gap-2 rounded-lg px-3 py-2.5 text-left text-[13px] text-zinc-300 hover:bg-white/[0.03] hover:text-zinc-100 transition-colors', focusRing)}
+          >
+            {a.label}
+            <ChevronRight className="w-4 h-4 text-zinc-600" />
           </button>
+        ))}
+      </nav>
+    </section>
+  );
+}
+
+/* ---------------------------- Loading / skeleton ---------------------------- */
+
+function LoadingPanel({ rows = 6 }: { rows?: number }) {
+  return (
+    <div className="rounded-xl border border-white/[0.08] bg-card p-6 space-y-4 animate-pulse">
+      {Array.from({ length: rows }).map((_, i) => (
+        <div key={i} className="h-4 rounded bg-white/[0.06]" style={{ width: `${100 - (i % 4) * 15}%` }} />
+      ))}
+    </div>
+  );
+}
+
+function PageSkeleton() {
+  return (
+    <div className="animate-pulse space-y-8" aria-busy="true" aria-label="Loading">
+      <div className="space-y-2">
+        <div className="h-4 w-64 rounded bg-white/[0.06]" />
+        <div className="h-7 w-48 rounded bg-white/[0.07]" />
+        <div className="h-4 w-80 rounded bg-white/[0.05]" />
+      </div>
+      <div className="rounded-xl border border-white/[0.08] bg-card px-5 py-4">
+        <div className="h-5 w-2/3 rounded bg-white/[0.06]" />
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-4">
+        {Array.from({ length: 7 }).map((_, i) => <div key={i} className="h-24 rounded-xl border border-white/[0.08] bg-card" />)}
+      </div>
+      <div className="rounded-xl border border-white/[0.08] bg-card p-6 space-y-3">
+        {Array.from({ length: 8 }).map((_, i) => (
+          <div key={i} className="h-4 rounded bg-white/[0.05]" style={{ width: `${100 - (i % 4) * 18}%` }} />
         ))}
       </div>
     </div>
-  );
-}
-
-/* ---------------------------- Bottom strip ---------------------------- */
-
-function CardShell({ title, right, children }: { title: string; right?: ReactNode; children: ReactNode }) {
-  return (
-    <div className="rounded-2xl border border-white/[0.08] bg-card overflow-hidden">
-      <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-white/[0.06]">
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-400">{title}</h3>
-        {right}
-      </div>
-      <div className="p-4">{children}</div>
-    </div>
-  );
-}
-
-function DataPreviewCard({
-  preview, loading, error, onRetry,
-}: {
-  preview?: DatasetPreview | null;
-  loading: boolean;
-  error: boolean;
-  onRetry: () => void;
-}) {
-  const cols = preview?.columns?.slice(0, 6) ?? [];
-  const rows = preview?.rows?.slice(0, 5) ?? [];
-  return (
-    <CardShell
-      title="Data Preview"
-      right={<span className="text-[10px] text-zinc-600 font-mono">{preview ? `${preview.rows.length ?? 0} loaded rows` : ''}</span>}
-    >
-      {error ? (
-        <div className="py-6 text-center">
-          <p className="text-xs text-red-400">Unable to load preview.</p>
-          <button onClick={onRetry} className="mt-2 text-xs text-cyan-300 hover:underline">Try again</button>
-        </div>
-      ) : loading || !preview ? (
-        <div className="flex items-center justify-center py-6">
-          <Loader2 className="w-5 h-5 animate-spin text-zinc-600" />
-        </div>
-      ) : rows.length === 0 ? (
-        <p className="text-xs text-zinc-500 text-center py-6">No rows to preview.</p>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead>
-              <tr>
-                <th className="px-2 py-1.5 text-[9px] uppercase tracking-wider text-zinc-600 font-semibold">#</th>
-                {cols.map((c) => (
-                  <th key={c} className="px-2 py-1.5 text-[9px] uppercase tracking-wider text-zinc-500 font-semibold truncate max-w-[110px]">{c}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r, ri) => (
-                <tr key={ri} className="border-t border-white/[0.04]">
-                  <td className="px-2 py-1.5 font-mono text-[10px] text-zinc-600">{ri + 1}</td>
-                  {cols.map((c) => {
-                    const v = r[c];
-                    return (
-                      <td key={c} className="px-2 py-1.5 font-mono text-[10px] text-zinc-300 max-w-[110px] truncate">
-                        {v == null || v === '' ? <span className="text-zinc-600 italic">NULL</span> : String(v)}
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </CardShell>
-  );
-}
-
-function DistributionPreviewCard({
-  analysis, loading, error, onRetry,
-}: {
-  analysis?: DatasetAnalysisResult | null;
-  loading: boolean;
-  error: boolean;
-  onRetry: () => void;
-}) {
-  const [colSel, setColSel] = useState('');
-  const dists = analysis?.distributions?.columns ?? [];
-  const d = dists.find((x) => x.column === colSel) ?? dists[0];
-  const bins = d?.bins ?? [];
-  const max = Math.max(1, ...bins);
-  const step = Math.max(1, Math.round(bins.length / 24));
-  const bars = bins.filter((_, i) => i % step === 0).slice(0, 24);
-
-  return (
-    <CardShell
-      title="Distribution"
-      right={dists.length > 0 ? (
-        <select
-          value={d?.column ?? ''}
-          onChange={(e) => setColSel(e.target.value)}
-          className="rounded-lg bg-white/[0.04] border border-white/[0.08] px-2 py-1 text-[10px] text-zinc-300 focus:outline-none focus:border-cyan-400/40 max-w-[130px]"
-          style={{ colorScheme: 'dark' }}
-        >
-          {dists.map((x) => <option key={x.column} value={x.column}>{x.column}</option>)}
-        </select>
-      ) : undefined}
-    >
-      {error ? (
-        <div className="py-6 text-center">
-          <p className="text-xs text-red-400">Unable to load distributions.</p>
-          <button onClick={onRetry} className="mt-2 text-xs text-cyan-300 hover:underline">Try again</button>
-        </div>
-      ) : loading || !analysis ? (
-        <div className="flex items-center justify-center py-6"><Loader2 className="w-5 h-5 animate-spin text-zinc-600" /></div>
-      ) : bars.length === 0 ? (
-        <p className="text-xs text-zinc-500 text-center py-6">No numeric distributions to display.</p>
-      ) : (
-        <>
-          <div className="flex items-end gap-[2px] h-16">
-            {bars.map((v, i) => (
-              <span key={i} title={fmt.dec(v)} className="flex-1 rounded-sm bg-gradient-to-t from-cyan-500/80 to-teal-400/60"
-                style={{ height: `${Math.max(8, (v / max) * 100)}%`, opacity: 0.35 + 0.65 * (v / max) }} />
-            ))}
-          </div>
-          <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-[10px]">
-            <span className="text-zinc-500">Mean <span className="font-mono text-zinc-300 float-right">{fmt.dec(d?.mean)}</span></span>
-            <span className="text-zinc-500">Median <span className="font-mono text-zinc-300 float-right">{fmt.dec(d?.median)}</span></span>
-            <span className="text-zinc-500">Std <span className="font-mono text-zinc-300 float-right">{fmt.dec(d?.std)}</span></span>
-            <span className="text-zinc-500">Skew <span className="font-mono text-zinc-300 float-right">{fmt.dec(d?.skewness)}</span></span>
-          </div>
-        </>
-      )}
-    </CardShell>
-  );
-}
-
-function StatisticsPreviewCard({
-  profile, loading, error, onRetry,
-}: {
-  profile?: DatasetProfile | null;
-  loading: boolean;
-  error: boolean;
-  onRetry: () => void;
-}) {
-  const numeric = (profile?.column_details ?? [])
-    .filter((c) => c.mean != null)
-    .slice(0, 5);
-  const categorical = (profile?.column_details ?? [])
-    .filter((c) => c.mean == null)
-    .slice(0, 5);
-
-  return (
-    <CardShell
-      title="Statistics"
-      right={<span className="text-[10px] text-zinc-600 font-mono">{profile ? `${numeric.length} numeric` : ''}</span>}
-    >
-      {error ? (
-        <div className="py-6 text-center">
-          <p className="text-xs text-red-400">Unable to load statistics.</p>
-          <button onClick={onRetry} className="mt-2 text-xs text-cyan-300 hover:underline">Try again</button>
-        </div>
-      ) : loading || !profile ? (
-        <div className="flex items-center justify-center py-6"><Loader2 className="w-5 h-5 animate-spin text-zinc-600" /></div>
-      ) : numeric.length === 0 && categorical.length === 0 ? (
-        <p className="text-xs text-zinc-500 text-center py-6">No statistics available.</p>
-      ) : (
-        <div className="space-y-2">
-          {numeric.map((c) => (
-            <div key={c.name} className="rounded-lg bg-white/[0.03] border border-white/[0.05] px-3 py-2">
-              <div className="flex items-center justify-between gap-2">
-                <span className="font-mono text-[11px] text-zinc-200 truncate">{c.name}</span>
-                <span className="font-mono text-[11px] text-cyan-300">{fmt.dec(c.mean)}</span>
-              </div>
-              <div className="text-[9px] text-zinc-600 mt-0.5">min {fmt.dec(c.min)} · med {fmt.dec(c.median)} · max {fmt.dec(c.max)}</div>
-            </div>
-          ))}
-          {numeric.length === 0 && categorical.map((c) => (
-            <div key={c.name} className="rounded-lg bg-white/[0.03] border border-white/[0.05] px-3 py-2">
-              <div className="flex items-center justify-between gap-2">
-                <span className="font-mono text-[11px] text-zinc-200 truncate">{c.name}</span>
-                <span className="font-mono text-[11px] text-violet-300">{fmt.num(c.unique_values ?? 0)} unique</span>
-              </div>
-              <div className="text-[9px] text-zinc-600 mt-0.5">
-                {(() => {
-                  const ent = c.top_values ? Object.entries(c.top_values)[0] : undefined;
-                  return ent ? `top “${String(ent[0])}” · ${fmt.num(ent[1] ?? 0)}` : 'no top values';
-                })()}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </CardShell>
   );
 }
 
@@ -962,7 +884,7 @@ function DatasetLibrary({
   }, [datasets, query]);
 
   return (
-    <div className="rounded-2xl border border-white/[0.08] bg-card overflow-hidden">
+    <div className="rounded-xl border border-white/[0.08] bg-card overflow-hidden">
       <div className="px-5 py-4 border-b border-white/[0.08] flex flex-wrap items-center gap-3">
         <div className="relative flex-1 min-w-[220px] max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
@@ -970,36 +892,43 @@ function DatasetLibrary({
             value={query}
             onChange={(e) => onQuery(e.target.value)}
             placeholder="Search datasets, tags, descriptions…"
-            className="w-full rounded-lg bg-white/[0.04] border border-white/[0.08] pl-9 pr-8 py-2 text-sm text-zinc-200 placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-400/40 focus:border-cyan-400/40"
+            aria-label="Search datasets"
+            className="w-full rounded-lg bg-white/[0.04] border border-white/[0.08] pl-9 pr-8 py-2 text-sm text-zinc-200 placeholder:text-zinc-500 focus:outline-none focus:border-blue-400/50 focus:ring-2 focus:ring-blue-400/20"
           />
           {query && (
-            <button onClick={() => onQuery('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300">
+            <button onClick={() => onQuery('')} aria-label="Clear search" className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300">
               <X className="w-4 h-4" />
             </button>
           )}
         </div>
-        <div className="flex items-center gap-2 text-xs text-zinc-500">
+        <div className="flex items-center gap-2 text-[13px] text-zinc-500">
           <Database className="w-4 h-4" />
           <span className="font-medium text-zinc-300">{datasets.length}</span> datasets
         </div>
-        <button onClick={onUpload} className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-white/[0.12] px-3 py-1.5 text-xs font-medium text-zinc-400 hover:border-cyan-400/40 hover:text-cyan-300 transition-colors">
+        <button onClick={onUpload} className={cn('inline-flex items-center gap-1.5 rounded-lg border border-dashed border-white/[0.12] px-3 py-1.5 text-[13px] font-medium text-zinc-400 hover:border-white/[0.24] hover:text-zinc-200 transition-colors', focusRing)}>
           <FileUp className="w-3.5 h-3.5" /> Upload new
         </button>
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-24"><LoadingSpinner size="lg" /></div>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 p-5">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="h-44 rounded-xl border border-white/[0.08] bg-white/[0.01] animate-pulse" />
+          ))}
+        </div>
       ) : error ? (
         <div className="px-5 py-16 text-center">
-          <p className="text-sm text-red-400">Unable to load datasets. Data unavailable — check your connection.</p>
-          <button className="mt-3 text-sm text-cyan-300 hover:underline" onClick={onRetry}>Try again</button>
+          <p className="text-sm text-zinc-400">Unable to load datasets. We couldn't reach the backend — try again.</p>
+          <button onClick={onRetry} className={cn('mt-3 text-[13px] text-blue-300 hover:text-blue-200 underline underline-offset-2', focusRing)}>
+            Retry
+          </button>
         </div>
       ) : filtered.length === 0 ? (
         <div className="px-5 py-16 text-center">
           <Database className="w-8 h-8 text-zinc-700 mx-auto mb-3" />
           <p className="text-sm text-zinc-500">{datasets.length === 0 ? 'No datasets yet. Upload your first dataset to get started.' : 'No datasets match your search.'}</p>
           {datasets.length === 0 && (
-            <button onClick={onUpload} className="mt-4 inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-cyan-500 to-teal-500 px-4 py-2 text-sm font-semibold text-black shadow-md shadow-cyan-500/20 hover:from-cyan-400 hover:to-teal-400 transition-all">
+            <button onClick={onUpload} className={cn('mt-4 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-500 transition-colors', focusRing)}>
               <Upload className="w-4 h-4" /> Upload Dataset
             </button>
           )}
@@ -1018,30 +947,31 @@ function DatasetCard({ dataset, onOpen }: { dataset: DatasetMeta; onOpen: () => 
   const kinds = new Set(Object.values(dtype).map((t) => dtypeMeta(t).kind));
   return (
     <button
+      type="button"
       onClick={onOpen}
-      className="group rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4 text-left transition-all hover:border-cyan-400/40 hover:bg-white/[0.04] hover:-translate-y-0.5"
+      className={cn('group rounded-xl border border-white/[0.08] bg-white/[0.01] p-5 text-left transition-colors hover:border-white/[0.20] hover:bg-white/[0.03]', focusRing)}
     >
       <div className="flex items-start justify-between gap-2">
-        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-cyan-500/20 to-teal-500/20 text-cyan-300 flex items-center justify-center shrink-0">
+        <div className="w-9 h-9 rounded-lg bg-blue-500/10 text-blue-400 flex items-center justify-center shrink-0">
           <FileSpreadsheet className="w-4 h-4" />
         </div>
         <StatusBadge status={dataset.status} />
       </div>
-      <div className="mt-3 font-mono text-sm font-semibold text-zinc-200 truncate group-hover:text-cyan-300 transition-colors">{dataset.name}</div>
-      <p className="text-xs text-zinc-500 mt-1 line-clamp-2">{dataset.description || `Dataset ${baseDatasetName(dataset.name)}`}</p>
-      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-zinc-500">
-        <span className="inline-flex items-center gap-1"><Rows3 className="w-3 h-3" /> {dataset.rows.toLocaleString()} rows</span>
-        <span className="inline-flex items-center gap-1"><Columns3 className="w-3 h-3" /> {dataset.columns.length} cols</span>
-        <span className="inline-flex items-center gap-1"><Database className="w-3 h-3" /> {fmt.bytes(dataset.size_kb)}</span>
+      <div className="mt-3 font-mono text-sm font-semibold text-zinc-200 truncate group-hover:text-blue-300 transition-colors">{dataset.name}</div>
+      <p className="text-[13px] text-zinc-500 mt-1 line-clamp-2">{dataset.description || `Dataset ${baseDatasetName(dataset.name)}`}</p>
+      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-zinc-500">
+        <span className="inline-flex items-center gap-1"><Rows3 className="w-3.5 h-3.5" /> {dataset.rows.toLocaleString()} rows</span>
+        <span className="inline-flex items-center gap-1"><Columns3 className="w-3.5 h-3.5" /> {dataset.columns.length} cols</span>
+        <span className="inline-flex items-center gap-1"><Database className="w-3.5 h-3.5" /> {fmt.bytes(dataset.size_kb)}</span>
       </div>
-      <div className="mt-3 pt-3 border-t border-white/[0.05] flex items-center justify-between text-[10px] text-zinc-600">
-        <span className="inline-flex items-center gap-1"><Clock className="w-3 h-3" /> {fmt.date(dataset.uploaded_at)}</span>
-        <span className="inline-flex items-center gap-1"><Tag className="w-3 h-3" /> v{dataset.version ?? 1} · {dataset.source || 'upload'}</span>
+      <div className="mt-4 pt-3 border-t border-white/[0.05] flex items-center justify-between text-[11px] text-zinc-600">
+        <span className="inline-flex items-center gap-1"><Clock className="w-3.5 h-3.5" /> {fmt.date(dataset.uploaded_at)}</span>
+        <span className="inline-flex items-center gap-1">v{dataset.version ?? 1} · {dataset.source || 'upload'}</span>
       </div>
       {kinds.size > 0 && (
-        <div className="flex flex-wrap gap-1 mt-2">
+        <div className="flex flex-wrap gap-1 mt-2.5">
           {Array.from(kinds).slice(0, 4).map((k) => (
-            <span key={k} className="rounded-full bg-white/[0.04] border border-white/10 px-1.5 py-px text-[9px] text-zinc-500">{k}</span>
+            <span key={k} className="rounded-full bg-white/[0.04] border border-white/10 px-1.5 py-px text-[10px] text-zinc-500">{k}</span>
           ))}
         </div>
       )}
@@ -1057,7 +987,7 @@ function StatusBadge({ status }: { status: string }) {
     error: 'bg-red-500/10 text-red-400 border border-red-500/20',
   };
   return (
-    <span className={cn('rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide', map[status] || 'bg-zinc-500/10 text-zinc-400 border border-zinc-500/20')}>
+    <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide', map[status] || 'bg-zinc-500/10 text-zinc-400 border border-zinc-500/20')}>
       {status}
     </span>
   );
