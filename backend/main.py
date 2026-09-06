@@ -1450,6 +1450,7 @@ def list_models_api(db: Session = Depends(get_db), offset: int = Query(0, ge=0),
     except Exception:
         pass
     fs_models = []
+    fs_sizes = {}
     for f in os.listdir(MODELS_DIR):
         if f.endswith(".pkl"):
             reg = all_registry.get(f[:-4])
@@ -1457,31 +1458,40 @@ def list_models_api(db: Session = Depends(get_db), offset: int = Query(0, ge=0),
                 continue
             fpath = os.path.join(MODELS_DIR, f)
             size_kb = round(os.path.getsize(fpath) / 1024, 1)
-            meta = _load_model_meta(f)
-            deploy_info = active_deployments.get(reg.id if reg else f)
-            fs_models.append({
-                "name": f, "size_kb": size_kb,
-                "task_type": meta.get("task_type"),
-                "best_score": meta.get("cv_score"),
-                "metrics": meta.get("metrics"),
-                "deployment_status": "deployed" if deploy_info else "not_deployed",
-                "deployment": deploy_info,
-                "created_at": datetime.fromtimestamp(os.path.getmtime(fpath)).isoformat(),
-            })
-    registered = [{
-        "id": m.id, "name": m.name, "version": m.version,
-        "model_type": m.model_type, "task_type": m.task_type,
-        "framework": m.framework, "file_size_kb": m.file_size_kb,
-        "cv_score": m.cv_score, "status": m.status,
-        "tags": m.tags, "description": m.description,
-        "experiment_id": m.experiment_id,
-        "dataset_name": m.experiment.dataset if m.experiment else None,
-        "deployment_status": "deployed" if active_deployments.get(m.name) else "not_deployed",
-        "deployment": active_deployments.get(m.name),
-        "owner": m.user.email if m.user else None,
-        "owner_email": m.user.email if m.user else None,
-        "created_at": m.created_at.isoformat() if m.created_at else None,
-    } for m in db_models]
+            fs_sizes[f] = size_kb
+            if reg is None:
+                meta = _load_model_meta(f)
+                deploy_info = active_deployments.get(f)
+                fs_models.append({
+                    "name": f, "size_kb": size_kb,
+                    "task_type": meta.get("task_type"),
+                    "best_score": meta.get("cv_score"),
+                    "metrics": meta.get("metrics"),
+                    "deployment_status": "deployed" if deploy_info else "not_deployed",
+                    "deployment": deploy_info,
+                    "created_at": datetime.fromtimestamp(os.path.getmtime(fpath)).isoformat(),
+                })
+    registered = []
+    for m in db_models:
+        fs_name = f"{m.name}.pkl" if m.name else None
+        fpath = os.path.join(MODELS_DIR, fs_name) if fs_name else None
+        has_file = fpath is not None and os.path.exists(fpath)
+        meta = _load_model_meta(fs_name) if has_file else {}
+        deploy_info = active_deployments.get(m.id)
+        registered.append({
+            "id": m.id, "name": fs_name if has_file else m.name, "version": m.version,
+            "model_type": m.model_type, "task_type": m.task_type,
+            "framework": m.framework, "file_size_kb": fs_sizes.get(fs_name) or m.file_size_kb,
+            "cv_score": m.cv_score, "status": m.status,
+            "tags": m.tags, "description": m.description,
+            "experiment_id": m.experiment_id,
+            "dataset_name": m.experiment.dataset if m.experiment else None,
+            "deployment_status": "deployed" if deploy_info else "not_deployed",
+            "deployment": deploy_info,
+            "owner": m.user.email if m.user else None,
+            "owner_email": m.user.email if m.user else None,
+            "created_at": m.created_at.isoformat() if m.created_at else None,
+        })
     all_models = fs_models + registered
     total = len(all_models)
     all_models = all_models[offset:offset + limit]
