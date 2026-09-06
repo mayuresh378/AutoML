@@ -385,7 +385,7 @@ export function PreviewGrid({ dataset, onSelectColumn, selectedColumn, profile, 
             ) : isError ? (
               <tr>
                 <td colSpan={table.getAllLeafColumns().length}>
-                  <div className="flex flex-col items-center justify-center py-16 gap-3">
+                  <div className="flex flex-col items-center justify-center py-12 gap-3">
                     <AlertCircle className="w-6 h-6 text-red-400" />
                     <p className="text-sm text-zinc-400">Unable to load preview</p>
                     <button
@@ -400,7 +400,7 @@ export function PreviewGrid({ dataset, onSelectColumn, selectedColumn, profile, 
             ) : rows.length === 0 ? (
               <tr>
                 <td colSpan={table.getAllLeafColumns().length}>
-                  <div className="py-16 text-center">
+                  <div className="py-12 text-center">
                     <FileSpreadsheet className="w-8 h-8 text-zinc-700 mx-auto mb-3" />
                     <p className="text-sm text-zinc-500">
                       {globalFilter || activeFilterCount > 0
@@ -486,7 +486,7 @@ function ColumnHeaderCards({
   const details = profile?.column_details || [];
 
   return (
-    <div className="flex gap-2 overflow-x-auto px-5 pt-3 pb-2.5 border-b border-white/[0.08] bg-white/[0.01]">
+    <div className="flex items-stretch gap-2 overflow-x-auto px-5 pt-3 pb-2.5 border-b border-white/[0.08] bg-white/[0.01]">
       {columns.map((col) => {
         const meta = dtypeMeta(dtypes?.[col], col);
         const colProfile = details.find((d) => d.name === col);
@@ -522,8 +522,10 @@ function ColumnHeaderCards({
                 {meta.kind === 'numeric' ? 'num' : 'cat'}
               </span>
             </div>
-            {colProfile?.unique_values != null && (
+            {colProfile?.unique_values != null ? (
               <div className="mt-1 text-[9px] text-zinc-600">{fmt.num(colProfile.unique_values)} unique</div>
+            ) : (
+              <div className="mt-1 text-[9px] text-zinc-700 tracking-wider">—</div>
             )}
             <Sparkline
               bins={meta.kind === 'numeric' ? hist?.bins : undefined}
