@@ -5,6 +5,7 @@ import json
 import time
 import uuid
 import re
+import shutil
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 from contextlib import asynccontextmanager
@@ -90,6 +91,17 @@ DATASET_DIR = os.path.join(BASE_DIR, "..", "dataset")
 MODELS_DIR = os.path.join(BASE_DIR, "..", "models")
 MAX_UPLOAD_MB = 500
 ALLOWED_EXTENSIONS = {".csv", ".xlsx", ".xls", ".parquet", ".json"}
+SAMPLE_DATA_DIR = os.path.join(BASE_DIR, "sample_data")
+
+
+def _provision_sample_file(fname: str, fpath: str) -> bool:
+    if os.path.exists(fpath):
+        return True
+    src = os.path.join(SAMPLE_DATA_DIR, fname)
+    if not os.path.exists(src):
+        return False
+    shutil.copyfile(src, fpath)
+    return True
 
 
 def validate_path(name: str) -> str:
@@ -457,7 +469,7 @@ def require_dataset_access(db, name, current_user, owner_only=False):
     record = get_dataset_record(db, name)
     if not record or record.deleted_at is not None:
         raise HTTPException(status_code=404, detail=f"Dataset '{name}' not found")
-    if record.user_id is not None and record.user_id != uid:
+    if record.user_id is not None and record.user_id != uid and record.source != "sample":
         raise HTTPException(status_code=403, detail="Access denied")
     if owner_only and record.user_id != uid:
         raise HTTPException(status_code=403, detail="Access denied")
@@ -510,16 +522,19 @@ def list_datasets(db: Session = Depends(get_db), offset: int = Query(0, ge=0), l
     uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
     if uid is None:
         return paginated([], 0, offset, limit, key="datasets")
-    db_records = {r.filename: r for r in list_dataset_records(db, user_id=uid)}
+    from models import Dataset
+    all_records = {r.filename: r for r in db.query(Dataset).filter(Dataset.deleted_at.is_(None)).all()}
     files = []
     for f in sorted(os.listdir(DATASET_DIR)):
         if not any(f.endswith(e) for e in ALLOWED_EXTENSIONS):
+            continue
+        record = all_records.get(f)
+        if record is not None and record.user_id is not None and record.user_id != uid and record.source != "sample":
             continue
         fpath = os.path.join(DATASET_DIR, f)
         size_kb = round(os.path.getsize(fpath) / 1024, 1)
         try:
             rows, columns, dtypes = _get_dataset_meta(f)
-            record = db_records.get(f)
             files.append({
                 "name": f, "size_kb": size_kb,
                 "rows": rows,
@@ -558,11 +573,17 @@ def load_sample_dataset(
         raise HTTPException(status_code=400, detail=f"Sample dataset '{sample_name}' not found. Available: iris, titanic, housing")
     fname, desc, default_target = sample_files[key]
     fpath = os.path.join(DATASET_DIR, fname)
-    if not os.path.exists(fpath):
+    if not os.path.exists(fpath) and not _provision_sample_file(fname, fpath):
         raise HTTPException(status_code=404, detail=f"Sample dataset file '{fname}' missing.")
     df = pd.read_csv(fpath)
     uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
-    record = create_dataset_record(db, fname, size_kb=round(os.path.getsize(fpath) / 1024, 1), rows=len(df), columns=list(df.columns), user_id=uid, description=desc, source="sample")
+    record = get_dataset_record(db, fname) if uid else None
+    if record is None or record.deleted_at is not None or (uid and record.user_id is None):
+        record = create_dataset_record(db, fname, size_kb=round(os.path.getsize(fpath) / 1024, 1), rows=len(df), columns=list(df.columns), user_id=uid, source="sample")
+        record.description = desc
+        record.status = "ready"
+        db.commit()
+        db.refresh(record)
     log_audit(db, current_user.get("name", "User") if current_user else "User", "dataset.sample_loaded", fname, "dataset", record.id)
     return {
         "name": fname,
@@ -573,7 +594,7 @@ def load_sample_dataset(
         "columns": list(df.columns),
         "size_kb": round(os.path.getsize(fpath) / 1024, 1),
         "id": record.id,
-        "status": "ready"
+        "status": record.status or "ready"
     }
 
 @app.post("/api/v1/datasets", tags=["Datasets"], summary="Upload dataset", description="Upload a new dataset file.")
