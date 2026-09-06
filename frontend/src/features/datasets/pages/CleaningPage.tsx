@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   Sparkles, Eraser, AlertTriangle, CheckCircle2, RotateCcw, FileText, Download,
@@ -56,7 +57,8 @@ function severityVariant(s: string) {
 
 export default function CleaningPage() {
   const { notifySuccess, notifyError } = useNotification();
-  const [selectedDataset, setSelectedDataset] = useState('');
+  const [searchParams] = useSearchParams();
+  const [selectedDataset, setSelectedDataset] = useState(searchParams.get('dataset') ?? '');
   const [result, setResult] = useState<any>(null);
   const [previewPage, setPreviewPage] = useState(0);
   const [previewSearch, setPreviewSearch] = useState('');
@@ -535,7 +537,7 @@ export default function CleaningPage() {
             <CardContent>
               <div className="flex items-start gap-0 overflow-x-auto py-2">
                 {PIPELINE_STEPS.map((step, i) => {
-                  const isCompleted = step === 'Dataset Loaded' || activeOps.has(step);
+                  const isCompleted = step === 'Dataset Loaded' || activeOps.has(step) || (step === 'Export Cleaned Dataset' && !!result?.cleaned_file);
                   const isLast = i === PIPELINE_STEPS.length - 1;
                   return (
                     <div key={step} className="flex items-start shrink-0">

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Wand2, CheckCircle2, RotateCcw, FileText, Download, Lightbulb } from 'lucide-react';
 import { datasetsService } from '../../../services/datasets.service';
@@ -14,7 +15,8 @@ import { getErrorMessage, downloadUrl } from '../../../services/http';
 
 export default function FeatureEngineeringPage() {
   const { notifySuccess, notifyError } = useNotification();
-  const [selectedDataset, setSelectedDataset] = useState('');
+  const [searchParams] = useSearchParams();
+  const [selectedDataset, setSelectedDataset] = useState(searchParams.get('dataset') ?? '');
   const [selectedOps, setSelectedOps] = useState<Set<number>>(new Set());
   const [result, setResult] = useState<any>(null);
 
