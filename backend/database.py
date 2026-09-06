@@ -195,7 +195,8 @@ def init_db():
     from models import (User, Team, TeamMember, ApiKey, Experiment, ModelRegistry,
                         Deployment, DeploymentHistory, Pipeline, PipelineRun, Webhook, AuditLog,
                         Project, MarketplaceItem, Dataset, DatasetShare, Notification,
-                        UserSession, PredictionLog, ActivityLog)
+                        UserSession, PredictionLog, ActivityLog,
+                        DatasetCleanStep, CleaningHistory)
     for attempt in range(30):
         try:
             Base.metadata.create_all(bind=engine)

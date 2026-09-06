@@ -24,6 +24,12 @@ def auto_preprocess(file_name: str, target_column: str, task_type: str = None):
     y = df[target_column]
     X = df.drop(columns=[target_column])
 
+    # pandas 3-style one-hot dummies are `bool`; sklearn SimpleImputer cannot
+    # consume bool arrays, so coerce them to float (lossless for 0/1).
+    for col in X.columns:
+        if pd.api.types.is_bool_dtype(X[col]):
+            X[col] = X[col].astype("float64")
+
     if task_type is None:
         task_type = detect_task_type(y)
 

@@ -162,8 +162,15 @@ export function stripExtension(name: string): string {
 
 export function baseDatasetName(name: string): string {
   let n = stripExtension(name);
-  n = n.replace(/^(cleaned|featurized)_/i, '');
-  n = n.replace(/_(cleaned|featurized)$/i, '');
+  let prev = '';
+  let guard = 0;
+  while (n !== prev && guard < 10) {
+    prev = n;
+    n = n.replace(/[_\-]v\d+$/i, '');
+    n = n.replace(/^(cleaned|featurized)_/i, '');
+    n = n.replace(/_(cleaned|featurized)$/i, '');
+    guard += 1;
+  }
   return n;
 }
 

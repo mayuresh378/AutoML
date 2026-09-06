@@ -107,4 +107,62 @@ export const datasetsService = {
 
    removeShare: (name: string, shareId: string) =>
     http.delete(`/datasets/${encodeURIComponent(name)}/shares/${shareId}`),
+
+  // ── Cleaning pipeline ───────────────────────────────────────────────
+  cleaningState: (name: string) =>
+    http.get<{
+      dataset: { name: string; rows: number; columns: string[]; base_key: string };
+      base_key: string;
+      current_version: number;
+      active_version: string;
+      versions: any[];
+      steps: Record<string, { status: string; method?: string; detail?: any }>;
+      has_issues: Record<string, boolean>;
+      available: Record<string, boolean>;
+      detections: {
+        dataset: { name: string; rows: number; columns: string[] };
+        missing: { total: number; total_pct: number; columns: any[] };
+        duplicates: { count: number; pct: number; sample: Record<string, any>[]; sample_columns: string[] };
+        outliers: { columns: any[] };
+        encoding: { columns: any[] };
+        scaling: { columns: any[] };
+      };
+    }>(`/datasets/${encodeURIComponent(name)}/cleaning`),
+
+  cleaningHistory: (name: string) =>
+    http.get<{ history: any[] }>(`/datasets/${encodeURIComponent(name)}/cleaning/history`),
+
+  applyCleaningStage: (
+    name: string,
+    payload: { stage: string; action?: string; method?: string; columns?: string[]; params?: Record<string, any> }
+  ) => {
+    const form = new FormData();
+    form.append('stage', payload.stage);
+    if (payload.action) form.append('action', payload.action);
+    if (payload.method) form.append('method', payload.method);
+    if (payload.columns && payload.columns.length) form.append('columns', JSON.stringify(payload.columns));
+    if (payload.params && Object.keys(payload.params).length) form.append('params', JSON.stringify(payload.params));
+    return http.post<{
+      stage: string;
+      action: string;
+      before: any;
+      after: any;
+      summary: any;
+      applied_operations: string[];
+      rows_before: number;
+      rows_after: number;
+      columns_before: number;
+      columns_after: number;
+      step: { status: string; method?: string };
+      new_version: { name: string; filename: string; version: number; rows: number; columns: string[] } | null;
+    }>(`/datasets/${encodeURIComponent(name)}/cleaning/apply`, form);
+  },
+
+  exportDataset: (name: string, format: string) => {
+    const form = new FormData();
+    form.append('format', format);
+    return http.post<{ filename: string; download_url: string; size_kb: number; rows: number; columns: string[]; format: string; version: number }>(
+      `/datasets/${encodeURIComponent(name)}/export`, form
+    );
+  },
 };

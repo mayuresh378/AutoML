@@ -299,6 +299,38 @@ class DatasetShare(Base):
     dataset = relationship("Dataset")
 
 
+class DatasetCleanStep(Base):
+    __tablename__ = "dataset_clean_steps"
+
+    id = Column(String, primary_key=True, default=_uuid)
+    dataset_id = Column(String, ForeignKey("datasets.id"), nullable=False, index=True)
+    stage = Column(String, nullable=False)
+    status = Column(String, default="pending")
+    method = Column(String, nullable=True)
+    detail = Column(JSON, nullable=True)
+    created_at = Column(DateTime, default=_now)
+    updated_at = Column(DateTime, default=_now, onupdate=_now)
+
+    __table_args__ = (UniqueConstraint("dataset_id", "stage", name="uq_dataset_clean_step"),)
+
+
+class CleaningHistory(Base):
+    __tablename__ = "cleaning_history"
+
+    id = Column(String, primary_key=True, default=_uuid)
+    dataset_id = Column(String, ForeignKey("datasets.id"), nullable=True, index=True)
+    base_key = Column(String, nullable=False, index=True)
+    version = Column(Integer, nullable=True)
+    stage = Column(String, nullable=False)
+    operation = Column(String, nullable=False)
+    method = Column(String, nullable=True)
+    columns = Column(JSON, nullable=True)
+    rows_affected = Column(Integer, nullable=True)
+    details = Column(JSON, nullable=True)
+    user_id = Column(String, nullable=True)
+    created_at = Column(DateTime, default=_now, index=True)
+
+
 class PredictionLog(Base):
     __tablename__ = "prediction_logs"
 

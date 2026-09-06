@@ -43,6 +43,8 @@ from crud import (
     create_dataset_record, list_dataset_records, get_dataset_record, delete_dataset_record,
     update_dataset_tags, update_dataset_description, bump_dataset_version,
     share_dataset, list_dataset_shares, remove_dataset_share,
+    dataset_base_key, parse_version_from_name, list_dataset_records_by_base,
+    upsert_clean_step, get_clean_steps, add_cleaning_history, list_cleaning_history,
     global_search,
     create_prediction_log, list_prediction_logs,
     create_notification, list_notifications, mark_notification_read,
@@ -65,7 +67,7 @@ from schemas import (
 from preprocess import auto_preprocess
 from train import run_automl_training
 from predict import make_prediction, load_model_metadata
-from cleaning import profile_dataset, clean_dataset, auto_clean
+from cleaning import profile_dataset, clean_dataset, auto_clean, detect_pipeline, apply_stage, load_dataset
 from analysis import analyze_dataset
 from analytics import dashboard_analytics
 from train import CLASSIFICATION_MODELS, REGRESSION_MODELS, run_engine_training, run_tuning, XGB_AVAILABLE, LGBM_AVAILABLE, CATB_AVAILABLE
@@ -610,10 +612,11 @@ def load_sample_dataset(
         "iris": ("iris.csv", "Iris Flower Classification Dataset", "target"),
         "titanic": ("titanic.csv", "Titanic Passenger Survival Dataset", "Survived"),
         "housing": ("housing.csv", "California Housing Price Regression Dataset", "MedHouseVal"),
+        "students": ("students.csv", "Student Placement Dataset (with data-quality issues for cleaning demos)", "package"),
     }
     key = sample_name.lower().strip()
     if key not in sample_files:
-        raise HTTPException(status_code=400, detail=f"Sample dataset '{sample_name}' not found. Available: iris, titanic, housing")
+        raise HTTPException(status_code=400, detail=f"Sample dataset '{sample_name}' not found. Available: iris, titanic, housing, students")
     fname, desc, default_target = sample_files[key]
     fpath = os.path.join(DATASET_DIR, fname)
     if not os.path.exists(fpath) and not _provision_sample_file(fname, fpath):
@@ -834,6 +837,295 @@ def auto_clean_endpoint(name: str, db: Session = Depends(get_db), current_user: 
         return result
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+CLEAN_STAGES = {"missing", "duplicates", "outliers", "encoding", "scaling"}
+
+
+def _stage_has_issues(detections: dict, stage: str) -> bool:
+    if stage == "missing":
+        return bool(detections.get("missing", {}).get("total", 0))
+    if stage == "duplicates":
+        return bool(detections.get("duplicates", {}).get("count", 0))
+    if stage == "outliers":
+        return any(c.get("outliers_iqr", 0) > 0 for c in detections.get("outliers", {}).get("columns", []))
+    if stage == "encoding":
+        return bool(detections.get("encoding", {}).get("columns", []))
+    if stage == "scaling":
+        return any(not c.get("constant", True) for c in detections.get("scaling", {}).get("columns", []))
+    return False
+
+
+@app.get("/api/v1/datasets/{name}/cleaning", tags=["Datasets"], summary="Cleaning pipeline state + detections",
+         description="Return the cleaning pipeline state and per-stage detections for a dataset.")
+def cleaning_pipeline_state(name: str, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    fpath = validate_path(name)
+    if not os.path.exists(fpath):
+        raise HTTPException(status_code=404, detail=f"Dataset '{name}' not found")
+    require_dataset_access(db, name, current_user)
+    try:
+        detections = detect_pipeline(name)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    record = get_dataset_record(db, name)
+    if record is None:
+        record = create_dataset_record(
+            db, name, size_kb=round(os.path.getsize(fpath) / 1024, 1),
+            rows=detections["dataset"]["rows"], columns=detections["dataset"]["columns"],
+            user_id=current_user.get("id"), source="upload",
+        )
+    base = dataset_base_key(name)
+    siblings = list_dataset_records_by_base(db, base)
+    active = None
+    if siblings:
+        active = max(siblings, key=lambda r: (r.version or parse_version_from_name(r.filename) or 1))
+    versions = [{
+        "name": r.filename,
+        "filename": r.filename,
+        "version": r.version or parse_version_from_name(r.filename) or 1,
+        "rows": r.rows, "columns": r.columns or [], "size_kb": r.file_size_kb,
+        "source": r.source or "upload", "status": r.status or "ready",
+        "uploaded_at": r.created_at.isoformat() if r.created_at else None,
+        "active": bool(active and r.id == active.id),
+    } for r in siblings]
+    versions.sort(key=lambda v: v["version"])
+    steps = get_clean_steps(db, record.id)
+    has_issues = {s: _stage_has_issues(detections, s) for s in ("missing", "duplicates", "outliers")}
+    available = {"encoding": _stage_has_issues(detections, "encoding"),
+                 "scaling": _stage_has_issues(detections, "scaling")}
+    return {
+        "dataset": detections["dataset"],
+        "base_key": base,
+        "current_version": record.version or parse_version_from_name(name) or 1,
+        "active_version": active.filename if active else name,
+        "versions": versions,
+        "steps": steps,
+        "has_issues": has_issues,
+        "available": available,
+        "detections": detections,
+    }
+
+
+@app.get("/api/v1/datasets/{name}/cleaning/history", tags=["Datasets"], summary="Cleaning history",
+         description="Return the persisted cleaning operation history for a dataset chain.")
+def cleaning_history_api(name: str, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    fpath = validate_path(name)
+    if not os.path.exists(fpath):
+        raise HTTPException(status_code=404, detail=f"Dataset '{name}' not found")
+    require_dataset_access(db, name, current_user)
+    rows = list_cleaning_history(db, dataset_base_key(name))
+    return {"history": [{
+        "id": r.id, "stage": r.stage, "operation": r.operation, "method": r.method,
+        "columns": r.columns or [], "rows_affected": r.rows_affected,
+        "version": r.version, "details": r.details,
+        "created_at": r.created_at.isoformat() if r.created_at else None,
+        "user_id": r.user_id,
+    } for r in rows]}
+
+
+@app.post("/api/v1/datasets/{name}/cleaning/apply", tags=["Datasets"], summary="Apply cleaning stage",
+          description="Apply a real cleaning stage to the dataset and create a new cleaned version.")
+def cleaning_apply_stage(name: str,
+                         stage: str = Form(...),
+                         action: str = Form("apply"),
+                         method: str = Form(None),
+                         columns: str = Form(None),
+                         params: str = Form(None),
+                         log_message: str = Form(None),
+                         db: Session = Depends(get_db),
+                         current_user: dict = Depends(get_current_user)):
+    fpath = validate_path(name)
+    if not os.path.exists(fpath):
+        raise HTTPException(status_code=404, detail=f"Dataset '{name}' not found")
+    require_dataset_access(db, name, current_user, owner_only=True)
+    if stage not in CLEAN_STAGES:
+        raise HTTPException(status_code=422, detail=f"Unknown cleaning stage '{stage}'. Allowed: {', '.join(sorted(CLEAN_STAGES))}")
+    cols = json.loads(columns) if columns else []
+    par = json.loads(params) if params else {}
+    uid = current_user.get("id")
+    record = get_dataset_record(db, name)
+    if record is None:
+        record = create_dataset_record(
+            db, name, size_kb=round(os.path.getsize(fpath) / 1024, 1),
+            user_id=uid, source="upload",
+        )
+    base = dataset_base_key(name)
+    current_version = record.version or parse_version_from_name(name) or 1
+
+    if action == "skip":
+        step = upsert_clean_step(db, record.id, stage, "skipped", method=method or None, detail=None)
+        log_audit(db, current_user.get("name", "User"), f"cleaning.{stage}.skipped", name, "dataset", record.id)
+        return {"stage": stage, "action": "skip", "step": {"status": step.status, "method": step.method},
+                "new_version": None, "applied_operations": []}
+
+    if action == "restore":
+        step = upsert_clean_step(db, record.id, stage, "pending", method=None, detail=None)
+        return {"stage": stage, "action": "restore", "step": {"status": step.status}, "new_version": None}
+
+    if action != "apply":
+        raise HTTPException(status_code=422, detail=f"Unknown action '{action}'. Allowed: apply, skip, restore")
+
+    if stage in ("encoding", "scaling") and not cols:
+        raise HTTPException(status_code=422, detail=f"Select at least one column for the {stage} stage")
+
+    # Preserve the target column unless the user explicitly opted to encode it.
+    if stage == "encoding" and par.get("target") and not par.get("encode_target", False):
+        cols = [c for c in cols if c != par.get("target")]
+
+    try:
+        df, result = apply_stage(name, stage, method=method, columns=cols, params=par)
+    except HTTPException:
+        raise
+    except Exception as e:
+        upsert_clean_step(db, record.id, stage, "failed", method=method or None, detail={"error": str(e)})
+        log_audit(db, current_user.get("name", "User"), f"cleaning.{stage}.failed", name, "dataset", record.id)
+        raise HTTPException(status_code=400, detail=f"Unable to complete cleaning operation: {e}")
+
+    summary = result.get("summary") or {}
+    changed = bool(
+        summary.get("filled", 0) > 0 or
+        summary.get("removed", 0) > 0 or
+        summary.get("rows_removed", 0) > 0 or
+        summary.get("cells_replaced", 0) > 0 or
+        summary.get("new_columns", 0) > 0 or
+        summary.get("scaled", 0) > 0 or
+        result["rows_after"] != result["rows_before"] or
+        result["columns_after"] != result["columns_before"]
+    )
+
+    new_version = None
+    if changed:
+        existing_files = os.listdir(DATASET_DIR)
+        siblings = list_dataset_records_by_base(db, base)
+        max_v = max(
+            [record.version or parse_version_from_name(record.filename) or 1 for record in siblings] + [current_version]
+        )
+        ext = os.path.splitext(name)[1]
+        n = max_v
+        while True:
+            n += 1
+            candidate = f"{base}_cleaned_v{n}{ext}"
+            if candidate not in existing_files:
+                break
+        new_name = candidate
+        new_path = os.path.join(DATASET_DIR, new_name)
+        df.to_csv(new_path, index=False)
+        new_record = create_dataset_record(
+            db, new_name, size_kb=round(os.path.getsize(new_path) / 1024, 1),
+            rows=len(df), columns=list(df.columns), user_id=uid, source="cleaned", version=n,
+        )
+        new_record.status = "ready"
+        parent_steps = get_clean_steps(db, record.id)
+        for st, info in parent_steps.items():
+            if st != stage:
+                upsert_clean_step(db, new_record.id, st, info.get("status") or "pending",
+                                  method=info.get("method"), detail=info.get("detail"))
+        step = upsert_clean_step(db, new_record.id, stage, "completed", method=method or None,
+                                 detail={"changed": True, "summary": summary})
+        rows_affected = (
+            summary.get("filled") or summary.get("removed") or summary.get("rows_removed")
+            or summary.get("cells_replaced") or len(result.get("after_stats", {}).get("new_columns", [])) or 0
+        )
+        op_text = "; ".join(result.get("applied_operations") or [])
+        add_cleaning_history(db, new_record.id, base, n, stage, op_text or f"{stage} completed",
+                             method=method or None, columns=cols or None, rows_affected=rows_affected,
+                             details={"summary": summary, "rows_before": result["rows_before"],
+                                      "rows_after": result["rows_after"],
+                                      "columns_before": result["columns_before"],
+                                      "columns_after": result["columns_after"]},
+                             user_id=uid)
+        new_version = {"name": new_name, "filename": new_name, "version": n,
+                       "rows": len(df), "columns": list(df.columns)}
+    else:
+        status = "no_issues"
+        step = upsert_clean_step(db, record.id, stage, status, method=method or None,
+                                 detail={"changed": False, "summary": summary})
+        op_text = "; ".join(result.get("applied_operations") or [])
+        add_cleaning_history(db, record.id, base, current_version, stage,
+                             op_text or f"{stage}: no issues", method=method or None,
+                             columns=cols or None, rows_affected=0,
+                             details={"summary": summary}, user_id=uid)
+
+    log_audit(db, current_user.get("name", "User"), f"cleaning.{stage}.applied", name, "dataset", record.id)
+    return {
+        "stage": stage,
+        "action": action,
+        "before": result.get("before_stats"),
+        "after": result.get("after_stats"),
+        "summary": summary,
+        "applied_operations": result.get("applied_operations") or [],
+        "rows_before": result["rows_before"],
+        "rows_after": result["rows_after"],
+        "columns_before": result["columns_before"],
+        "columns_after": result["columns_after"],
+        "step": {"status": step.status, "method": step.method},
+        "new_version": new_version,
+    }
+
+
+@app.post("/api/v1/datasets/{name}/export", tags=["Datasets"], summary="Export dataset",
+          description="Export a dataset to CSV, Excel or Parquet and register the resulting file.")
+def export_dataset_api(name: str, format: str = Form("csv"),
+                       db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    fpath = validate_path(name)
+    if not os.path.exists(fpath):
+        raise HTTPException(status_code=404, detail=f"Dataset '{name}' not found")
+    require_dataset_access(db, name, current_user, owner_only=True)
+    fmt = (format or "csv").lower().strip(".")
+    if fmt not in ("csv", "xlsx", "parquet"):
+        raise HTTPException(status_code=422, detail="Export format must be one of: csv, xlsx, parquet")
+    record = get_dataset_record(db, name)
+    base = dataset_base_key(name)
+    version = record.version or parse_version_from_name(name) or 1
+    try:
+        df = load_dataset(name)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to read dataset: {e}")
+    if len(df) == 0:
+        raise HTTPException(status_code=400, detail="Dataset is empty - nothing to export")
+    filename = f"{base}_cleaned_v{version}.{fmt}"
+    out_path = os.path.join(DATASET_DIR, filename)
+    try:
+        if fmt == "csv":
+            df.to_csv(out_path, index=False)
+        elif fmt == "xlsx":
+            df.to_excel(out_path, index=False)
+        else:
+            df.to_parquet(out_path, index=False)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Export failed: {e}")
+    existing = get_dataset_record(db, filename)
+    if existing is None:
+        exp = create_dataset_record(
+            db, filename, size_kb=round(os.path.getsize(out_path) / 1024, 1),
+            rows=len(df), columns=list(df.columns), user_id=current_user.get("id"),
+            source="export", version=version,
+        )
+        exp.status = "ready"
+        db.commit()
+        exp_id = exp.id
+    else:
+        existing.file_size_kb = round(os.path.getsize(out_path) / 1024, 1)
+        existing.rows = len(df)
+        existing.columns = list(df.columns)
+        db.commit()
+        exp_id = existing.id
+    add_cleaning_history(db, exp_id, base, version, "export",
+                         f"Exported {filename} ({fmt})", method=fmt,
+                         details={"rows": len(df), "columns": len(df.columns)}, user_id=current_user.get("id"))
+    upsert_clean_step(db, record.id if record else exp_id, "export", "completed", method=fmt,
+                      detail={"filename": filename})
+    log_audit(db, current_user.get("name", "User"), "dataset.exported", filename, "dataset")
+    from urllib.parse import quote
+    return {
+        "filename": filename,
+        "download_url": f"/api/v1/datasets/{quote(filename)}/download",
+        "size_kb": round(os.path.getsize(out_path) / 1024, 1),
+        "rows": len(df),
+        "columns": list(df.columns),
+        "format": fmt,
+        "version": version,
+    }
 
 @app.post("/api/v1/datasets/{name}/features/generate", tags=["Datasets"], summary="Generate features", description="Generate engineered features for a dataset.")
 def generate(name: str, operations: str = Form(...), db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):

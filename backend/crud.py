@@ -10,7 +10,8 @@ from jose import jwt
 
 from models import (User, Team, TeamMember, ApiKey, Experiment, ModelRegistry,
                     Deployment, Pipeline, PipelineRun, PredictionLog, Webhook, AuditLog,
-                    Project, MarketplaceItem, Dataset, Notification, ActivityLog)
+                    Project, MarketplaceItem, Dataset, DatasetShare, Notification, ActivityLog,
+                    DatasetCleanStep, CleaningHistory)
 
 from config import settings
 
@@ -575,6 +576,73 @@ def bump_dataset_version(db: Session, name: str) -> int:
         db.refresh(record)
         return record.version
     return 1
+
+
+# ─── Cleaning pipeline records ───────────────────────────────────────
+
+def dataset_base_key(name: str) -> str:
+    """Mirror of the frontend baseDatasetName(): strip extension, version
+    suffix and cleaned/featurized markers so versioned files group together."""
+    import re
+    stem = re.sub(r"\.\w+$", "", name)
+    stem = re.sub(r"_v\d+$", "", stem)
+    stem = re.sub(r"^(cleaned_|featurized_)", "", stem, flags=re.I)
+    stem = re.sub(r"_(cleaned|featurized)$", "", stem, flags=re.I)
+    return stem
+
+
+def parse_version_from_name(name: str) -> int:
+    import re
+    m = re.search(r"_v(\d+)(\.\w+)?$", name)
+    return int(m.group(1)) if m else 1
+
+
+def list_dataset_records_by_base(db: Session, base_key: str) -> list:
+    return [r for r in db.query(Dataset).filter(Dataset.deleted_at.is_(None)).all()
+            if dataset_base_key(r.filename) == base_key]
+
+
+def upsert_clean_step(db: Session, dataset_id: str, stage: str, status: str,
+                      method: str = None, detail: dict = None) -> DatasetCleanStep:
+    step = db.query(DatasetCleanStep).filter(
+        DatasetCleanStep.dataset_id == dataset_id,
+        DatasetCleanStep.stage == stage,
+    ).first()
+    if step is None:
+        step = DatasetCleanStep(id=_uid(), dataset_id=dataset_id, stage=stage)
+        db.add(step)
+    step.status = status
+    step.method = method
+    step.detail = detail
+    step.updated_at = _now()
+    db.commit()
+    db.refresh(step)
+    return step
+
+
+def get_clean_steps(db: Session, dataset_id: str) -> dict:
+    rows = db.query(DatasetCleanStep).filter(DatasetCleanStep.dataset_id == dataset_id).all()
+    return {r.stage: {"status": r.status, "method": r.method, "detail": r.detail,
+                       "updated_at": r.updated_at.isoformat() if r.updated_at else None} for r in rows}
+
+
+def add_cleaning_history(db: Session, dataset_id: str, base_key: str, version: int,
+                         stage: str, operation: str, method: str = None,
+                         columns: list = None, rows_affected: int = None,
+                         details: dict = None, user_id: str = None) -> CleaningHistory:
+    row = CleaningHistory(
+        id=_uid(), dataset_id=dataset_id, base_key=base_key, version=version,
+        stage=stage, operation=operation, method=method, columns=columns,
+        rows_affected=rows_affected, details=details, user_id=user_id, created_at=_now(),
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def list_cleaning_history(db: Session, base_key: str, limit: int = 100) -> list:
+    return db.query(CleaningHistory).filter(CleaningHistory.base_key == base_key).order_by(desc(CleaningHistory.created_at)).limit(limit).all()
 
 
 def share_dataset(db: Session, dataset_id: str, shared_with_user_id: str = None,
