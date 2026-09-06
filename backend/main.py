@@ -476,6 +476,49 @@ def require_dataset_access(db, name, current_user, owner_only=False):
     return record
 
 
+def require_model_access(db, name, current_user, owner_only=False):
+    uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
+    if uid is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    from models import ModelRegistry
+    reg = db.query(ModelRegistry).filter(ModelRegistry.name == name).first()
+    if reg is None:
+        reg = db.query(ModelRegistry).filter(ModelRegistry.name == name.replace(".pkl", "")).first()
+    if reg is not None and reg.user_id is not None and reg.user_id != uid:
+        raise HTTPException(status_code=403, detail="Access denied")
+    if owner_only and reg is not None and reg.user_id != uid:
+        raise HTTPException(status_code=403, detail="Access denied")
+    return reg
+
+
+def require_deployment_access(db, dep_id, current_user, owner_only=True):
+    uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
+    if uid is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    dep = get_deployment(db, dep_id)
+    if not dep or dep.deleted_at is not None:
+        raise HTTPException(status_code=404, detail="Deployment not found")
+    if dep.user_id is not None and dep.user_id != uid:
+        raise HTTPException(status_code=403, detail="Access denied")
+    if owner_only and dep.user_id is not None and dep.user_id != uid:
+        raise HTTPException(status_code=403, detail="Access denied")
+    return dep
+
+
+def require_prediction_log_access(db, pred_id, current_user, owner_only=False):
+    uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
+    if uid is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    log = get_prediction_log(db, pred_id)
+    if not log:
+        raise HTTPException(status_code=404, detail="Prediction not found")
+    if log.user_id is not None and log.user_id != uid:
+        raise HTTPException(status_code=403, detail="Access denied")
+    if owner_only and log.user_id is not None and log.user_id != uid:
+        raise HTTPException(status_code=403, detail="Access denied")
+    return log
+
+
 def _preview_df(name: str, rows: int = 50, offset: int = 0) -> pd.DataFrame:
     fpath = os.path.join(DATASET_DIR, name)
     if name.endswith(".csv"):
@@ -1395,10 +1438,12 @@ def list_models_api(db: Session = Depends(get_db), offset: int = Query(0, ge=0),
     uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
     if uid is None:
         return paginated([], 0, offset, limit, key="models")
-    db_models = list_models(db)
+    from models import ModelRegistry
+    db_models = list_models(db, user_id=uid)
+    all_registry = {m.name: m for m in db.query(ModelRegistry).all()}
     active_deployments = {}
     try:
-        deps = list_deployments(db)
+        deps = list_deployments(db, user_id=uid)
         for d in deps:
             if d.status in ("active", "running") and d.model_id:
                 active_deployments[d.model_id] = {"id": d.id, "name": d.name, "status": d.status, "endpoint_url": d.endpoint_url}
@@ -1407,10 +1452,13 @@ def list_models_api(db: Session = Depends(get_db), offset: int = Query(0, ge=0),
     fs_models = []
     for f in os.listdir(MODELS_DIR):
         if f.endswith(".pkl"):
+            reg = all_registry.get(f[:-4])
+            if reg is not None and reg.user_id is not None and reg.user_id != uid:
+                continue
             fpath = os.path.join(MODELS_DIR, f)
             size_kb = round(os.path.getsize(fpath) / 1024, 1)
             meta = _load_model_meta(f)
-            deploy_info = active_deployments.get(f)
+            deploy_info = active_deployments.get(reg.id if reg else f)
             fs_models.append({
                 "name": f, "size_kb": size_kb,
                 "task_type": meta.get("task_type"),
@@ -1440,24 +1488,27 @@ def list_models_api(db: Session = Depends(get_db), offset: int = Query(0, ge=0),
     return paginated(all_models, total, offset, limit, key="models")
 
 @app.get("/api/v1/models/{name}", tags=["Models"], summary="Get model detail", description="Retrieve metadata for a specific model.")
-def get_model_detail(name: str, current_user: dict = Depends(get_current_user)):
+def get_model_detail(name: str, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     fpath = os.path.join(MODELS_DIR, name)
     if not os.path.exists(fpath):
         raise HTTPException(status_code=404, detail=f"Model '{name}' not found")
+    require_model_access(db, name, current_user)
     meta = _load_model_meta(name)
     return {"name": name, **meta} if meta else {"name": name}
 
 @app.get("/api/v1/models/{name}/download", tags=["Models"], summary="Download model", description="Download a model file by name.")
-def download_model(name: str, current_user: dict = Depends(get_current_user)):
+def download_model(name: str, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     fpath = os.path.join(MODELS_DIR, name)
     if not os.path.exists(fpath):
         raise HTTPException(status_code=404, detail=f"Model '{name}' not found")
+    require_model_access(db, name, current_user)
     return FileResponse(fpath, filename=name, media_type="application/octet-stream")
 
 @app.put("/api/v1/models/{name}", tags=["Models"], summary="Update model", description="Update model status, tags, or description.")
 def update_model_meta(name: str, status: str = Form(None), tags: str = Form(None),
                       description: str = Form(None), current_user: dict = Depends(get_current_user),
                       db: Session = Depends(get_db)):
+    require_model_access(db, name, current_user, owner_only=True)
     from crud import update_model_meta as _update_model_meta
     tags_list = json.loads(tags) if tags else None
     m = _update_model_meta(db, name, status=status, tags=tags_list, description=description)
@@ -1483,6 +1534,8 @@ def evaluate_model_api(
     fpath = os.path.join(MODELS_DIR, name)
     if not os.path.exists(fpath):
         raise HTTPException(status_code=404, detail=f"Model '{name}' not found")
+    require_model_access(db, name, current_user)
+    require_dataset_access(db, file_name, current_user)
 
     meta = _load_model_meta(name)
     pipeline = _joblib.load(fpath)
@@ -1626,6 +1679,8 @@ def evaluate_model_all(
     fpath = os.path.join(MODELS_DIR, name)
     if not os.path.exists(fpath):
         raise HTTPException(status_code=404, detail=f"Model '{name}' not found")
+    require_model_access(db, name, current_user)
+    require_dataset_access(db, file_name, current_user)
     try:
         result = evaluate_model_comprehensive(name, file_name, target_column)
         result["ai_insights"] = generate_ai_insights(result)
@@ -1650,6 +1705,9 @@ def compare_models_api(
         names = json.loads(model_names)
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid model_names format")
+    require_dataset_access(db, file_name, current_user)
+    for _mn in names:
+        require_model_access(db, _mn, current_user)
     try:
         results = compare_models(names, file_name, target_column)
         log_audit(db, current_user.get("name", "User"), "model.compared", ",".join(names), "model")
@@ -1661,10 +1719,11 @@ def compare_models_api(
 
 
 @app.get("/api/v1/models/{name}/meta", tags=["Models"], summary="Get model metadata", description="Return file stats and metadata JSON for a model.")
-def get_model_meta(name: str, current_user: dict = Depends(get_current_user)):
+def get_model_meta(name: str, current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     fpath = os.path.join(MODELS_DIR, name)
     if not os.path.exists(fpath):
         raise HTTPException(status_code=404, detail=f"Model '{name}' not found")
+    require_model_access(db, name, current_user)
     meta = _load_model_meta(name)
     meta_path = fpath.replace(".pkl", "_meta.json")
     stats = {"file_size_kb": round(os.path.getsize(fpath) / 1024, 1) if os.path.exists(fpath) else None}
@@ -1672,7 +1731,8 @@ def get_model_meta(name: str, current_user: dict = Depends(get_current_user)):
     return {"name": name, **stats, **meta}
 
 @app.delete("/api/v1/models/{name}", tags=["Models"], summary="Delete model", description="Delete a model file and its metadata.")
-def delete_model(name: str, db: Session = Depends(get_db), current_user: dict = Depends(get_optional_user)):
+def delete_model(name: str, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    require_model_access(db, name, current_user, owner_only=True)
     fpath = os.path.join(MODELS_DIR, name)
     meta_path = fpath.replace(".pkl", "_meta.json")
     removed = []
@@ -1687,7 +1747,8 @@ def delete_model(name: str, db: Session = Depends(get_db), current_user: dict = 
 
 
 @app.put("/api/v1/models/{name}/promote", tags=["Models"], summary="Promote model", description="Promote a model to production status.")
-def promote_model(name: str, db: Session = Depends(get_db), current_user: dict = Depends(get_optional_user)):
+def promote_model(name: str, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    require_model_access(db, name, current_user, owner_only=True)
     updated = update_model_meta(db, name, status="production")
     if not updated:
         raise HTTPException(status_code=404, detail=f"Model '{name}' not found")
@@ -1695,7 +1756,8 @@ def promote_model(name: str, db: Session = Depends(get_db), current_user: dict =
 
 
 @app.put("/api/v1/models/{name}/archive", tags=["Models"], summary="Archive model", description="Archive a model.")
-def archive_model(name: str, db: Session = Depends(get_db), current_user: dict = Depends(get_optional_user)):
+def archive_model(name: str, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    require_model_access(db, name, current_user, owner_only=True)
     updated = update_model_meta(db, name, status="archived")
     if not updated:
         raise HTTPException(status_code=404, detail=f"Model '{name}' not found")
@@ -1703,7 +1765,8 @@ def archive_model(name: str, db: Session = Depends(get_db), current_user: dict =
 
 
 @app.put("/api/v1/models/{name}/tags", tags=["Models"], summary="Update model tags", description="Set tags on a model.")
-def update_model_tags(name: str, tags: str = Form(...), db: Session = Depends(get_db), current_user: dict = Depends(get_optional_user)):
+def update_model_tags(name: str, tags: str = Form(...), db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    require_model_access(db, name, current_user, owner_only=True)
     import json as _json
     tag_list = _json.loads(tags) if tags else []
     updated = update_model_meta(db, name, tags=tag_list)
@@ -2196,7 +2259,7 @@ def list_deployments_api(db: Session = Depends(get_db), offset: int = Query(0, g
         return paginated([], 0, offset, limit, key="deployments")
     deps = list_deployments(db, user_id=uid)
     items = [{
-        "id": d.id, "model_name": d.name, "endpoint_name": d.name,
+        "id": d.id, "model_name": d.model.name if d.model else d.model_id, "endpoint_name": d.name,
         "endpoint_url": d.endpoint_url, "status": d.status,
         "environment": d.environment, "requests_count": d.requests_count,
         "avg_latency_ms": d.avg_latency_ms, "deployment_type": d.deployment_type,
@@ -2217,9 +2280,14 @@ def create_deployment_api(
     fpath = os.path.join(MODELS_DIR, model_name)
     if not os.path.exists(fpath):
         raise HTTPException(status_code=404, detail=f"Model '{model_name}' not found")
+    require_model_access(db, model_name, current_user)
+    from models import ModelRegistry
+    reg = db.query(ModelRegistry).filter(ModelRegistry.name == model_name).first()
+    if reg is None:
+        reg = db.query(ModelRegistry).filter(ModelRegistry.name == model_name.replace(".pkl", "")).first()
     dep = create_deployment(db, {
         "name": endpoint_name,
-        "model_id": model_name,
+        "model_id": reg.id if reg else None,
         "user_id": current_user.get("id"),
         "project_id": project_id,
         "endpoint_url": f"/api/v1/predictions?model={model_name}",
@@ -2246,7 +2314,8 @@ def create_deployment_api(
     }
 
 @app.delete("/api/v1/deployments/{dep_id}", tags=["Deployments"], summary="Delete deployment", description="Remove a deployment by ID.")
-def delete_deployment_api(dep_id: str, db: Session = Depends(get_db), current_user: dict = Depends(get_optional_user)):
+def delete_deployment_api(dep_id: str, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    require_deployment_access(db, dep_id, current_user)
     if not delete_deployment(db, dep_id):
         raise HTTPException(status_code=404, detail=f"Deployment '{dep_id}' not found")
     log_audit(db, current_user.get("name", "User"), "deployment.deleted", dep_id, "deployment")
@@ -2255,11 +2324,9 @@ def delete_deployment_api(dep_id: str, db: Session = Depends(get_db), current_us
 
 @app.get("/api/v1/deployments/{dep_id}", tags=["Deployments"], summary="Get deployment", description="Retrieve a specific deployment by ID.")
 def get_deployment_api(dep_id: str, current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-    dep = get_deployment(db, dep_id)
-    if not dep:
-        raise HTTPException(status_code=404, detail="Deployment not found")
+    dep = require_deployment_access(db, dep_id, current_user)
     return {
-        "id": dep.id, "model_name": dep.name, "endpoint_name": dep.name,
+        "id": dep.id, "model_name": dep.model.name if dep.model else dep.model_id, "endpoint_name": dep.name,
         "endpoint_url": dep.endpoint_url, "status": dep.status,
         "environment": dep.environment, "requests_count": dep.requests_count,
         "avg_latency_ms": dep.avg_latency_ms,
@@ -2283,12 +2350,13 @@ def get_deployment_api(dep_id: str, current_user: dict = Depends(get_current_use
 
 @app.put("/api/v1/deployments/{dep_id}", tags=["Deployments"], summary="Update deployment", description="Update deployment configuration.")
 def update_deployment_api(dep_id: str, min_replicas: int = Form(None), max_replicas: int = Form(None),
-                          db: Session = Depends(get_db), current_user: dict = Depends(get_optional_user)):
+                          db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    require_deployment_access(db, dep_id, current_user)
     dep = update_deployment(db, dep_id, min_replicas=min_replicas, max_replicas=max_replicas)
     if not dep:
         raise HTTPException(status_code=404, detail="Deployment not found")
     return {
-        "id": dep.id, "model_name": dep.name, "endpoint_name": dep.name,
+        "id": dep.id, "model_name": dep.model.name if dep.model else dep.model_id, "endpoint_name": dep.name,
         "endpoint_url": dep.endpoint_url, "status": dep.status,
         "created_at": dep.created_at.isoformat() if dep.created_at else None,
     }
@@ -2296,9 +2364,7 @@ def update_deployment_api(dep_id: str, min_replicas: int = Form(None), max_repli
 
 @app.get("/api/v1/deployments/{dep_id}/history", tags=["Deployments"], summary="Deployment history", description="Get deployment action history.")
 def deployment_history_api(dep_id: str, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
-    dep = get_deployment(db, dep_id)
-    if not dep:
-        raise HTTPException(status_code=404, detail="Deployment not found")
+    dep = require_deployment_access(db, dep_id, current_user)
     from crud import list_deployment_history
     entries = list_deployment_history(db, dep_id)
     return {
@@ -2319,11 +2385,9 @@ def update_deployment_access_api(
     allowed_users: str = Form(None),
     allowed_ips: str = Form(None),
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_optional_user),
+    current_user: dict = Depends(get_current_user),
 ):
-    dep = get_deployment(db, dep_id)
-    if not dep:
-        raise HTTPException(status_code=404, detail="Deployment not found")
+    dep = require_deployment_access(db, dep_id, current_user)
     updates = {}
     if allow_anonymous is not None:
         updates["allow_anonymous"] = allow_anonymous
@@ -2530,11 +2594,9 @@ def download_deployment_model_api(dep_id: str, current_user: dict = Depends(get_
 @app.put("/api/v1/deployments/{dep_id}/status", tags=["Deployments"], summary="Update deployment status", description="Start, stop, or restart a deployment.")
 def update_deployment_status_api(
     dep_id: str, status: str = Form(...),
-    db: Session = Depends(get_db), current_user: dict = Depends(get_optional_user),
+    db: Session = Depends(get_db), current_user: dict = Depends(get_current_user),
 ):
-    dep = get_deployment(db, dep_id)
-    if not dep:
-        raise HTTPException(status_code=404, detail="Deployment not found")
+    dep = require_deployment_access(db, dep_id, current_user)
     old_status = dep.status
     dep = update_deployment(db, dep_id, status=status)
     from crud import create_deployment_history
@@ -2551,6 +2613,7 @@ def explain_endpoint(
 ):
     try:
         input_data = json.loads(payload) if payload else None
+        require_model_access(db, model_name, current_user)
         result = explain_prediction(model_name, input_data)
         log_audit(db, current_user.get("name", "User"), "explain.completed", model_name, "explain")
         return result
@@ -2570,6 +2633,8 @@ def explain_model_comprehensive(
     fpath = os.path.join(MODELS_DIR, name)
     if not os.path.exists(fpath):
         raise HTTPException(status_code=404, detail=f"Model '{name}' not found")
+    require_model_access(db, name, current_user)
+    require_dataset_access(db, file_name, current_user)
     try:
         result = compute_comprehensive_explanation(name, file_name, target_column)
         log_audit(db, current_user.get("name", "User"), "model.explained", name, "model")
@@ -2587,6 +2652,7 @@ def predict(model_name: str = Form(...), payload: str = Form(...), db: Session =
         t0 = time.time()
         input_data = json.loads(payload)
         uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
+        require_model_access(db, model_name, current_user)
         result = make_prediction(model_name, input_data)
         elapsed = round((time.time() - t0) * 1000, 1)
         log_audit(db, current_user.get("name", "User"), "prediction.made", model_name, "prediction")
@@ -2620,8 +2686,10 @@ def batch_predict(
         import time
         import csv
         t0 = time.time()
-        df = _get_dataset_df(file_name)
         uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
+        require_model_access(db, model_name, current_user)
+        require_dataset_access(db, file_name, current_user)
+        df = _get_dataset_df(file_name)
         predictions = []
         for _, row in df.iterrows():
             result = make_prediction(model_name, row.to_dict())
@@ -2688,9 +2756,7 @@ def list_predictions_api(db: Session = Depends(get_db), offset: int = Query(0, g
 
 @app.get("/api/v1/predictions/{pred_id}", tags=["Predictions"], summary="Get prediction", description="Retrieve a specific prediction log by ID.")
 def get_prediction_api(pred_id: str, current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-    log = get_prediction_log(db, pred_id)
-    if not log:
-        raise HTTPException(status_code=404, detail="Prediction not found")
+    log = require_prediction_log_access(db, pred_id, current_user)
     return {
         "id": log.id, "model_name": log.model_name,
         "input_preview": log.input_preview,
@@ -2704,7 +2770,8 @@ def get_prediction_api(pred_id: str, current_user: dict = Depends(get_current_us
 
 
 @app.delete("/api/v1/predictions/{pred_id}", tags=["Predictions"], summary="Delete prediction", description="Delete a prediction log by ID.")
-def delete_prediction_api(pred_id: str, db: Session = Depends(get_db), current_user: dict = Depends(get_optional_user)):
+def delete_prediction_api(pred_id: str, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    require_prediction_log_access(db, pred_id, current_user)
     if not delete_prediction_log(db, pred_id):
         raise HTTPException(status_code=404, detail="Prediction not found")
     log_audit(db, current_user.get("name", "User"), "prediction.deleted", pred_id, "prediction")
