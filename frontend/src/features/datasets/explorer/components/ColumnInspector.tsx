@@ -35,9 +35,8 @@ export function ColumnInspector({ column, profile, analysis, preview, onClose }:
     let s = 100;
     s -= missingPct * 2;
     if (isNumeric && colProfile?.outliers && rows) s -= (colProfile.outliers / rows) * 100 * 2;
-    if (meta.kind === 'id') s -= 0;
     return Math.max(0, Math.min(100, Math.round(s)));
-  }, [missingPct, isNumeric, colProfile?.outliers, rows, meta.kind]);
+  }, [missingPct, isNumeric, colProfile?.outliers, rows]);
 
   const qualityGrade = qualityScore >= 90 ? 'A' : qualityScore >= 80 ? 'B' : qualityScore >= 65 ? 'C' : qualityScore >= 50 ? 'D' : 'F';
 

@@ -4,6 +4,7 @@ import {
   getCoreRowModel,
   getSortedRowModel,
   getFilteredRowModel,
+  flexRender,
   type Table,
   type ColumnDef,
   type SortingState,
@@ -442,13 +443,7 @@ export function PreviewGrid({ dataset, onSelectColumn, selectedColumn, profile, 
                           isColSelected && 'bg-white/[0.03]',
                         )}
                       >
-                        {cell.column.id === '__select' || cell.column.id === '__index' ? (
-                          cell.renderValue() as React.ReactNode
-                        ) : cell.renderValue() == null || cell.renderValue() === '' ? (
-                          <span className="text-zinc-600 italic text-xs">NULL</span>
-                        ) : (
-                          <span className="font-mono text-[13px] text-zinc-400">{String(cell.renderValue())}</span>
-                        )}
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
                       </td>
                     );
                   })}

@@ -168,7 +168,12 @@ export default function ExplorerPage() {
         dataset={currentDataset || null}
         uploading={uploading}
         onUploadClick={() => fileInputRef.current?.click()}
-        onRefresh={() => { refetchDatasets(); }}
+        onRefresh={() => {
+          refetchDatasets();
+          void analysis.refetch();
+          void profile.refetch();
+          void pagePreview.refetch();
+        }}
         onExportDataset={handleExport}
         onExportPreview={handleExportPreview}
         canExportPreview={!!pagePreview.data?.rows?.length}
@@ -197,7 +202,7 @@ export default function ExplorerPage() {
       ) : !currentDataset ? (
         <ErrorState
           title="Dataset not found"
-          message={`We couldn't find " ${selectedDataset} ". It may have been removed — pick another dataset from the library.`}
+          message={`We couldn't find "${selectedDataset}". It may have been removed — pick another dataset from the library.`}
           onRetry={() => refetchDatasets()}
         />
       ) : (
@@ -460,7 +465,7 @@ function KpiGrid({
   analysisError: boolean;
 }) {
   const q = analysis;
-  const unused = analysisPending || analysisError;
+  const pendingState = analysisPending && !analysisError;
   const missingSev = q?.missing?.severity;
   const dupSev = q?.duplicates?.severity;
   const outPct = q?.outliers?.mean_pct ?? 0;
@@ -476,19 +481,19 @@ function KpiGrid({
       <KpiCard
         icon={AlertCircle}
         label="Missing Values"
-        value={q ? fmt.int(q.missing?.total_missing) : unused ? skeleton : '—'}
+        value={q ? fmt.int(q.missing?.total_missing) : pendingState ? skeleton : '—'}
         sub={q ? <span><SevDot sev={missingSev} />{fmt.pct(q.missing?.missing_pct)} of cells</span> : undefined}
       />
       <KpiCard
         icon={Copy}
         label="Duplicates"
-        value={q ? fmt.int(q.duplicates?.count) : unused ? skeleton : '—'}
+        value={q ? fmt.int(q.duplicates?.count) : pendingState ? skeleton : '—'}
         sub={q ? <span><SevDot sev={dupSev} />{fmt.pct(q.duplicates?.pct)} of rows</span> : undefined}
       />
       <KpiCard
         icon={Gauge}
         label="Outliers"
-        value={q ? fmt.int(q.outliers?.total_outliers) : unused ? skeleton : '—'}
+        value={q ? fmt.int(q.outliers?.total_outliers) : pendingState ? skeleton : '—'}
         sub={q ? <span><SevDot sev={outSev} />{fmt.pct(outPct)} avg per column</span> : undefined}
       />
       <KpiCard
@@ -496,7 +501,7 @@ function KpiGrid({
         label="Quality Score"
         value={q?.quality_score ? (
           <span style={{ color: gradeColor(q.quality_score.grade) }}>{Math.round(q.quality_score.total)}%</span>
-        ) : unused ? skeleton : '—'}
+        ) : pendingState ? skeleton : '—'}
         sub={q?.quality_score ? <span className={gradeTextCls(q.quality_score.grade)}>Grade {q.quality_score.grade}</span> : undefined}
       />
     </section>
