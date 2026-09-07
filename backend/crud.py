@@ -385,7 +385,7 @@ def list_api_keys(db: Session, user_id: str) -> list:
 
 def create_api_key(db: Session, user_id: str, name: str) -> dict:
     raw_key = f"amk_{uuid.uuid4().hex}"
-    key_prefix = raw_key[:12]
+    key_prefix = raw_key[:8]
     key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
     api_key = ApiKey(
         id=_uid(), user_id=user_id, name=name,

@@ -13,8 +13,9 @@ CSRF_EXPIRE_MINUTES = 60
 def generate_csrf_token(secret: str) -> tuple[str, str]:
     token = secrets.token_urlsafe(32)
     expiry = datetime.now(timezone.utc) + timedelta(minutes=CSRF_EXPIRE_MINUTES)
-    sig = hashlib.sha256(f"{token}:{expiry.isoformat()}:{secret}".encode()).hexdigest()[:16]
-    return f"{token}.{expiry.isoformat()}.{sig}", token
+    expiry_str = expiry.isoformat(timespec="seconds")
+    sig = hashlib.sha256(f"{token}:{expiry_str}:{secret}".encode()).hexdigest()[:16]
+    return f"{token}.{expiry_str}.{sig}", token
 
 
 def validate_csrf_token(csrf: str, secret: str) -> bool:

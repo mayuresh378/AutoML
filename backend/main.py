@@ -179,6 +179,23 @@ def _load_model_meta(name: str) -> dict:
     return {}
 
 
+def _deployment_model_path(dep) -> str:
+    name = None
+    if dep.config and dep.config.get("model_file"):
+        name = dep.config["model_file"]
+    elif dep.model is not None and dep.model.file_path and os.path.exists(dep.model.file_path):
+        return dep.model.file_path
+    elif dep.model is not None and dep.model.name:
+        name = dep.model.name
+    elif dep.model_id and not dep.model_id.startswith(("urn:", "uuid")):
+        name = dep.model_id
+    if not name:
+        return None
+    if not name.endswith(".pkl"):
+        name = f"{name}.pkl"
+    return os.path.join(MODELS_DIR, name)
+
+
 def _get_dataset_df(name: str) -> pd.DataFrame:
     fpath = validate_path(name)
     if not os.path.exists(fpath):
@@ -1789,6 +1806,54 @@ def list_models_api(db: Session = Depends(get_db), offset: int = Query(0, ge=0),
     all_models = all_models[offset:offset + limit]
     return paginated(all_models, total, offset, limit, key="models")
 
+@app.get("/api/v1/models/registry", tags=["Models"], summary="List model registry", description="List all registered models from the database registry.")
+def list_model_registry_api(db: Session = Depends(get_db), offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=500), current_user: dict = Depends(get_optional_user)):
+    uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
+    db_models = list_model_registry_entries(db, user_id=uid)
+    items = [{
+        "id": m.id, "name": m.name, "version": m.version,
+        "model_type": m.model_type, "task_type": m.task_type,
+        "framework": m.framework, "file_size_kb": m.file_size_kb,
+        "cv_score": m.cv_score, "status": m.status,
+        "tags": m.tags, "description": m.description,
+        "experiment_id": m.experiment_id,
+        "owner": m.user.name if m.user else None,
+        "owner_email": m.user.email if m.user else None,
+        "created_at": m.created_at.isoformat() if m.created_at else None,
+        "updated_at": m.updated_at.isoformat() if m.updated_at else None,
+    } for m in db_models]
+    total = len(items)
+    items = items[offset:offset + limit]
+    return paginated(items, total, offset, limit, key="models")
+
+
+@app.post("/api/v1/models/registry", tags=["Models"], summary="Register model", description="Register a model file in the model registry.")
+def register_model_api(model_name: str = Form(...), version: str = Form(None), db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    fpath = os.path.join(MODELS_DIR, model_name)
+    if not os.path.exists(fpath):
+        raise HTTPException(status_code=404, detail=f"Model '{model_name}' not found")
+    meta = _load_model_meta(model_name)
+    existing = db.query(ModelRegistry).filter(ModelRegistry.name == model_name).first()
+    if existing:
+        existing.version = (existing.version or 1) + 1
+        existing.updated_at = datetime.now(timezone.utc)
+        db.commit()
+        db.refresh(existing)
+        return {"id": existing.id, "name": existing.name, "version": existing.version}
+    m = create_model(db, {
+        "user_id": current_user.get("id"),
+        "name": model_name,
+        "model_type": meta.get("task_type"),
+        "task_type": meta.get("task_type"),
+        "file_path": fpath,
+        "file_size_kb": round(os.path.getsize(fpath) / 1024, 1),
+        "cv_score": meta.get("cv_score"),
+        "metrics": meta.get("metrics"),
+        "status": "staging",
+    })
+    return {"id": m.id, "name": m.name, "version": m.version}
+
+
 @app.get("/api/v1/models/{name}", tags=["Models"], summary="Get model detail", description="Retrieve metadata for a specific model.")
 def get_model_detail(name: str, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     fpath = os.path.join(MODELS_DIR, name)
@@ -1931,7 +1996,7 @@ def evaluate_model_api(
                     p_i, r_i, _ = _prc(y_test_bin[:, ci], y_proba[:, ci])
                     ap_i = round(float(_aps(y_test_bin[:, ci], y_proba[:, ci])), 4)
                     all_ap_vals.append(ap_i)
-                    per_class_pr.append({"label": str_labels[i] if ci < len(str_labels) else str(ci), "precision": [round(float(x), 4) for x in p_i], "recall": [round(float(x), 4) for x in r_i], "ap": ap_i})
+                    per_class_pr.append({"label": str_labels[ci] if ci < len(str_labels) else str(ci), "precision": [round(float(x), 4) for x in p_i], "recall": [round(float(x), 4) for x in r_i], "ap": ap_i})
                 result["roc_curve"] = {"per_class": per_class_roc, "macro_auc": round(float(np.mean(all_auc_vals)), 4)}
                 result["pr_curve"] = {"per_class": per_class_pr, "macro_ap": round(float(np.mean(all_ap_vals)), 4)}
 
@@ -2076,53 +2141,6 @@ def update_model_tags(name: str, tags: str = Form(...), db: Session = Depends(ge
         raise HTTPException(status_code=404, detail=f"Model '{name}' not found")
     return {"message": f"Tags updated for '{name}'", "tags": tag_list}
 
-
-@app.get("/api/v1/models/registry", tags=["Models"], summary="List model registry", description="List all registered models from the database registry.")
-def list_model_registry_api(db: Session = Depends(get_db), offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=500), current_user: dict = Depends(get_optional_user)):
-    uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
-    db_models = list_model_registry_entries(db, user_id=uid)
-    items = [{
-        "id": m.id, "name": m.name, "version": m.version,
-        "model_type": m.model_type, "task_type": m.task_type,
-        "framework": m.framework, "file_size_kb": m.file_size_kb,
-        "cv_score": m.cv_score, "status": m.status,
-        "tags": m.tags, "description": m.description,
-        "experiment_id": m.experiment_id,
-        "owner": m.user.name if m.user else None,
-        "owner_email": m.user.email if m.user else None,
-        "created_at": m.created_at.isoformat() if m.created_at else None,
-        "updated_at": m.updated_at.isoformat() if m.updated_at else None,
-    } for m in db_models]
-    total = len(items)
-    items = items[offset:offset + limit]
-    return paginated(items, total, offset, limit, key="models")
-
-
-@app.post("/api/v1/models/registry", tags=["Models"], summary="Register model", description="Register a model file in the model registry.")
-def register_model_api(model_name: str = Form(...), version: str = Form(None), db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
-    fpath = os.path.join(MODELS_DIR, model_name)
-    if not os.path.exists(fpath):
-        raise HTTPException(status_code=404, detail=f"Model '{model_name}' not found")
-    meta = _load_model_meta(model_name)
-    existing = db.query(ModelRegistry).filter(ModelRegistry.name == model_name).first()
-    if existing:
-        existing.version = (existing.version or 1) + 1
-        existing.updated_at = datetime.now(timezone.utc)
-        db.commit()
-        db.refresh(existing)
-        return {"id": existing.id, "name": existing.name, "version": existing.version}
-    m = create_model(db, {
-        "user_id": current_user.get("id"),
-        "name": model_name,
-        "model_type": meta.get("task_type"),
-        "task_type": meta.get("task_type"),
-        "file_path": fpath,
-        "file_size_kb": round(os.path.getsize(fpath) / 1024, 1),
-        "cv_score": meta.get("cv_score"),
-        "metrics": meta.get("metrics"),
-        "status": "staging",
-    })
-    return {"id": m.id, "name": m.name, "version": m.version}
 
 FORMAT_PARAMS = {
     "LogisticRegression": {"C": {"type": "float", "range": [0.001, 10], "log": True}},
@@ -2595,6 +2613,7 @@ def create_deployment_api(
         "endpoint_url": f"/api/v1/predictions?model={model_name}",
         "status": "active",
         "environment": "production",
+        "config": {"model_file": model_name},
     })
     log_audit(db, current_user.get("name", "User"), "deployment.created", endpoint_name, "deployment", dep.id)
     try:
@@ -2627,8 +2646,13 @@ def delete_deployment_api(dep_id: str, db: Session = Depends(get_db), current_us
 @app.get("/api/v1/deployments/{dep_id}", tags=["Deployments"], summary="Get deployment", description="Retrieve a specific deployment by ID.")
 def get_deployment_api(dep_id: str, current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     dep = require_deployment_access(db, dep_id, current_user)
+    model_name = None
+    if dep.config and dep.config.get("model_file"):
+        model_name = dep.config["model_file"]
+    if not model_name:
+        model_name = dep.model.name if dep.model else dep.model_id
     return {
-        "id": dep.id, "model_name": dep.model.name if dep.model else dep.model_id, "endpoint_name": dep.name,
+        "id": dep.id, "model_name": model_name, "endpoint_name": dep.name,
         "endpoint_url": dep.endpoint_url, "status": dep.status,
         "environment": dep.environment, "requests_count": dep.requests_count,
         "avg_latency_ms": dep.avg_latency_ms,
@@ -2657,8 +2681,10 @@ def update_deployment_api(dep_id: str, min_replicas: int = Form(None), max_repli
     dep = update_deployment(db, dep_id, min_replicas=min_replicas, max_replicas=max_replicas)
     if not dep:
         raise HTTPException(status_code=404, detail="Deployment not found")
+    model_name = dep.config.get("model_file") if dep.config else None
+    model_name = model_name or (dep.model.name if dep.model else dep.model_id)
     return {
-        "id": dep.id, "model_name": dep.model.name if dep.model else dep.model_id, "endpoint_name": dep.name,
+        "id": dep.id, "model_name": model_name, "endpoint_name": dep.name,
         "endpoint_url": dep.endpoint_url, "status": dep.status,
         "created_at": dep.created_at.isoformat() if dep.created_at else None,
     }
@@ -2741,13 +2767,15 @@ def deployment_fastapi_code_api(dep_id: str, db: Session = Depends(get_db), curr
     dep = get_deployment(db, dep_id)
     if not dep:
         raise HTTPException(status_code=404, detail="Deployment not found")
+    model_filename = _deployment_model_path(dep)
+    model_filename = os.path.basename(model_filename) if model_filename else (dep.model_id or "model")
     code = f'''from fastapi import FastAPI, HTTPException, Depends
 from pydantic import BaseModel
-import pickle, os, numpy as np
+import joblib, os, numpy as np
 
 app = FastAPI(title="{dep.name} Serving API", version="1.0.0")
 
-MODEL_PATH = os.getenv("MODEL_PATH", "./models/{dep.model_id}.pkl")
+MODEL_PATH = os.getenv("MODEL_PATH", "./models/{model_filename}")
 model = None
 
 class PredictionRequest(BaseModel):
@@ -2761,12 +2789,11 @@ class PredictionResponse(BaseModel):
 @app.on_event("startup")
 def load_model():
     global model
-    with open(MODEL_PATH, "rb") as f:
-        model = pickle.load(f)
+    model = joblib.load(MODEL_PATH)
 
 @app.get("/health")
 def health():
-    return {{"status": "healthy", "model": "{dep.model_id}"}}
+    return {{"status": "healthy", "model": "{model_filename}"}}
 
 @app.post("/predict", response_model=PredictionResponse)
 def predict(req: PredictionRequest):
@@ -2775,7 +2802,7 @@ def predict(req: PredictionRequest):
     X = np.array(req.features).reshape(1, -1)
     pred = model.predict(X)[0]
     conf = max(model.predict_proba(X)[0]) if hasattr(model, "predict_proba") else 0.0
-    return PredictionResponse(prediction=str(pred), confidence=round(float(conf), 4), model="{dep.model_id}")
+    return PredictionResponse(prediction=str(pred), confidence=round(float(conf), 4), model="{model_filename}")
 '''
     dep.fastapi_code = code
     db.commit()
@@ -2789,6 +2816,8 @@ def deployment_docker_api(dep_id: str, db: Session = Depends(get_db), current_us
     dep = get_deployment(db, dep_id)
     if not dep:
         raise HTTPException(status_code=404, detail="Deployment not found")
+    model_filename = _deployment_model_path(dep)
+    model_filename = os.path.basename(model_filename) if model_filename else (dep.model_id or "model")
     port = dep.docker_port or 8080
     compose = f'''version: "3.8"
 services:
@@ -2797,7 +2826,7 @@ services:
     ports:
       - "{port}:{port}"
     environment:
-      - MODEL_PATH=/app/models/{dep.model_id}.pkl
+      - MODEL_PATH=/app/models/{model_filename}
       - PORT={port}
     volumes:
       - ./models:/app/models
@@ -2830,16 +2859,16 @@ def export_deployment_onnx_api(dep_id: str, db: Session = Depends(get_db), curre
     dep = get_deployment(db, dep_id)
     if not dep:
         raise HTTPException(status_code=404, detail="Deployment not found")
-    model_path = os.path.join(MODELS_DIR, f"{dep.model_id}.pkl")
-    if not os.path.exists(model_path):
+    model_path = _deployment_model_path(dep)
+    if not model_path or not os.path.exists(model_path):
         raise HTTPException(status_code=404, detail="Model file not found on disk")
     onnx_dir = os.path.join(MODELS_DIR, "onnx")
     os.makedirs(onnx_dir, exist_ok=True)
-    onnx_path = os.path.join(onnx_dir, f"{dep.model_id}.onnx")
+    onnx_name = os.path.splitext(os.path.basename(model_path))[0] + ".onnx"
+    onnx_path = os.path.join(onnx_dir, onnx_name)
     try:
-        import pickle
-        with open(model_path, "rb") as f:
-            model = pickle.load(f)
+        import joblib
+        model = joblib.load(model_path)
         try:
             from skl2onnx import convert_sklearn
             from skl2onnx.common.data_types import FloatTensorType
@@ -2851,13 +2880,13 @@ def export_deployment_onnx_api(dep_id: str, db: Session = Depends(get_db), curre
             import struct
             with open(onnx_path, "wb") as f:
                 f.write(b"ONNX" + struct.pack("<I", 1))
-                f.write(dep.model_id.encode())
+                f.write(os.path.basename(model_path).encode())
         dep.onnx_model_path = onnx_path
         db.commit()
         from crud import create_deployment_history
         create_deployment_history(db, dep_id, "onnx_exported", details={"path": onnx_path},
                                   actor=current_user.get("name", "User"))
-        return {"message": "Model exported to ONNX", "path": onnx_path, "filename": f"{dep.model_id}.onnx"}
+        return {"message": "Model exported to ONNX", "path": onnx_path, "filename": onnx_name}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Export failed: {str(e)}")
 
@@ -2867,8 +2896,8 @@ def export_deployment_pickle_api(dep_id: str, db: Session = Depends(get_db), cur
     dep = get_deployment(db, dep_id)
     if not dep:
         raise HTTPException(status_code=404, detail="Deployment not found")
-    model_path = os.path.join(MODELS_DIR, f"{dep.model_id}.pkl")
-    if not os.path.exists(model_path):
+    model_path = _deployment_model_path(dep)
+    if not model_path or not os.path.exists(model_path):
         raise HTTPException(status_code=404, detail="Model file not found on disk")
     file_size = os.path.getsize(model_path)
     dep.download_url = f"/api/v1/deployments/{dep_id}/download"
@@ -2877,7 +2906,7 @@ def export_deployment_pickle_api(dep_id: str, db: Session = Depends(get_db), cur
     create_deployment_history(db, dep_id, "pickle_exported", details={"size_bytes": file_size},
                               actor=current_user.get("name", "User"))
     return {"message": "Pickle model ready", "download_url": dep.download_url,
-            "filename": f"{dep.model_id}.pkl", "size_bytes": file_size}
+            "filename": os.path.basename(model_path), "size_bytes": file_size}
 
 
 @app.get("/api/v1/deployments/{dep_id}/download", tags=["Deployments"], summary="Download model", description="Download the deployed model pickle file.")
@@ -2885,12 +2914,12 @@ def download_deployment_model_api(dep_id: str, current_user: dict = Depends(get_
     dep = get_deployment(db, dep_id)
     if not dep:
         raise HTTPException(status_code=404, detail="Deployment not found")
-    model_path = os.path.join(MODELS_DIR, f"{dep.model_id}.pkl")
-    if not os.path.exists(model_path):
+    model_path = _deployment_model_path(dep)
+    if not model_path or not os.path.exists(model_path):
         raise HTTPException(status_code=404, detail="Model file not found on disk")
     from crud import create_deployment_history
     create_deployment_history(db, dep_id, "model_downloaded", actor="user")
-    return FileResponse(model_path, filename=f"{dep.model_id}.pkl", media_type="application/octet-stream")
+    return FileResponse(model_path, filename=os.path.basename(model_path), media_type="application/octet-stream")
 
 
 @app.put("/api/v1/deployments/{dep_id}/status", tags=["Deployments"], summary="Update deployment status", description="Start, stop, or restart a deployment.")
@@ -3857,13 +3886,13 @@ def analytics(db: Session = Depends(get_db), days: int = 30, current_user: dict 
 
 # ── Admin ────────────────────────────────────────────────────────────
 
-@app.get("/api/v1/admin/stats", tags=["Admin"], summary="Admin stats", description="Return platform-wide statistics for administrators.")
 def require_admin(current_user: dict) -> dict:
     if current_user.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
     return current_user
 
 
+@app.get("/api/v1/admin/stats", tags=["Admin"], summary="Admin stats", description="Return platform-wide statistics for administrators.")
 def admin_stats(db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     require_admin(current_user)
     from crud import list_projects
