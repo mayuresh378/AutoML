@@ -350,6 +350,29 @@
   color: var(--color-text-secondary);
 }
 
+.runningElapsed {
+  font-size: var(--text-tiny);
+  color: var(--color-text-tertiary);
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.cancelBtn {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 6px;
+  font-size: var(--text-tiny);
+  font-weight: 600;
+  color: var(--color-danger, #ef4444);
+  background: transparent;
+  border: 1px solid currentColor;
+  cursor: pointer;
+}
+.cancelBtn:hover {
+  background: rgba(239, 68, 68, 0.12);
+}
+
 /* ── History Info Tab ── */
 .historyInfo {
   padding: 12px;

@@ -1,7 +1,7 @@
-import { useState, useMemo, memo, useCallback } from 'react';
+import { useState, useMemo, memo, useCallback, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import {
-  Bookmark, Search, Trash2, RotateCcw, X, Pin, Pencil, Folder,
+  Bookmark, Search, Trash2, RotateCcw, X, Pin, Pencil, Folder, Loader2, AlertCircle,
 } from 'lucide-react';
 import styles from './SavedQueriesPanel.module.css';
 import { sqlService } from '../services/sqlEditor.service';
@@ -13,10 +13,25 @@ interface SavedQueriesPanelProps {
 }
 
 export const SavedQueriesPanel = memo(function SavedQueriesPanel({ onRestoreQuery, onClose }: SavedQueriesPanelProps) {
-  const [queries, setQueries] = useState<SavedQuery[]>(() => sqlService.getSavedQueries());
+  const [queries, setQueries] = useState<SavedQuery[]>([]);
   const [search, setSearch] = useState('');
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setLoadError(null);
+    try {
+      setQueries(await sqlService.listSaved());
+    } catch (err: any) {
+      setLoadError(err.message || String(err));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+  useEffect(() => { load(); }, [load]);
 
   const filtered = useMemo(() => {
     return queries.filter((q) => {
@@ -28,27 +43,43 @@ export const SavedQueriesPanel = memo(function SavedQueriesPanel({ onRestoreQuer
     });
   }, [queries, search]);
 
-  const handleDelete = useCallback((id: string) => {
-    sqlService.deleteSavedQuery(id);
-    setQueries((prev) => prev.filter((q) => q.id !== id));
-  }, []);
-
-  const handleTogglePin = useCallback((id: string) => {
-    const item = queries.find((q) => q.id === id);
-    if (item) {
-      sqlService.updateSavedQuery(id, { pinned: !item.pinned });
-      setQueries((prev) => prev.map((q) => q.id === id ? { ...q, pinned: !q.pinned } : q));
+  const handleDelete = useCallback(async (id: string) => {
+    const prev = queries;
+    setQueries((p) => p.filter((q) => q.id !== id));
+    try {
+      await sqlService.deleteSavedQuery(id);
+    } catch (err: any) {
+      setQueries(prev);
     }
   }, [queries]);
 
-  const handleRename = useCallback((id: string) => {
-    if (renameValue.trim()) {
-      sqlService.updateSavedQuery(id, { name: renameValue.trim() });
-      setQueries((prev) => prev.map((q) => q.id === id ? { ...q, name: renameValue.trim() } : q));
+  const handleTogglePin = useCallback(async (id: string) => {
+    const item = queries.find((q) => q.id === id);
+    if (item) {
+      const next = !item.pinned;
+      setQueries((prev) => prev.map((q) => q.id === id ? { ...q, pinned: next } : q));
+      try {
+        await sqlService.updateSavedQuery(id, { pinned: next });
+      } catch (err: any) {
+        setQueries((prev) => prev.map((q) => q.id === id ? { ...q, pinned: item.pinned } : q));
+      }
+    }
+  }, [queries]);
+
+  const handleRename = useCallback(async (id: string) => {
+    const name = renameValue.trim();
+    if (name) {
+      const prev = queries.find((q) => q.id === id)?.name;
+      setQueries((p) => p.map((q) => q.id === id ? { ...q, name } : q));
+      try {
+        await sqlService.updateSavedQuery(id, { name });
+      } catch (err: any) {
+        if (prev !== undefined) setQueries((p) => p.map((q) => q.id === id ? { ...q, name: prev } : q));
+      }
     }
     setRenamingId(null);
     setRenameValue('');
-  }, [renameValue]);
+  }, [renameValue, queries]);
 
   return (
     <div className={styles.backdrop}>
@@ -83,7 +114,16 @@ export const SavedQueriesPanel = memo(function SavedQueriesPanel({ onRestoreQuer
         </div>
 
         <div className={styles.list}>
-          {filtered.length === 0 ? (
+          {loading ? (
+            <div className={styles.listEmpty}>
+              <Loader2 size={16} className={styles.loadingSpin} /> Loading saved queries...
+            </div>
+          ) : loadError ? (
+            <div className={styles.listEmpty}>
+              <AlertCircle size={16} style={{ verticalAlign: 'middle', marginRight: 6 }} />
+              {loadError}
+            </div>
+          ) : filtered.length === 0 ? (
             <div className={styles.listEmpty}>
               {queries.length === 0
                 ? 'No saved queries yet. Use Ctrl+S to save.'

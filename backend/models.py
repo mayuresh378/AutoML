@@ -418,6 +418,45 @@ class MarketplaceItem(Base):
     created_at = Column(DateTime, default=_now, index=True)
 
 
+class SavedQuery(Base):
+    """User-saved SQL queries persisted server-side."""
+
+    __tablename__ = "saved_queries"
+
+    id = Column(String, primary_key=True, default=_uuid)
+    name = Column(String, nullable=False)
+    description = Column(Text, nullable=True)
+    query = Column(Text, nullable=False)
+    dataset = Column(String, nullable=True)
+    folder = Column(String, default="default")
+    tags = Column(JSON, default=list)
+    pinned = Column(Boolean, default=False)
+    deleted_at = Column(DateTime, nullable=True, index=True)
+    created_at = Column(DateTime, default=_now, index=True)
+    updated_at = Column(DateTime, default=_now, onupdate=_now)
+
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    user = relationship("User")
+
+
+class QueryHistory(Base):
+    """Per-user SQL execution history persisted server-side."""
+
+    __tablename__ = "query_history"
+
+    id = Column(String, primary_key=True, default=_uuid)
+    query = Column(Text, nullable=False)
+    dataset = Column(String, nullable=True)
+    execution_time_ms = Column(Float, nullable=True)
+    rows_returned = Column(Integer, nullable=True)
+    status = Column(String, default="success", index=True)
+    error = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=_now, index=True)
+
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    user = relationship("User")
+
+
 class AuditLog(Base):
     __tablename__ = "audit_logs"
 

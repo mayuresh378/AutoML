@@ -20,6 +20,7 @@ interface SqlEditorState {
   updateTabResult: (id: string, result: QueryResult | null) => void;
   updateTabError: (id: string, error: string | null) => void;
   updateTabRunning: (id: string, isRunning: boolean) => void;
+  updateTabRunningInfo: (id: string, runningInfo: QueryTab['runningInfo']) => void;
   renameTab: (id: string, name: string) => void;
   duplicateTab: (id: string) => void;
   toggleLeftPanel: () => void;
@@ -37,7 +38,7 @@ let _tabCounter = 1;
 export const useSqlEditorStore = create<SqlEditorState>()(
   persist(
     (set, get) => ({
-      tabs: [{ id: 'tab-1', name: 'query.sql', query: '', isDirty: false, result: null, error: null, isRunning: false, createdAt: Date.now(), updatedAt: Date.now() }],
+      tabs: [{ id: 'tab-1', name: 'query.sql', query: '', isDirty: false, result: null, error: null, isRunning: false, runningInfo: null, createdAt: Date.now(), updatedAt: Date.now() }],
       activeTabId: 'tab-1',
       leftPanelOpen: true,
       rightPanelOpen: false,
@@ -50,7 +51,7 @@ export const useSqlEditorStore = create<SqlEditorState>()(
       addTab: () => {
         _tabCounter++;
         const id = `tab-${_tabCounter}`;
-        const tab: QueryTab = { id, name: `query-${_tabCounter}.sql`, query: '', isDirty: false, result: null, error: null, isRunning: false, createdAt: Date.now(), updatedAt: Date.now() };
+        const tab: QueryTab = { id, name: `query-${_tabCounter}.sql`, query: '', isDirty: false, result: null, error: null, isRunning: false, runningInfo: null, createdAt: Date.now(), updatedAt: Date.now() };
         set((s) => ({ tabs: [...s.tabs, tab], activeTabId: id }));
       },
 
@@ -69,6 +70,7 @@ export const useSqlEditorStore = create<SqlEditorState>()(
       updateTabResult: (id, result) => set((s) => ({ tabs: s.tabs.map((t) => t.id === id ? { ...t, result, error: null, isRunning: false } : t) })),
       updateTabError: (id, error) => set((s) => ({ tabs: s.tabs.map((t) => t.id === id ? { ...t, error, isRunning: false } : t) })),
       updateTabRunning: (id, isRunning) => set((s) => ({ tabs: s.tabs.map((t) => t.id === id ? { ...t, isRunning } : t) })),
+      updateTabRunningInfo: (id, runningInfo) => set((s) => ({ tabs: s.tabs.map((t) => t.id === id ? { ...t, runningInfo } : t) })),
       renameTab: (id, name) => set((s) => ({ tabs: s.tabs.map((t) => t.id === id ? { ...t, name } : t) })),
 
       duplicateTab: (id) => set((s) => {

@@ -98,9 +98,9 @@ function isAbortError(err: unknown): boolean {
   return err instanceof DOMException && err.name === 'AbortError';
 }
 
-function timedSignal(externalSignal?: AbortSignal | null): { signal: AbortSignal; clear: () => void } {
+function timedSignal(externalSignal?: AbortSignal | null, timeoutMs?: number): { signal: AbortSignal; clear: () => void } {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs ?? DEFAULT_TIMEOUT_MS);
   const onExternalAbort = () => controller.abort();
   if (externalSignal) {
     if (externalSignal.aborted) controller.abort();
@@ -115,7 +115,7 @@ function timedSignal(externalSignal?: AbortSignal | null): { signal: AbortSignal
   };
 }
 
-async function request<T = any>(method: string, path: string, body?: any, params?: Record<string, any>, init?: RequestInit & { responseType?: string }): Promise<T> {
+async function request<T = any>(method: string, path: string, body?: any, params?: Record<string, any>, init?: RequestInit & { responseType?: string; timeoutMs?: number }): Promise<T> {
   const url = buildUrl(path, params);
   const isFormData = body instanceof FormData;
   const headers = await buildHeaders(init?.headers as Record<string, string>);
@@ -124,14 +124,17 @@ async function request<T = any>(method: string, path: string, body?: any, params
   } else {
     delete headers['Content-Type'];
   }
-  const { signal, clear } = timedSignal(init?.signal);
+  const { signal, clear } = timedSignal(init?.signal, init?.timeoutMs);
   try {
     const res = await fetch(url, {
       method,
       headers,
       body: isFormData ? body : body && method !== 'GET' ? JSON.stringify(body) : undefined,
     });
-    if ((init as any)?.responseType === 'blob') return (await res.blob()) as unknown as T;
+    if ((init as any)?.responseType === 'blob') {
+      if (!res.ok) return await handleResponse<T>(res);
+      return (await res.blob()) as unknown as T;
+    }
     return await handleResponse<T>(res);
   } catch (err) {
     if (isAbortError(err)) {
@@ -141,7 +144,7 @@ async function request<T = any>(method: string, path: string, body?: any, params
         externallyAborted ? 'ABORTED' : 'TIMEOUT',
         externallyAborted
           ? 'Request aborted'
-          : `Request timed out after ${Math.round(DEFAULT_TIMEOUT_MS / 1000)}s`,
+          : `Request timed out after ${Math.round((init?.timeoutMs ?? DEFAULT_TIMEOUT_MS) / 1000)}s`,
       );
     }
     throw err;
@@ -155,7 +158,7 @@ export const http = {
     return request<T>('GET', path, undefined, params, init);
   },
 
-  async post<T = any>(path: string, body?: any, init?: RequestInit): Promise<T> {
+  async post<T = any>(path: string, body?: any, init?: RequestInit & { responseType?: string; timeoutMs?: number }): Promise<T> {
     return request<T>('POST', path, body, undefined, init);
   },
 
@@ -190,6 +193,16 @@ export const http = {
 export function downloadUrl(path: string): string {
   const url = `${BASE}${path}`;
   return url;
+}
+
+export function saveBlob(blob: Blob, filename: string) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
 }
 
 export function downloadBlob(data: Record<string, any>[], filename: string) {

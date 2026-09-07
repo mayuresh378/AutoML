@@ -27,7 +27,7 @@ import logging
 
 from database import get_db, init_db
 from middleware import SecurityHeadersMiddleware, RateLimitMiddleware, CSRFMiddleware, rate_limiter
-from security_utils import sanitize_text, sanitize_name, validate_sql_query, validate_upload_filename
+from security_utils import sanitize_text, sanitize_name, validate_upload_filename
 from crud import (
     create_user, authenticate_user, get_user_by_id,
     list_experiments, create_experiment,
@@ -76,6 +76,7 @@ from engine import get_all_models, run_engine_job, CLASSIFICATION_MODELS as ENGI
 from features import generate_features, suggest_features
 from explain import explain_prediction
 from ai_assistant import answer_question, list_datasets as ai_list_datasets, load_experiments as ai_load_experiments
+from sql_studio import sql_router, ai_router
 from auth import (
     register_user, login_user, refresh_token, get_current_user, get_optional_user,
     decode_token, create_access_token, sanitize_filename,
@@ -4018,229 +4019,11 @@ def admin_storage(db: Session = Depends(get_db), current_user: dict = Depends(ge
     }
 
 
-# ── SQL Query ────────────────────────────────────────────────────────
+# ── SQL Query / SQL Studio ───────────────────────────────────────
 
-@app.post("/api/v1/query", tags=["SQL"], summary="Run SQL query", description="Execute a read-only SQL query against uploaded datasets via DuckDB.")
-def run_sql(query: str = Form(...), dataset: str = Form(None),
-            current_user: dict = Depends(get_optional_user), db: Session = Depends(get_db)):
-    if not query or len(query.strip()) > 10000:
-        raise HTTPException(status_code=400, detail="Query too long or empty")
-    query = query.strip()
-    valid, msg = validate_sql_query(query)
-    if not valid:
-        raise HTTPException(status_code=400, detail=msg)
-    import duckdb
-    con = None
-    try:
-        con = duckdb.connect()
-        if dataset:
-            fpath = validate_path(dataset)
-            if not os.path.exists(fpath):
-                raise HTTPException(status_code=404, detail=f"Dataset '{dataset}' not found")
-            safe_path = fpath.replace(os.sep, "/")
-            con.execute(f"CREATE OR REPLACE VIEW data AS SELECT * FROM read_csv_auto('{safe_path}', strict_mode=false, ignore_errors=true)")
-        else:
-            for f in os.listdir(DATASET_DIR):
-                if f.endswith((".csv", ".parquet")):
-                    fpath = os.path.join(DATASET_DIR, f)
-                    tbl = re.sub(r"[^a-zA-Z0-9_]", "_", f.rsplit(".", 1)[0])
-                    safe_path = fpath.replace(os.sep, "/")
-                    con.execute(f"CREATE OR REPLACE VIEW \"{tbl}\" AS SELECT * FROM read_csv_auto('{safe_path}', strict_mode=false, ignore_errors=true)")
-        result = con.execute(query)
-        columns = [desc[0] for desc in result.description] if result.description else []
-        rows = result.fetchall()
-        data = [dict(zip(columns, row)) for row in rows]
-        log_audit(db, actor=current_user.get("id", "anonymous"),
-                  action="sql.query", target=query[:200], resource_type="query", status="success")
-        return {"columns": columns, "rows": len(data), "data": data, "query": query}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    finally:
-        if con:
-            con.close()
+app.include_router(sql_router)
+app.include_router(ai_router)
 
-
-@app.post("/api/v1/query/profile", tags=["SQL"], summary="Profile query results", description="Compute column-level statistics for a SQL query result.")
-def profile_query(query: str = Form(...), dataset: str = Form(None),
-                  current_user: dict = Depends(get_optional_user), db: Session = Depends(get_db)):
-    if not query or len(query.strip()) > 10000:
-        raise HTTPException(status_code=400, detail="Query too long or empty")
-    query = query.strip()
-    valid, msg = validate_sql_query(query)
-    if not valid:
-        raise HTTPException(status_code=400, detail=msg)
-    import duckdb
-    con = None
-    try:
-        con = duckdb.connect()
-        if dataset:
-            fpath = validate_path(dataset)
-            if not os.path.exists(fpath):
-                raise HTTPException(status_code=404, detail=f"Dataset '{dataset}' not found")
-            safe_path = fpath.replace(os.sep, "/")
-            con.execute(f"CREATE OR REPLACE VIEW data AS SELECT * FROM read_csv_auto('{safe_path}', strict_mode=false, ignore_errors=true)")
-        else:
-            for f in os.listdir(DATASET_DIR):
-                if f.endswith((".csv", ".parquet")):
-                    fpath = os.path.join(DATASET_DIR, f)
-                    tbl = re.sub(r"[^a-zA-Z0-9_]", "_", f.rsplit(".", 1)[0])
-                    safe_path = fpath.replace(os.sep, "/")
-                    con.execute(f"CREATE OR REPLACE VIEW \"{tbl}\" AS SELECT * FROM read_csv_auto('{safe_path}', strict_mode=false, ignore_errors=true)")
-        df = con.execute(query).fetchdf()
-        columns = []
-        for col in df.columns:
-            series = df[col]
-            non_null = series.dropna()
-            col_info = {
-                "name": col,
-                "dtype": str(series.dtype),
-                "null_count": int(series.isnull().sum()),
-                "null_pct": round(float(series.isnull().sum()) / max(len(series), 1) * 100, 2),
-                "unique_count": int(series.nunique()),
-                "unique_pct": round(float(series.nunique()) / max(len(series), 1) * 100, 2),
-                "duplicate_count": int(len(series) - series.nunique()),
-                "min_value": str(non_null.min()) if len(non_null) > 0 else None,
-                "max_value": str(non_null.max()) if len(non_null) > 0 else None,
-                "mean_value": round(float(non_null.mean()), 4) if len(non_null) > 0 and pd.api.types.is_numeric_dtype(series) else None,
-                "median_value": round(float(non_null.median()), 4) if len(non_null) > 0 and pd.api.types.is_numeric_dtype(series) else None,
-                "std_value": round(float(non_null.std()), 4) if len(non_null) > 1 and pd.api.types.is_numeric_dtype(series) else None,
-                "memory_bytes": int(series.memory_usage(deep=True)),
-                "sample_values": [str(v) for v in non_null.unique()[:5].tolist()],
-            }
-            columns.append(col_info)
-        summary = {
-            "total_rows": len(df),
-            "total_columns": len(df.columns),
-            "total_memory_bytes": int(df.memory_usage(deep=True).sum()),
-            "duplicate_rows": int(df.duplicated().sum()),
-            "missing_cells": int(df.isnull().sum().sum()),
-            "total_cells": int(df.shape[0] * df.shape[1]),
-        }
-        log_audit(db, actor=current_user.get("id", "anonymous"),
-                  action="sql.profile", target=query[:200], resource_type="query", status="success")
-        return {"columns": columns, "summary": summary, "query": query}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    finally:
-        if con:
-            con.close()
-
-
-@app.post("/api/v1/query/explain", tags=["SQL"], summary="Explain query execution plan", description="Get the DuckDB EXPLAIN output for a SQL query.")
-def explain_query(query: str = Form(...), dataset: str = Form(None),
-                  current_user: dict = Depends(get_optional_user), db: Session = Depends(get_db)):
-    if not query or len(query.strip()) > 10000:
-        raise HTTPException(status_code=400, detail="Query too long or empty")
-    query = query.strip()
-    valid, msg = validate_sql_query(query)
-    if not valid:
-        raise HTTPException(status_code=400, detail=msg)
-    import duckdb
-    con = None
-    try:
-        con = duckdb.connect()
-        if dataset:
-            fpath = validate_path(dataset)
-            if not os.path.exists(fpath):
-                raise HTTPException(status_code=404, detail=f"Dataset '{dataset}' not found")
-            safe_path = fpath.replace(os.sep, "/")
-            con.execute(f"CREATE OR REPLACE VIEW data AS SELECT * FROM read_csv_auto('{safe_path}', strict_mode=false, ignore_errors=true)")
-        else:
-            for f in os.listdir(DATASET_DIR):
-                if f.endswith((".csv", ".parquet")):
-                    fpath = os.path.join(DATASET_DIR, f)
-                    tbl = re.sub(r"[^a-zA-Z0-9_]", "_", f.rsplit(".", 1)[0])
-                    safe_path = fpath.replace(os.sep, "/")
-                    con.execute(f"CREATE OR REPLACE VIEW \"{tbl}\" AS SELECT * FROM read_csv_auto('{safe_path}', strict_mode=false, ignore_errors=true)")
-        result = con.execute(f"EXPLAIN {query}")
-        rows = result.fetchall()
-        plan = [row[0] for row in rows]
-        log_audit(db, actor=current_user.get("id", "anonymous"),
-                  action="sql.explain", target=query[:200], resource_type="query", status="success")
-        return {"plan": plan, "query": query}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    finally:
-        if con:
-            con.close()
-
-
-@app.post("/api/v1/query/result-to-dataset", tags=["SQL"], summary="Save query result as dataset", description="Execute a SQL query and save the result as a new CSV dataset for model training.")
-def result_to_dataset(query: str = Form(...), dataset: str = Form(None), output_name: str = Form(None),
-                      current_user: dict = Depends(get_optional_user), db: Session = Depends(get_db)):
-    if not query or len(query.strip()) > 10000:
-        raise HTTPException(status_code=400, detail="Query too long or empty")
-    query = query.strip()
-    valid, msg = validate_sql_query(query)
-    if not valid:
-        raise HTTPException(status_code=400, detail=msg)
-    import duckdb
-    con = None
-    try:
-        con = duckdb.connect()
-        if dataset:
-            fpath = validate_path(dataset)
-            if not os.path.exists(fpath):
-                raise HTTPException(status_code=404, detail=f"Dataset '{dataset}' not found")
-            safe_path = fpath.replace(os.sep, "/")
-            con.execute(f"CREATE OR REPLACE VIEW data AS SELECT * FROM read_csv_auto('{safe_path}', strict_mode=false, ignore_errors=true)")
-        else:
-            for f in os.listdir(DATASET_DIR):
-                if f.endswith((".csv", ".parquet")):
-                    fpath = os.path.join(DATASET_DIR, f)
-                    tbl = re.sub(r"[^a-zA-Z0-9_]", "_", f.rsplit(".", 1)[0])
-                    safe_path = fpath.replace(os.sep, "/")
-                    con.execute(f"CREATE OR REPLACE VIEW \"{tbl}\" AS SELECT * FROM read_csv_auto('{safe_path}', strict_mode=false, ignore_errors=true)")
-        df = con.execute(query).fetchdf()
-        if not output_name:
-            output_name = f"query_result_{uuid.uuid4().hex[:8]}.csv"
-        if not output_name.endswith(".csv"):
-            output_name += ".csv"
-        output_name = re.sub(r"[^a-zA-Z0-9_.\-]", "_", output_name)
-        save_path = os.path.join(DATASET_DIR, output_name)
-        os.makedirs(DATASET_DIR, exist_ok=True)
-        df.to_csv(save_path, index=False)
-        file_size = os.path.getsize(save_path)
-        log_audit(db, actor=current_user.get("id", "anonymous"),
-                  action="sql.result_to_dataset", target=f"{query[:200]} -> {output_name}", resource_type="dataset", status="success")
-        return {"dataset": output_name, "rows": len(df), "columns": list(df.columns), "file_size": file_size}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    finally:
-        if con:
-            con.close()
-
-
-@app.get("/api/v1/query/preview", tags=["SQL"], summary="Preview table", description="Preview the first N rows of a dataset.")
-def preview_table(name: str = Query(...), limit: int = Query(20, ge=1, le=1000),
-                  current_user: dict = Depends(get_optional_user), db: Session = Depends(get_db)):
-    fpath = validate_path(name)
-    if not os.path.exists(fpath):
-        raise HTTPException(status_code=404, detail=f"Dataset '{name}' not found")
-    import duckdb
-    con = None
-    try:
-        con = duckdb.connect()
-        safe_path = fpath.replace(os.sep, "/")
-        con.execute(f"CREATE OR REPLACE VIEW data AS SELECT * FROM read_csv_auto('{safe_path}', strict_mode=false, ignore_errors=true)")
-        result = con.execute(f"SELECT * FROM data LIMIT {limit}")
-        columns = [desc[0] for desc in result.description] if result.description else []
-        rows = result.fetchall()
-        data = [dict(zip(columns, row)) for row in rows]
-        return {"columns": columns, "rows": len(data), "data": data, "dataset": name}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    finally:
-        if con:
-            con.close()
 
 
 # ── AI Assistant ─────────────────────────────────────────────────────

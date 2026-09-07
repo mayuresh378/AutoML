@@ -2,12 +2,14 @@ import { useState, useCallback, memo, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { Sparkles, Send, Loader2, Clock, Copy, Check, Lightbulb } from 'lucide-react';
 import styles from './AiAssistant.module.css';
+import { sqlService } from '../services/sqlEditor.service';
 
 interface AiAssistantProps {
   onInsertQuery: (query: string) => void;
   currentQuery?: string;
   columns?: string[];
   dtypes?: Record<string, string>;
+  dataset?: string;
 }
 
 function detectQueryType(nl: string): string {
@@ -26,7 +28,7 @@ function detectQueryType(nl: string): string {
   return 'default';
 }
 
-export const AiAssistant = memo(function AiAssistant({ onInsertQuery, currentQuery, columns = [], dtypes = {} }: AiAssistantProps) {
+export const AiAssistant = memo(function AiAssistant({ onInsertQuery, currentQuery, columns = [], dtypes = {}, dataset }: AiAssistantProps) {
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<{ role: 'user' | 'assistant'; content: string; sql?: string }[]>([]);
   const [loading, setLoading] = useState(false);
@@ -89,122 +91,138 @@ export const AiAssistant = memo(function AiAssistant({ onInsertQuery, currentQue
     const strCol = strCols[0] || firstCol;
     const dateCol = dateCols[0] || firstCol;
 
-    setTimeout(() => {
-      const qType = detectQueryType(nl);
-      let sql = '';
-      let explanation = '';
+    const buildLocal = () => {
+      setTimeout(() => {
+        const qType = detectQueryType(nl);
+        let sql = '';
+        let explanation = '';
 
-      switch (qType) {
-        case 'avg':
-          if (strCols.length > 0) {
-            sql = `SELECT ${strCol},\n  AVG(${numCol}) AS avg_${numCol},\n  COUNT(*) AS n\nFROM data\nGROUP BY ${strCol}\nORDER BY avg_${numCol} DESC;`;
-            explanation = `Averages "${numCol}" grouped by "${strCol}". The COUNT shows sample size per group — useful for assessing reliability of the average.`;
-          } else {
-            sql = `SELECT AVG(${numCol}) AS avg_${numCol},\n  MIN(${numCol}) AS min_${numCol},\n  MAX(${numCol}) AS max_${numCol}\nFROM data;`;
-            explanation = `Computes the average, min, and max of "${numCol}" across all rows.`;
+        switch (qType) {
+          case 'avg':
+            if (strCols.length > 0) {
+              sql = `SELECT ${strCol},\n  AVG(${numCol}) AS avg_${numCol},\n  COUNT(*) AS n\nFROM data\nGROUP BY ${strCol}\nORDER BY avg_${numCol} DESC;`;
+              explanation = `Averages "${numCol}" grouped by "${strCol}". The COUNT shows sample size per group — useful for assessing reliability of the average.`;
+            } else {
+              sql = `SELECT AVG(${numCol}) AS avg_${numCol},\n  MIN(${numCol}) AS min_${numCol},\n  MAX(${numCol}) AS max_${numCol}\nFROM data;`;
+              explanation = `Computes the average, min, and max of "${numCol}" across all rows.`;
+            }
+            break;
+          case 'count':
+            if (strCols.length > 0) {
+              sql = `SELECT ${strCol},\n  COUNT(*) AS count\nFROM data\nGROUP BY ${strCol}\nORDER BY count DESC;`;
+              explanation = `Counts rows per unique value of "${strCol}". Ordered by count descending so the most common values appear first.`;
+            } else {
+              sql = `SELECT COUNT(*) AS total_rows,\n  COUNT(DISTINCT ${numCol}) AS unique_${numCol}\nFROM data;`;
+              explanation = `Returns the total row count and number of distinct values in "${numCol}".`;
+            }
+            break;
+          case 'top':
+            sql = `SELECT *\nFROM data\nORDER BY ${numCol} DESC\nLIMIT 10;`;
+            explanation = `Sorts by "${numCol}" descending and returns the top 10 rows — the highest values in the dataset.`;
+            break;
+          case 'bottom':
+            sql = `SELECT *\nFROM data\nORDER BY ${numCol} ASC\nLIMIT 10;`;
+            explanation = `Sorts by "${numCol}" ascending and returns the bottom 10 rows — the lowest values.`;
+            break;
+          case 'sum':
+            if (strCols.length > 0) {
+              sql = `SELECT ${strCol},\n  SUM(${numCol}) AS total_${numCol}\nFROM data\nGROUP BY ${strCol}\nORDER BY total_${numCol} DESC;`;
+              explanation = `Sums "${numCol}" per group of "${strCol}". Useful for understanding which categories contribute most to the total.`;
+            } else {
+              sql = `SELECT SUM(${numCol}) AS total_${numCol}\nFROM data;`;
+              explanation = `Computes the total sum of "${numCol}" across all rows.`;
+            }
+            break;
+          case 'group':
+            if (strCols.length > 0 && numericCols.length > 0) {
+              sql = `SELECT ${strCol},\n  COUNT(*) AS count,\n  AVG(${numCol}) AS avg_${numCol},\n  MIN(${numCol}) AS min_${numCol},\n  MAX(${numCol}) AS max_${numCol}\nFROM data\nGROUP BY ${strCol}\nORDER BY count DESC;`;
+              explanation = `Groups by "${strCol}" and shows count, average, min, and max of "${numCol}" per group — a full summary breakdown.`;
+            } else {
+              sql = `SELECT *\nFROM data\nORDER BY ${numCol}\nLIMIT 100;`;
+              explanation = `Showing data sorted by "${numCol}". Add a GROUP BY column for aggregation.`;
+            }
+            break;
+          case 'filter': {
+            const searchTerms = nl.split(' ').filter((w) => w.length > 2 && !['show', 'find', 'filter', 'get', 'display'].includes(w)).slice(0, 3);
+            if (searchTerms.length > 0 && strCols.length > 0) {
+              sql = `SELECT *\nFROM data\nWHERE ${strCol} ILIKE '%${searchTerms.join('%')}%'\nLIMIT 100;`;
+              explanation = `Filters rows where "${strCol}" contains "${searchTerms.join(' ')}" (case-insensitive). ILIKE is case-insensitive LIKE.`;
+            } else {
+              sql = `SELECT *\nFROM data\nWHERE ${numCol} IS NOT NULL\nLIMIT 100;`;
+              explanation = `Shows rows where "${numCol}" is not null. Refine with specific conditions.`;
+            }
+            break;
           }
-          break;
-        case 'count':
-          if (strCols.length > 0) {
-            sql = `SELECT ${strCol},\n  COUNT(*) AS count\nFROM data\nGROUP BY ${strCol}\nORDER BY count DESC;`;
-            explanation = `Counts rows per unique value of "${strCol}". Ordered by count descending so the most common values appear first.`;
-          } else {
-            sql = `SELECT COUNT(*) AS total_rows,\n  COUNT(DISTINCT ${numCol}) AS unique_${numCol}\nFROM data;`;
-            explanation = `Returns the total row count and number of distinct values in "${numCol}".`;
-          }
-          break;
-        case 'top':
-          sql = `SELECT *\nFROM data\nORDER BY ${numCol} DESC\nLIMIT 10;`;
-          explanation = `Sorts by "${numCol}" descending and returns the top 10 rows — the highest values in the dataset.`;
-          break;
-        case 'bottom':
-          sql = `SELECT *\nFROM data\nORDER BY ${numCol} ASC\nLIMIT 10;`;
-          explanation = `Sorts by "${numCol}" ascending and returns the bottom 10 rows — the lowest values.`;
-          break;
-        case 'sum':
-          if (strCols.length > 0) {
-            sql = `SELECT ${strCol},\n  SUM(${numCol}) AS total_${numCol}\nFROM data\nGROUP BY ${strCol}\nORDER BY total_${numCol} DESC;`;
-            explanation = `Sums "${numCol}" per group of "${strCol}". Useful for understanding which categories contribute most to the total.`;
-          } else {
-            sql = `SELECT SUM(${numCol}) AS total_${numCol}\nFROM data;`;
-            explanation = `Computes the total sum of "${numCol}" across all rows.`;
-          }
-          break;
-        case 'group':
-          if (strCols.length > 0 && numericCols.length > 0) {
-            sql = `SELECT ${strCol},\n  COUNT(*) AS count,\n  AVG(${numCol}) AS avg_${numCol},\n  MIN(${numCol}) AS min_${numCol},\n  MAX(${numCol}) AS max_${numCol}\nFROM data\nGROUP BY ${strCol}\nORDER BY count DESC;`;
-            explanation = `Groups by "${strCol}" and shows count, average, min, and max of "${numCol}" per group — a full summary breakdown.`;
-          } else {
-            sql = `SELECT *\nFROM data\nORDER BY ${numCol}\nLIMIT 100;`;
-            explanation = `Showing data sorted by "${numCol}". Add a GROUP BY column for aggregation.`;
-          }
-          break;
-        case 'filter': {
-          const searchTerms = nl.split(' ').filter((w) => w.length > 2 && !['show', 'find', 'filter', 'get', 'display'].includes(w)).slice(0, 3);
-          if (searchTerms.length > 0 && strCols.length > 0) {
-            sql = `SELECT *\nFROM data\nWHERE ${strCol} ILIKE '%${searchTerms.join('%')}%'\nLIMIT 100;`;
-            explanation = `Filters rows where "${strCol}" contains "${searchTerms.join(' ')}" (case-insensitive). ILIKE is case-insensitive LIKE.`;
-          } else {
-            sql = `SELECT *\nFROM data\nWHERE ${numCol} IS NOT NULL\nLIMIT 100;`;
-            explanation = `Shows rows where "${numCol}" is not null. Refine with specific conditions.`;
-          }
-          break;
+          case 'sort':
+            sql = `SELECT *\nFROM data\nORDER BY ${numCol} DESC\nLIMIT 50;`;
+            explanation = `Sorts all rows by "${numCol}" descending. Added LIMIT 50 to avoid returning too many rows.`;
+            break;
+          case 'distinct':
+            if (strCols.length > 0) {
+              sql = `SELECT ${strCol},\n  COUNT(*) AS count\nFROM data\nGROUP BY ${strCol}\nORDER BY count DESC;`;
+              explanation = `Shows all distinct values of "${strCol}" with their counts — equivalent to SELECT DISTINCT but with frequency information.`;
+            } else {
+              sql = `SELECT DISTINCT ${numCol}\nFROM data\nORDER BY ${numCol}\nLIMIT 100;`;
+              explanation = `Shows all distinct values of "${numCol}".`;
+            }
+            break;
+          case 'distribution':
+            sql = `SELECT\n  ${numCol},\n  NTILE(10) OVER (ORDER BY ${numCol}) AS decile\nFROM data\nORDER BY ${numCol};`;
+            explanation = `Distributes "${numCol}" into 10 equal bins (deciles) using NTILE(10). Useful for understanding the distribution shape.`;
+            break;
+          case 'nulls':
+            sql = `SELECT\n  ${columns.slice(0, 8).map((c) => `SUM(CASE WHEN ${c} IS NULL THEN 1 ELSE 0 END) AS ${c}_nulls`).join(',\n  ')}\nFROM data;`;
+            explanation = `Counts null values in each of the first 8 columns. Helps identify columns with missing data issues.`;
+            break;
+          case 'recent':
+            if (dateCols.length > 0) {
+              sql = `SELECT *\nFROM data\nWHERE ${dateCol} >= CURRENT_DATE - INTERVAL '30 days'\nORDER BY ${dateCol} DESC\nLIMIT 100;`;
+              explanation = `Shows rows from the last 30 days based on "${dateCol}". Adjust the interval as needed.`;
+            } else {
+              sql = `SELECT *\nFROM data\nORDER BY ${numCol} DESC\nLIMIT 100;`;
+              explanation = `No date column detected. Showing latest rows by "${numCol}" instead.`;
+            }
+            break;
+          default:
+            sql = `SELECT *\nFROM data\nLIMIT 100;`;
+            explanation = `Showing the first 100 rows. Try being more specific — ask about aggregations, filters, or groupings for better results.`;
         }
-        case 'sort':
-          sql = `SELECT *\nFROM data\nORDER BY ${numCol} DESC\nLIMIT 50;`;
-          explanation = `Sorts all rows by "${numCol}" descending. Added LIMIT 50 to avoid returning too many rows.`;
-          break;
-        case 'distinct':
-          if (strCols.length > 0) {
-            sql = `SELECT ${strCol},\n  COUNT(*) AS count\nFROM data\nGROUP BY ${strCol}\nORDER BY count DESC;`;
-            explanation = `Shows all distinct values of "${strCol}" with their counts — equivalent to SELECT DISTINCT but with frequency information.`;
-          } else {
-            sql = `SELECT DISTINCT ${numCol}\nFROM data\nORDER BY ${numCol}\nLIMIT 100;`;
-            explanation = `Shows all distinct values of "${numCol}".`;
-          }
-          break;
-        case 'distribution':
-          sql = `SELECT\n  ${numCol},\n  NTILE(10) OVER (ORDER BY ${numCol}) AS decile\nFROM data\nORDER BY ${numCol};`;
-          explanation = `Distributes "${numCol}" into 10 equal bins (deciles) using NTILE(10). Useful for understanding the distribution shape.`;
-          break;
-        case 'nulls':
-          sql = `SELECT\n  ${columns.slice(0, 8).map((c) => `SUM(CASE WHEN ${c} IS NULL THEN 1 ELSE 0 END) AS ${c}_nulls`).join(',\n  ')}\nFROM data;`;
-          explanation = `Counts null values in each of the first 8 columns. Helps identify columns with missing data issues.`;
-          break;
-        case 'recent':
-          if (dateCols.length > 0) {
-            sql = `SELECT *\nFROM data\nWHERE ${dateCol} >= CURRENT_DATE - INTERVAL '30 days'\nORDER BY ${dateCol} DESC\nLIMIT 100;`;
-            explanation = `Shows rows from the last 30 days based on "${dateCol}". Adjust the interval as needed.`;
-          } else {
-            sql = `SELECT *\nFROM data\nORDER BY ${numCol} DESC\nLIMIT 100;`;
-            explanation = `No date column detected. Showing latest rows by "${numCol}" instead.`;
-          }
-          break;
-        default:
-          sql = `SELECT *\nFROM data\nLIMIT 100;`;
-          explanation = `Showing the first 100 rows. Try being more specific — ask about aggregations, filters, or groupings for better results.`;
-      }
 
-      setMessages((prev) => [...prev, { role: 'assistant', content: explanation, sql }]);
+        setMessages((prev) => [...prev, { role: 'assistant', content: explanation, sql }]);
 
-      const tips: string[] = [];
-      if (qType === 'filter' || qType === 'default') tips.push('Be more specific: mention column names, values, or conditions for better SQL.');
-      if (numericCols.length > 0) tips.push(`Available numeric columns: ${numericCols.slice(0, 5).join(', ')}`);
-      if (strCols.length > 0) tips.push(`Available text columns: ${strCols.slice(0, 5).join(', ')}`);
-      if (dateCols.length > 0) tips.push(`Date columns available: ${dateCols.join(', ')} — try asking about time ranges.`);
-      if (tips.length > 0) {
-        setTimeout(() => {
-          setMessages((prev) => [...prev, {
-            role: 'assistant',
-            content: `**Schema hints:**\n${tips.map((t) => `• ${t}`).join('\n')}`,
-          }]);
+        const tips: string[] = [];
+        if (qType === 'filter' || qType === 'default') tips.push('Be more specific: mention column names, values, or conditions for better SQL.');
+        if (numericCols.length > 0) tips.push(`Available numeric columns: ${numericCols.slice(0, 5).join(', ')}`);
+        if (strCols.length > 0) tips.push(`Available text columns: ${strCols.slice(0, 5).join(', ')}`);
+        if (dateCols.length > 0) tips.push(`Date columns available: ${dateCols.join(', ')} — try asking about time ranges.`);
+        if (tips.length > 0) {
+          setTimeout(() => {
+            setMessages((prev) => [...prev, {
+              role: 'assistant',
+              content: `**Schema hints:**\n${tips.map((t) => `• ${t}`).join('\n')}`,
+            }]);
+            setLoading(false);
+          }, 600);
+        } else {
           setLoading(false);
-        }, 600);
-      } else {
+        }
+      }, 1000 + Math.random() * 500);
+    };
+
+    try {
+      const res = await sqlService.aiSql(input, dataset);
+      if (res.sql?.trim()) {
+        setMessages((prev) => [...prev, {
+          role: 'assistant',
+          content: (res.explanation || 'SQL generated from your request. Review before running.').trim(),
+          sql: res.sql.trim(),
+        }]);
         setLoading(false);
+        return;
       }
-    }, 1000 + Math.random() * 500);
-  }, [input, columns, numericCols, strCols, dateCols]);
+    } catch {}
+    buildLocal();
+  }, [input, columns, numericCols, strCols, dateCols, dataset]);
 
   const copyToClipboard = useCallback(async (text: string) => {
     try {

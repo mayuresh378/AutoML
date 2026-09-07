@@ -5,7 +5,7 @@ import {
 } from '@tanstack/react-table';
 import {
   ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ArrowUpDown, ArrowUp, ArrowDown,
-  Download, Copy, Check, Search, Table2, Clock, Filter, X,
+  Download, Copy, Check, Search, Table2, Clock, Filter, X, Loader2, AlertTriangle,
 } from 'lucide-react';
 import { sqlService } from '../services/sqlEditor.service';
 import { QueryResult } from '../types';
@@ -13,9 +13,12 @@ import styles from './ResultsGrid.module.css';
 
 interface ResultsGridProps {
   result: QueryResult;
+  dataset?: string;
+  onLoadMore?: () => void;
+  loadingMore?: boolean;
 }
 
-export const ResultsGrid = memo(function ResultsGrid({ result }: ResultsGridProps) {
+export const ResultsGrid = memo(function ResultsGrid({ result, dataset, onLoadMore, loadingMore }: ResultsGridProps) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [globalFilter, setGlobalFilter] = useState('');
@@ -73,16 +76,27 @@ export const ResultsGrid = memo(function ResultsGrid({ result }: ResultsGridProp
   }, [result]);
 
   const handleExportCSV = useCallback(() => {
-    sqlService.exportCSV(result.data, `query_export_${Date.now()}`);
-  }, [result.data]);
+    if (dataset) {
+      void sqlService.exportServerCSV(result.query, dataset, `query_export_${Date.now()}.csv`);
+    } else {
+      sqlService.exportCSV(result.data, `query_export_${Date.now()}`);
+    }
+  }, [result, dataset]);
 
   const handleExportJSON = useCallback(() => {
-    sqlService.exportJSON(result.data, `query_export_${Date.now()}`);
-  }, [result.data]);
+    if (dataset) {
+      void sqlService.exportServerJSON(result.query, dataset, `query_export_${Date.now()}.json`);
+    } else {
+      sqlService.exportJSON(result.data, `query_export_${Date.now()}`);
+    }
+  }, [result, dataset]);
 
   const handleExportExcel = useCallback(() => {
     sqlService.exportExcel(result.data, `query_export_${Date.now()}`);
   }, [result.data]);
+
+  const hasMore = result.total_rows != null && result.total_rows > result.data.length;
+  const execMs = result.execution_time_ms ?? result.executionTime;
 
   const activeColFilters = columnFilters.length;
 
@@ -92,12 +106,12 @@ export const ResultsGrid = memo(function ResultsGrid({ result }: ResultsGridProp
         <div className={styles.headerLeft}>
           <div className={styles.rowCount}>
             <Table2 className={styles.rowCountIcon} />
-            <span>{result.rows} row{result.rows !== 1 ? 's' : ''}</span>
+            <span>{result.total_rows ?? result.rows} row{result.total_rows !== 1 ? 's' : ''}</span>
           </div>
-          {result.executionTime && (
+          {execMs != null && (
             <div className={styles.execTime}>
               <Clock className={styles.execTimeIcon} />
-              {result.executionTime}ms
+              {execMs}ms
             </div>
           )}
         </div>
@@ -143,6 +157,12 @@ export const ResultsGrid = memo(function ResultsGrid({ result }: ResultsGridProp
       </div>
 
       <div className={styles.tableContainer}>
+        {result.truncated && (
+          <div className={styles.truncatedBanner}>
+            <AlertTriangle size={13} style={{ verticalAlign: 'middle', marginRight: 6 }} />
+            Result capped at {result.total_rows ?? result.data.length} rows (server limit). Use Export for the full dataset.
+          </div>
+        )}
         <table className={styles.table}>
           <thead className={styles.thead}>
             {table.getHeaderGroups().map((hg) => (
@@ -228,8 +248,15 @@ export const ResultsGrid = memo(function ResultsGrid({ result }: ResultsGridProp
 
       <div className={styles.footer}>
         <div className={styles.footerInfo}>
-          {table.getFilteredRowModel().rows.length} of {result.data.length} rows
+          {table.getFilteredRowModel().rows.length} of {result.data.length} loaded rows
+          {result.total_rows != null && ` (${result.total_rows} total)`}
         </div>
+        {hasMore && onLoadMore && (
+          <button onClick={onLoadMore} disabled={loadingMore} className={styles.loadMoreBtn}>
+            {loadingMore ? <Loader2 size={13} className={styles.loadingSpin} /> : <ChevronRight size={13} />}
+            {loadingMore ? 'Loading...' : `Load next ${Math.min(500, result.total_rows! - result.data.length)} rows`}
+          </button>
+        )}
         <div className={styles.footerControls}>
           <button onClick={() => table.setPageIndex(0)} disabled={!table.getCanPreviousPage()} className={styles.gridBtn}>
             <ChevronsLeft className={styles.gridBtnIcon} />

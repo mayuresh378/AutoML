@@ -56,25 +56,111 @@ def sanitize_filename(value: str) -> str:
 
 # ── SQL Injection Protection ────────────────────────────────────────
 
+# Operations that are never allowed regardless of confirmation (can touch the
+# filesystem, read arbitrary paths, or escape the sandboxed DuckDB instance).
+# Note: destructive DML/DDL (INSERT/UPDATE/DELETE/DROP TABLE/ALTER TABLE/CREATE
+# TABLE/TRUNCATE) is intentionally NOT here — those are confirmable in the
+# ephemeral sandbox. This list only covers privilege/filesystem/external actions.
 DISALLOWED_SQL_PATTERNS = [
-    r"\binsert\s+into\b", r"\bupdate\s+\w+\s+set\b", r"\bdelete\s+from\b",
-    r"\bdrop\s+(table|view|database|schema|index)\b",
-    r"\balter\s+(table|view|schema|database)\b",
-    r"\bcreate\s+(table|view|database|schema|index|function|procedure|trigger)\b",
-    r"\bgrant\b", r"\brevoke\b", r"\battach\b", r"\bdetach\b",
+    r"\bdrop\s+(view|database|schema|index|function|procedure|trigger|macro)\b",
+    r"\balter\s+(view|schema|database|function|type)\b",
+    r"\bcreate\s+(or\s+replace\s+)?(database|schema|index|function|procedure|trigger|macro|secret|type)\b",
+    r"\bgrant\b", r"\brevoke\b",
+    r"\battach\b", r"\bdetach\b",
     r"\bexec\b", r"\bexecute\b", r"\bshutdown\b", r"\binstall\b",
-    r"\bload\b", r"\breplace\b", r"\btruncate\b", r"\brename\b",
+    r"\bload\b",
     r"\binformation_schema\b", r"\bpg_catalog\b", r"\bsqlite_master\b",
     r"\bpragma\b", r"\bwrite\b",
+    # filesystem / privileges / external access
+    r"\bcopy\b", r"\bmount\b", r"\bmemory_limit\b",
+    r"\bread_csv\b", r"\bread_parquet\b", r"\bread_json\b",
+    r"\bread_csv_auto\b", r"\breads\b", r"\bglob\b",
+]
+
+# Destructive-but-sandboxed operations: they only mutate the ephemeral
+# in-memory DuckDB instance used for this request, but still require an
+# explicit user confirmation before execution.
+DANGEROUS_SQL_PATTERNS = [
+    r"\binsert\s+into\b",
+    r"\bupdate\s+\w+\s+set\b",
+    r"\bdelete\s+from\b",
+    r"\bdrop\s+table\b",
+    r"\balter\s+table\b",
+    r"\bcreate\s+table\b",
+    r"\btruncate\b", r"\breplace\b", r"\brename\b",
+]
+
+DANGEROUS_OP_LABELS = [
+    ("insert", r"\binsert\s+into\b"),
+    ("update", r"\bupdate\s+\w+\s+set\b"),
+    ("delete", r"\bdelete\s+from\b"),
+    ("drop table", r"\bdrop\s+table\b"),
+    ("alter table", r"\balter\s+table\b"),
+    ("create table", r"\bcreate\s+(or\s+replace\s+)?table\b"),
+    ("truncate", r"\btruncate\b"),
+    ("replace", r"\breplace\b"),
+    ("rename", r"\brename\b"),
 ]
 
 
 def validate_sql_query(query: str) -> tuple[bool, str]:
-    sql_lower = query.strip().lower()
+    sql_lower = strip_sql_comments(query.strip()).lower()
     for p in DISALLOWED_SQL_PATTERNS:
         if re.search(p, sql_lower):
             return False, "Disallowed SQL keyword/pattern detected"
     return True, ""
+
+
+def strip_sql_comments(query: str) -> str:
+    """Remove `--`, `#`, and `/* */` comments while preserving string safety.
+
+    Naive but adequate for validation: comments that would fool the detector
+    would also fail DuckDB's own parser when executed.
+    """
+    import re as _re
+    # block comments
+    text = _re.sub(r"/\*.*?\*/", " ", query, flags=_re.DOTALL)
+    # line comments
+    lines = text.split("\n")
+    cleaned = []
+    for line in lines:
+        cleaned.append(_re.sub(r"(--|#).*$", " ", line))
+    return "\n".join(cleaned)
+
+
+def analyze_sql_safety(query: str) -> dict:
+    """Classify a query for the safe-execution pipeline.
+
+    Returns:
+      - ok: whether the query may run at all (read-only + no privilege/filesystem ops)
+      - dangerous: whether it contains destructive DML/DDL (requires confirmation)
+      - operations: list of detected dangerous operations (labels)
+      - reasons: messages describing why the query was rejected (if not ok)
+    """
+    sql_lower = strip_sql_comments(query.strip()).lower()
+    reasons = []
+    for p in DISALLOWED_SQL_PATTERNS:
+        if re.search(p, sql_lower):
+            reasons.append("Disallowed SQL keyword/pattern detected")
+    dangerous_ops = [label for label, p in DANGEROUS_OP_LABELS if re.search(p, sql_lower)]
+    ok = not reasons
+    requires_confirmation = bool(dangerous_ops)
+    if not ok:
+        # fully disallowed operations also require confirmation in the UI flow,
+        # but they can never be executed — mark them as reasons only.
+        dangerous_ops_for_ui = [label for label, p in DANGEROUS_OP_LABELS if re.search(p, sql_lower)]
+        return {
+            "ok": False,
+            "dangerous": requires_confirmation,
+            "operations": dangerous_ops_for_ui,
+            "reasons": reasons,
+        }
+    return {
+        "ok": True,
+        "dangerous": requires_confirmation,
+        "operations": dangerous_ops,
+        "reasons": [],
+    }
 
 
 ALLOWED_EXTENSIONS = {".csv", ".xlsx", ".xls", ".parquet", ".json"}

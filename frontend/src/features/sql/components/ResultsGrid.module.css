@@ -258,6 +258,46 @@
   color: var(--color-text-tertiary);
 }
 
+.loadMoreBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 12px;
+  padding: 3px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-primary, #3b82f6);
+  background: rgba(59, 130, 246, 0.12);
+  border: 1px solid rgba(59, 130, 246, 0.35);
+  cursor: pointer;
+}
+.loadMoreBtn:hover:not(:disabled) {
+  background: rgba(59, 130, 246, 0.2);
+}
+.loadMoreBtn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.loadingSpin {
+  animation: rgSpin 0.9s linear infinite;
+}
+
+@keyframes rgSpin {
+  to { transform: rotate(360deg); }
+}
+
+.truncatedBanner {
+  display: flex;
+  align-items: center;
+  padding: 5px 12px;
+  font-size: 11px;
+  color: #b45309;
+  background: rgba(245, 158, 11, 0.12);
+  border-bottom: 1px solid rgba(245, 158, 11, 0.3);
+}
+
 .footerControls {
   display: flex;
   align-items: center;

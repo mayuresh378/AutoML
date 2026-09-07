@@ -187,6 +187,22 @@
   color: var(--color-text-tertiary);
 }
 
+.loadingSpin {
+  display: inline-block;
+  vertical-align: middle;
+  margin-right: 8px;
+  animation: qhSpin 0.9s linear infinite;
+}
+
+@keyframes qhSpin {
+  to { transform: rotate(360deg); }
+}
+
+.itemStatusError {
+  color: var(--color-danger, #ef4444);
+  text-transform: capitalize;
+}
+
 .listItems {
   display: flex;
   flex-direction: column;

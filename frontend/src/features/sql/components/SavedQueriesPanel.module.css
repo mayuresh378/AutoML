@@ -129,6 +129,17 @@
   color: var(--color-text-tertiary);
 }
 
+.loadingSpin {
+  display: inline-block;
+  vertical-align: middle;
+  margin-right: 8px;
+  animation: sqSpin 0.9s linear infinite;
+}
+
+@keyframes sqSpin {
+  to { transform: rotate(360deg); }
+}
+
 .listItems {
   display: flex;
   flex-direction: column;

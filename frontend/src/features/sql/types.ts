@@ -6,6 +6,16 @@ export interface QueryResult {
   executionTime?: number;
   memoryUsed?: number;
   rowsScanned?: number;
+  query_id?: string;
+  total_rows?: number;
+  truncated?: boolean;
+  page?: number;
+  page_size?: number;
+  execution_time_ms?: number;
+  status?: 'success' | 'requires_confirmation' | 'timeout' | 'cancelled' | 'error';
+  message?: string;
+  operations?: string[];
+  dataset_name?: string;
 }
 
 export interface QueryTab {
@@ -18,29 +28,46 @@ export interface QueryTab {
   isRunning: boolean;
   createdAt: number;
   updatedAt: number;
+  runningInfo?: { clientId?: string; queryId?: string; startedAt: number; operation?: string } | null;
 }
 
 export interface QueryHistoryItem {
   id: string;
   query: string;
-  dataset: string;
+  dataset: string | null;
   executedAt: number;
   executionTime?: number;
   rowsReturned?: number;
   favorite: boolean;
   pinned: boolean;
+  status?: string;
+  error?: string | null;
+  created_at?: string;
+  execution_time_ms?: number | null;
+  rows_returned?: number | null;
 }
 
 export interface SavedQuery {
   id: string;
   name: string;
   query: string;
-  dataset: string;
+  dataset: string | null;
   folder: string;
   tags: string[];
   pinned: boolean;
   createdAt: number;
   updatedAt: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface SaveQueryPayload {
+  name: string;
+  query: string;
+  dataset?: string | null;
+  folder?: string;
+  tags?: string[];
+  pinned?: boolean;
 }
 
 export interface QueryTemplate {
@@ -140,6 +167,77 @@ export interface TablePreviewResult {
   rows: number;
   data: Record<string, any>[];
   dataset: string;
+}
+
+export interface RunQueryOptions {
+  dataset?: string;
+  confirmDestructive?: boolean;
+  page?: number;
+  pageSize?: number;
+  clientId?: string;
+  signal?: AbortSignal;
+}
+
+export interface SchemaColumn {
+  name: string;
+  dtype: string;
+  nullable: boolean;
+  primary_key?: boolean;
+}
+
+export interface SchemaTable {
+  name: string;
+  columns: SchemaColumn[];
+  rows: number;
+  size_kb: number;
+  source: string;
+  shared: boolean;
+  owned_by_me: boolean;
+}
+
+export interface SchemaResponse {
+  datasets: SchemaTable[];
+}
+
+export interface ValidatorResponse {
+  valid: boolean;
+  message: string;
+  operations?: string[];
+}
+
+export interface AiSqlResponse {
+  sql: string;
+  explanation?: string;
+  error?: string;
+}
+
+export function toLocalHistory(item: Partial<QueryHistoryItem> & { id: string }): QueryHistoryItem {
+  return {
+    id: item.id,
+    query: item.query ?? '',
+    dataset: item.dataset ?? null,
+    executedAt: item.executedAt ?? (item.created_at ? new Date(item.created_at).getTime() : Date.now()),
+    executionTime: item.executionTime ?? item.execution_time_ms ?? undefined,
+    rowsReturned: item.rowsReturned ?? item.rows_returned ?? undefined,
+    favorite: Boolean(item.favorite),
+    pinned: Boolean(item.pinned),
+    status: item.status,
+    error: item.error ?? null,
+  };
+}
+
+export function toLocalSaved(item: Partial<SavedQuery> & { id: string }): SavedQuery {
+  return {
+    id: item.id,
+    name: item.name ?? 'Untitled',
+    query: item.query ?? '',
+    dataset: item.dataset ?? null,
+    folder: item.folder ?? '',
+    tags: item.tags ?? [],
+    pinned: Boolean(item.pinned),
+    createdAt: item.createdAt ?? (item.created_at ? new Date(item.created_at).getTime() : Date.now()),
+    updatedAt: item.updatedAt ?? (item.updated_at ? new Date(item.updated_at).getTime() : Date.now()),
+  };
 }
 
 export const KEYBOARD_SHORTCUTS = [

@@ -1,8 +1,8 @@
-import { useState, useMemo, memo, useCallback } from 'react';
+import { useState, useMemo, memo, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   History, Clock, Star, Pin, Search, Trash2, Copy, RotateCcw, ChevronDown, MoreHorizontal,
-  X, Heart, Bookmark,
+  X, Heart, Bookmark, Loader2, AlertCircle,
 } from 'lucide-react';
 import styles from './QueryHistory.module.css';
 import { sqlService } from '../services/sqlEditor.service';
@@ -14,9 +14,24 @@ interface QueryHistoryProps {
 }
 
 export const QueryHistory = memo(function QueryHistory({ onRestoreQuery, onClose }: QueryHistoryProps) {
-  const [history, setHistory] = useState<QueryHistoryItem[]>(() => sqlService.getHistory());
+  const [history, setHistory] = useState<QueryHistoryItem[]>([]);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<'all' | 'today' | 'yesterday' | 'favorites'>('all');
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setLoadError(null);
+    try {
+      setHistory(await sqlService.listHistory());
+    } catch (err: any) {
+      setLoadError(err.message || String(err));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+  useEffect(() => { load(); }, [load]);
 
   const filtered = useMemo(() => {
     const now = Date.now();
@@ -30,23 +45,33 @@ export const QueryHistory = memo(function QueryHistory({ onRestoreQuery, onClose
     });
   }, [history, filter, search]);
 
-  const toggleFavorite = useCallback((id: string) => {
+  const toggleFavorite = useCallback(async (id: string) => {
     const item = history.find((h) => h.id === id);
     if (item) {
-      sqlService.updateHistory(id, { favorite: !item.favorite });
+      sqlService.updateHistory(id, { favorite: !item.favorite }).catch(() => {});
       setHistory((prev) => prev.map((h) => h.id === id ? { ...h, favorite: !h.favorite } : h));
     }
   }, [history]);
 
-  const deleteItem = useCallback((id: string) => {
-    sqlService.deleteHistory(id);
-    setHistory((prev) => prev.filter((h) => h.id !== id));
-  }, []);
+  const deleteItem = useCallback(async (id: string) => {
+    const prev = history;
+    setHistory((p) => p.filter((h) => h.id !== id));
+    try {
+      await sqlService.deleteHistoryItem(id);
+    } catch (err: any) {
+      setHistory(prev);
+    }
+  }, [history]);
 
-  const clearAll = useCallback(() => {
-    sqlService.clearHistory();
+  const clearAll = useCallback(async () => {
+    const prev = history;
     setHistory([]);
-  }, []);
+    try {
+      await sqlService.clearHistoryAll();
+    } catch (err: any) {
+      setHistory(prev);
+    }
+  }, [history]);
 
   return (
     <div className={styles.backdrop}>
@@ -94,7 +119,16 @@ export const QueryHistory = memo(function QueryHistory({ onRestoreQuery, onClose
         </div>
 
         <div className={styles.list}>
-          {filtered.length === 0 ? (
+          {loading ? (
+            <div className={styles.listEmpty}>
+              <Loader2 size={16} className={styles.loadingSpin} /> Loading history...
+            </div>
+          ) : loadError ? (
+            <div className={styles.listEmpty}>
+              <AlertCircle size={16} style={{ verticalAlign: 'middle', marginRight: 6 }} />
+              {loadError}
+            </div>
+          ) : filtered.length === 0 ? (
             <div className={styles.listEmpty}>No queries found</div>
           ) : (
             <div className={styles.listItems}>
@@ -107,11 +141,19 @@ export const QueryHistory = memo(function QueryHistory({ onRestoreQuery, onClose
                         <span className={styles.itemTime}>
                           {new Date(item.executedAt).toLocaleString()}
                         </span>
-                        {item.executionTime && (
+                        {item.dataset && (
+                          <span className={styles.itemStat}>{item.dataset}</span>
+                        )}
+                        {item.executionTime != null && (
                           <span className={styles.itemStat}>{item.executionTime}ms</span>
                         )}
                         {item.rowsReturned != null && (
                           <span className={styles.itemStat}>{item.rowsReturned} rows</span>
+                        )}
+                        {item.status && item.status !== 'success' && (
+                          <span className={`${styles.itemStat} ${styles.itemStatusError}`}>
+                            {item.status}
+                          </span>
                         )}
                       </div>
                     </div>

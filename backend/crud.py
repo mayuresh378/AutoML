@@ -11,7 +11,7 @@ from jose import jwt
 from models import (User, Team, TeamMember, ApiKey, Experiment, ModelRegistry,
                     Deployment, Pipeline, PipelineRun, PredictionLog, Webhook, AuditLog,
                     Project, MarketplaceItem, Dataset, DatasetShare, Notification, ActivityLog,
-                    DatasetCleanStep, CleaningHistory)
+                    DatasetCleanStep, CleaningHistory, SavedQuery, QueryHistory)
 
 from config import settings
 
@@ -976,5 +976,99 @@ def delete_notification(db: Session, notif_id: str) -> bool:
 
 def batch_delete_notifications(db: Session, notif_ids: list[str]) -> int:
     deleted = db.query(Notification).filter(Notification.id.in_(notif_ids)).delete(synchronize_session=False)
+    db.commit()
+    return deleted
+
+
+# ─── SQL Studio: saved queries ───────────────────────────────────────
+
+def create_saved_query(db: Session, user_id: str, name: str, query: str,
+                       dataset: str = None, description: str = None,
+                       folder: str = "default", tags: list = None,
+                       pinned: bool = False) -> SavedQuery:
+    row = SavedQuery(
+        id=_uid(), user_id=user_id, name=name, query=query, dataset=dataset,
+        description=description, folder=folder, tags=tags or [], pinned=pinned,
+        created_at=_now(),
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    log_audit(db, user_id, "sql.saved_query", name, "saved_query", row.id)
+    return row
+
+
+def list_saved_queries(db: Session, user_id: str, limit: int = 200) -> list:
+    return (db.query(SavedQuery)
+            .filter(SavedQuery.user_id == user_id, SavedQuery.deleted_at.is_(None))
+            .order_by(desc(SavedQuery.pinned), desc(SavedQuery.updated_at))
+            .limit(limit).all())
+
+
+def get_saved_query(db: Session, query_id: str, user_id: str) -> Optional[SavedQuery]:
+    return (db.query(SavedQuery)
+            .filter(SavedQuery.id == query_id, SavedQuery.user_id == user_id,
+                    SavedQuery.deleted_at.is_(None)).first())
+
+
+def update_saved_query(db: Session, query_id: str, user_id: str, **fields) -> Optional[SavedQuery]:
+    row = get_saved_query(db, query_id, user_id)
+    if not row:
+        return None
+    for k, v in fields.items():
+        if hasattr(row, k):
+            setattr(row, k, v)
+    row.updated_at = _now()
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def delete_saved_query(db: Session, query_id: str, user_id: str) -> bool:
+    row = get_saved_query(db, query_id, user_id)
+    if not row:
+        return False
+    row.deleted_at = _now()
+    db.commit()
+    return True
+
+
+# ─── SQL Studio: query history ───────────────────────────────────────
+
+def add_query_history(db: Session, user_id: str, query: str, dataset: str = None,
+                      execution_time_ms: float = None, rows_returned: int = None,
+                      status: str = "success", error: str = None) -> QueryHistory:
+    row = QueryHistory(
+        id=_uid(), user_id=user_id, query=query, dataset=dataset,
+        execution_time_ms=execution_time_ms, rows_returned=rows_returned,
+        status=status, error=error, created_at=_now(),
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def list_query_history(db: Session, user_id: str, limit: int = 200, offset: int = 0) -> list:
+    return (db.query(QueryHistory)
+            .filter(QueryHistory.user_id == user_id)
+            .order_by(desc(QueryHistory.created_at))
+            .offset(offset).limit(limit).all())
+
+
+def delete_query_history(db: Session, history_id: str, user_id: str) -> bool:
+    row = (db.query(QueryHistory)
+           .filter(QueryHistory.id == history_id, QueryHistory.user_id == user_id).first())
+    if not row:
+        return False
+    db.delete(row)
+    db.commit()
+    return True
+
+
+def clear_query_history(db: Session, user_id: str) -> int:
+    deleted = (db.query(QueryHistory)
+               .filter(QueryHistory.user_id == user_id)
+               .delete(synchronize_session=False))
     db.commit()
     return deleted

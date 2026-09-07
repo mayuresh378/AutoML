@@ -1,10 +1,10 @@
-import { useState, useCallback, useRef, useMemo } from 'react';
+import { useState, useCallback, useRef, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Database, X, Plus, AlertCircle, Loader2, FileText, History,
-  BarChart3, Table2, Sparkles, Activity, Rocket,
+  BarChart3, Table2, Sparkles, Activity, Rocket, ShieldAlert, Clock, Ban,
 } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import styles from './SQLEditorPage.module.css';
@@ -36,6 +36,7 @@ export default function SQLEditorPage() {
   const { notifyError, notifySuccess } = useNotification();
   const { isDark } = useTheme();
   const navigate = useNavigate();
+  const location = useLocation();
   const [selectedDataset, setSelectedDataset] = useState('');
   const [showHistory, setShowHistory] = useState(false);
   const [showSaved, setShowSaved] = useState(false);
@@ -47,6 +48,10 @@ export default function SQLEditorPage() {
   const [savingDataset, setSavingDataset] = useState(false);
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [saveName, setSaveName] = useState('');
+  const [pendingConfirm, setPendingConfirm] = useState<{ query: string; operations?: string[]; message?: string } | null>(null);
+  const [confirmingDestructive, setConfirmingDestructive] = useState(false);
+  const [nextPageLoading, setNextPageLoading] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
   const editorRef = useRef<any>(null);
   const monacoRef = useRef<any>(null);
   const resizerRef = useRef<{ startX?: number; startY?: number; panel?: string }>({});
@@ -55,7 +60,7 @@ export default function SQLEditorPage() {
     tabs, activeTabId, leftPanelOpen, rightPanelOpen, bottomPanelOpen, bottomPanelTab,
     leftPanelWidth, rightPanelWidth, bottomPanelHeight,
     addTab, closeTab, setActiveTab, updateTabQuery, updateTabResult, updateTabError, updateTabRunning,
-    renameTab, duplicateTab,
+    updateTabRunningInfo, renameTab, duplicateTab,
     toggleLeftPanel, toggleRightPanel, toggleBottomPanel, setBottomPanelOpen, setBottomPanelTab,
     setLeftPanelWidth, setRightPanelWidth, setBottomPanelHeight,
   } = useSqlEditorStore(useShallow((s) => ({
@@ -66,6 +71,7 @@ export default function SQLEditorPage() {
     addTab: s.addTab, closeTab: s.closeTab, setActiveTab: s.setActiveTab,
     updateTabQuery: s.updateTabQuery, updateTabResult: s.updateTabResult,
     updateTabError: s.updateTabError, updateTabRunning: s.updateTabRunning,
+    updateTabRunningInfo: s.updateTabRunningInfo,
     renameTab: s.renameTab, duplicateTab: s.duplicateTab,
     toggleLeftPanel: s.toggleLeftPanel, toggleRightPanel: s.toggleRightPanel,
     toggleBottomPanel: s.toggleBottomPanel, setBottomPanelOpen: s.setBottomPanelOpen,
@@ -81,6 +87,16 @@ export default function SQLEditorPage() {
     queryFn: () => datasetsService.list(),
     select: (d: any) => d.datasets,
   });
+
+  useEffect(() => {
+    if (selectedDataset || !datasets?.length) return;
+    const param = new URLSearchParams(location.search).get('dataset');
+    if (!param) return;
+    const found = (datasets as any[]).find(
+      (d) => d.name === param || d.filename === param,
+    );
+    setSelectedDataset(found ? (found.name || found.filename) : param);
+  }, [datasets, selectedDataset, location.search]);
 
   const schemaColumns = useMemo(() => {
     const ds = (datasets || []).find((d: any) => d.name === selectedDataset || d.filename === selectedDataset) || (datasets as any)?.[0];
@@ -118,30 +134,103 @@ export default function SQLEditorPage() {
       .replace(/\bvalue\b/g, numericCol);
   }, [defaultTableName, datasets, selectedDataset, schemaColumns]);
 
-  const handleRun = useCallback(async () => {
-    if (!activeTab?.query?.trim()) return;
+  const handleRun = useCallback(async (queryOverride?: string, confirm = false, datasetOverride?: string) => {
+    const ds = datasetOverride ?? selectedDataset;
+    const raw = queryOverride ?? activeTab?.query ?? '';
+    if (!raw.trim()) return;
+    const resolvedQuery = resolveTable(raw.trim());
     updateTabRunning(activeTabId, true);
     updateTabResult(activeTabId, null);
     updateTabError(activeTabId, null);
+    const clientId = crypto.randomUUID();
+    updateTabRunningInfo(activeTabId, { clientId, startedAt: Date.now(), operation: 'run' });
+    const controller = new AbortController();
+    abortRef.current = controller;
     try {
-      const resolvedQuery = resolveTable(activeTab.query.trim());
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 60000);
-      const data = await sqlService.executeQuery(resolvedQuery, selectedDataset, controller.signal);
-      clearTimeout(timeout);
+      const data = await sqlService.executeQuery(resolvedQuery, ds, {
+        clientId,
+        signal: controller.signal,
+        pageSize: 500,
+        confirmDestructive: confirm,
+      });
+      if (data.status === 'requires_confirmation') {
+        setPendingConfirm({ query: resolvedQuery, operations: data.operations || [], message: data.message });
+        notifyError('Confirmation required', 'This query performs destructive operations. Confirm to continue.');
+        return;
+      }
+      if (data.status === 'cancelled' || data.status === 'timeout') {
+        updateTabError(activeTabId, data.message || `Query ${data.status}`);
+        notifyError('Query ' + data.status, data.message || '');
+        return;
+      }
       updateTabResult(activeTabId, data);
       setBottomPanelOpen(true);
       setBottomPanelTab('results');
-      sqlService.addToHistory({ query: resolvedQuery, dataset: selectedDataset, executionTime: data.executionTime, rowsReturned: data.rows, favorite: false, pinned: false });
-      notifySuccess('Query completed', `${data.rows} row(s) returned in ${data.executionTime}ms`);
+      notifySuccess('Query completed', `${data.total_rows ?? data.rows} row(s) returned in ${data.execution_time_ms ?? data.executionTime}ms`);
     } catch (err: any) {
-      const msg = err.name === 'AbortError' ? 'Query timed out after 60s' : err.message || String(err);
+      const aborted = err?.name === 'AbortError' || err?.code === 'ABORTED' || err?.code === 'TIMEOUT';
+      const msg = aborted
+        ? (err?.code === 'ABORTED' ? 'Query cancelled' : 'Query timed out after 75s')
+        : err.message || String(err);
       updateTabError(activeTabId, msg);
-      notifyError('Query failed', msg);
+      if (!aborted || err?.code !== 'ABORTED') notifyError(aborted ? 'Query timed out' : 'Query failed', msg);
     } finally {
+      abortRef.current = null;
+      updateTabRunningInfo(activeTabId, null);
       updateTabRunning(activeTabId, false);
     }
-  }, [activeTab, activeTabId, selectedDataset, resolveTable, updateTabRunning, updateTabResult, updateTabError, notifySuccess, notifyError]);
+  }, [activeTab, activeTabId, selectedDataset, resolveTable, updateTabRunning, updateTabRunningInfo, updateTabResult, updateTabError, notifySuccess, notifyError]);
+
+  const handleCancel = useCallback(() => {
+    const info = activeTab?.runningInfo;
+    if (info?.clientId) {
+      sqlService.cancelQueryByClient(info.clientId).catch(() => {});
+    }
+    abortRef.current?.abort();
+  }, [activeTab]);
+
+  const handleConfirmDestructive = useCallback(async () => {
+    if (!pendingConfirm) return;
+    setConfirmingDestructive(true);
+    try {
+      await handleRun(pendingConfirm.query, true, selectedDataset);
+      setPendingConfirm(null);
+    } catch (err: any) {
+      notifyError('Query failed', err.message || String(err));
+    } finally {
+      setConfirmingDestructive(false);
+    }
+  }, [pendingConfirm, handleRun, selectedDataset, notifyError]);
+
+  const loadMoreResults = useCallback(async () => {
+    const r = activeTab?.result;
+    if (!r?.query_id || nextPageLoading) return;
+    const loaded = r.data.length;
+    if (r.total_rows != null && loaded >= r.total_rows) return;
+    const pageSize = 500;
+    const nextPage = Math.floor(loaded / pageSize) + 1;
+    setNextPageLoading(true);
+    try {
+      const chunk = await sqlService.fetchResultPage(r.query_id, nextPage, pageSize);
+      const merged: QueryResult = {
+        ...chunk,
+        query: r.query,
+        executionTime: r.executionTime,
+        execution_time_ms: r.execution_time_ms,
+        dataset_name: r.dataset_name,
+      };
+      const combinedRows = [...r.data, ...chunk.data];
+      merged.data = combinedRows;
+      merged.rows = combinedRows.length;
+      merged.page = chunk.page;
+      merged.total_rows = r.total_rows;
+      updateTabResult(activeTabId, merged);
+    } catch (err: any) {
+      notifyError('Failed to load more', err.message || String(err));
+    } finally {
+      setNextPageLoading(false);
+    }
+  }, [activeTab, activeTabId, nextPageLoading, updateTabResult, notifyError]);
 
   const handleFormat = useCallback(() => {
     if (editorRef.current) {
@@ -158,20 +247,24 @@ export default function SQLEditorPage() {
     setSaveDialogOpen(true);
   }, [activeTab, notifyError]);
 
-  const handleSaveConfirm = useCallback(() => {
+  const handleSaveConfirm = useCallback(async () => {
     if (!saveName.trim() || !activeTab?.query?.trim()) return;
-    sqlService.saveQuery({
-      name: saveName.trim(),
-      query: activeTab.query,
-      dataset: selectedDataset,
-      folder: 'default',
-      tags: [],
-      pinned: false,
-    });
-    setSaveDialogOpen(false);
-    setSaveName('');
-    notifySuccess('Query Saved', `"${saveName.trim()}" saved successfully`);
-  }, [saveName, activeTab, selectedDataset, notifySuccess]);
+    try {
+      await sqlService.saveQuery({
+        name: saveName.trim(),
+        query: activeTab.query,
+        dataset: selectedDataset,
+        folder: 'default',
+        tags: [],
+        pinned: false,
+      });
+      setSaveDialogOpen(false);
+      setSaveName('');
+      notifySuccess('Query Saved', `"${saveName.trim()}" saved successfully`);
+    } catch (err: any) {
+      notifyError('Save failed', err.message || String(err));
+    }
+  }, [saveName, activeTab, selectedDataset, notifySuccess, notifyError]);
 
   const handleMonacoMount = useCallback((editor: any, monaco: any) => {
     editorRef.current = editor;
@@ -245,17 +338,32 @@ export default function SQLEditorPage() {
   }, [toggleRightPanel]);
 
   const handleExport = useCallback((format: string) => {
-    if (!activeTab?.result?.data?.length) {
+    const rs = activeTab?.result ?? null;
+    const query = activeTab?.query;
+    const ts = Date.now();
+    if (format === 'csv' || format === 'json') {
+      if (!query?.trim()) {
+        notifyError('Export failed', 'No query to export. Run a query first.');
+        return;
+      }
+      if (format === 'csv') sqlService.exportServerCSV(query.trim(), selectedDataset, `query_${ts}.csv`);
+      else sqlService.exportServerJSON(query.trim(), selectedDataset, `query_${ts}.json`);
+      notifySuccess('Export started', `Full query result streaming as ${format.toUpperCase()}`);
+      return;
+    }
+    if (format === 'sql' || format === 'clipboard') {
+      if (format === 'sql') sqlService.exportSQL(query, `query_${ts}`);
+      else { sqlService.copyToClipboard(query); notifySuccess('Copied', 'Query copied to clipboard'); }
+      return;
+    }
+    if (!rs?.data?.length) {
       notifyError('Export failed', 'No results to export. Run a query first.');
       return;
     }
-    const ts = Date.now();
-    if (format === 'csv') sqlService.exportCSV(activeTab.result.data, `query_${ts}`);
-    else if (format === 'excel') sqlService.exportExcel(activeTab.result.data, `query_${ts}`);
-    else if (format === 'json') sqlService.exportJSON(activeTab.result.data, `query_${ts}`);
-    else if (format === 'sql') sqlService.exportSQL(activeTab.query, `query_${ts}`);
-    else if (format === 'clipboard') { sqlService.copyToClipboard(activeTab.query); notifySuccess('Copied', 'Query copied to clipboard'); }
-  }, [activeTab, notifySuccess, notifyError]);
+    if (format === 'csv') sqlService.exportCSV(rs.data, `query_${ts}`);
+    else if (format === 'excel') sqlService.exportExcel(rs.data, `query_${ts}`);
+    else if (format === 'json') sqlService.exportJSON(rs.data, `query_${ts}`);
+  }, [activeTab, selectedDataset, notifySuccess, notifyError]);
 
   const handleSaveAsDataset = useCallback(async () => {
     if (!activeTab?.query?.trim()) return;
@@ -428,10 +536,7 @@ export default function SQLEditorPage() {
           )}
 
           {activeTab?.isRunning && (
-            <div className={styles.runningBar}>
-              <div className={styles.runningSpinner} />
-              <span className={styles.runningText}>Running query...</span>
-            </div>
+            <RunningBar startedAt={activeTab.runningInfo?.startedAt} onCancel={handleCancel} />
           )}
 
           {bottomPanelOpen && (
@@ -472,7 +577,14 @@ export default function SQLEditorPage() {
                 </div>
 
                 <div className={styles.bottomTabContent}>
-                  {bottomPanelTab === 'results' && result && <ResultsGrid result={result} />}
+                  {bottomPanelTab === 'results' && result && (
+                    <ResultsGrid
+                      result={result}
+                      dataset={selectedDataset}
+                      onLoadMore={loadMoreResults}
+                      loadingMore={nextPageLoading}
+                    />
+                  )}
                   {bottomPanelTab === 'results' && !result && (
                     <div className={styles.emptyState}>Run a query to see results</div>
                   )}
@@ -515,6 +627,7 @@ export default function SQLEditorPage() {
                 <AiAssistant
                   onInsertQuery={(q) => handleInsertQuery(resolveTable(q))}
                   currentQuery={activeTab?.query}
+                  dataset={selectedDataset}
                   columns={schemaColumns}
                   dtypes={(() => {
                     const ds = (datasets || []).find((d: any) => d.name === selectedDataset || d.filename === selectedDataset) || (datasets as any)?.[0];
@@ -579,6 +692,92 @@ export default function SQLEditorPage() {
           </div>
         )}
       </AnimatePresence>
+    <AnimatePresence>
+        {pendingConfirm && (
+          <div className={styles.modalBackdrop}>
+            <div className={styles.modalOverlay} onClick={() => setPendingConfirm(null)} />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className={styles.modalContent}
+            >
+              <div className={styles.modalHeader}>
+                <span className={styles.modalTitle} style={{ color: '#f59e0b' }}>
+                  <ShieldAlert style={{ display: 'inline-block', verticalAlign: 'middle', marginRight: 6 }} size={18} />
+                  Confirm Destructive Query
+                </span>
+                <button onClick={() => setPendingConfirm(null)} className={styles.modalClose}>
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div style={{ padding: 16 }}>
+                <p style={{ fontSize: 13, lineHeight: 1.6, color: 'inherit', marginBottom: 12 }}>
+                  {pendingConfirm.message}
+                </p>
+                {(pendingConfirm.operations?.length || 0) > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
+                    {pendingConfirm.operations!.map((op) => (
+                      <span
+                        key={op}
+                        style={{
+                          padding: '3px 10px', borderRadius: 999, fontSize: 12,
+                          background: 'rgba(245,158,11,0.15)', color: '#f59e0b',
+                          border: '1px solid rgba(245,158,11,0.4)',
+                        }}
+                      >
+                        {op}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <p style={{ fontSize: 12, opacity: 0.7, marginBottom: 14 }}>
+                  Running inside the sandbox is ephemeral — changes will not persist unless you save them as a dataset. Then run the query only if you are sure.
+                </p>
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                  <button onClick={() => setPendingConfirm(null)} className={styles.saveCancelBtn}>Cancel</button>
+                  <button
+                    onClick={handleConfirmDestructive}
+                    disabled={confirmingDestructive}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 6,
+                      padding: '8px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600,
+                      background: '#f59e0b', color: '#1c1917', border: 'none', cursor: 'pointer',
+                    }}
+                  >
+                    {confirmingDestructive && <Loader2 size={14} className={styles.runningSpinner} />}
+                    {confirmingDestructive ? 'Running...' : 'Run it anyway'}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function RunningBar({ startedAt, onCancel }: { startedAt?: number; onCancel: () => void }) {
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    const start = startedAt ?? Date.now();
+    setElapsed(0);
+    const t = setInterval(() => setElapsed(Math.floor((Date.now() - start) / 1000)), 500);
+    return () => clearInterval(t);
+  }, [startedAt]);
+  return (
+    <div className={styles.runningBar}>
+      <div className={styles.runningSpinner} />
+      <span className={styles.runningText}>Running query...</span>
+      <span className={styles.runningElapsed}>
+        <Clock size={13} style={{ verticalAlign: 'middle', marginRight: 4 }} />
+        {elapsed}s
+      </span>
+      <button onClick={onCancel} className={styles.cancelBtn}>
+        <Ban size={14} style={{ verticalAlign: 'middle', marginRight: 5 }} />
+        Cancel
+      </button>
     </div>
   );
 }
