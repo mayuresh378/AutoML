@@ -64,14 +64,14 @@ from schemas import (
     PipelineCreate, PipelineUpdate, PipelineResponse, PipelineRunResponse,
     WebhookCreate, WebhookResponse,
 )
-from preprocess import auto_preprocess
+from preprocess import auto_preprocess, analyze_target
 from train import run_automl_training
 from predict import make_prediction, load_model_metadata
 from cleaning import profile_dataset, clean_dataset, auto_clean, detect_pipeline, apply_stage, load_dataset
 from analysis import analyze_dataset
 from analytics import dashboard_analytics
 from train import CLASSIFICATION_MODELS, REGRESSION_MODELS, run_engine_training, run_tuning, XGB_AVAILABLE, LGBM_AVAILABLE, CATB_AVAILABLE
-from hpo import HPORunner, get_param_ranges, OPTUNA_AVAILABLE, SKOPT_AVAILABLE, PARAM_RANGES as HPO_PARAM_RANGES
+from hpo import HPORunner, get_param_ranges, friendly_hpo_error, OPTUNA_AVAILABLE, SKOPT_AVAILABLE, PARAM_RANGES as HPO_PARAM_RANGES
 from engine import get_all_models, run_engine_job, CLASSIFICATION_MODELS as ENGINE_CLF_MODELS, REGRESSION_MODELS as ENGINE_REG_MODELS, CLUSTERING_MODELS, TIME_SERIES_MODELS
 from intel_engine import run_intelligent_job, recommend_models, build_dataset_profile, get_models_response as intel_models_response
 from features import generate_features, suggest_features
@@ -2265,6 +2265,20 @@ def hpo_get_params():
     return {"classification": {}, "regression": {}, "ranges": _PR}
 
 
+@app.post("/api/v1/hpo/target-analysis", tags=["HPO"], summary="Analyze target before HPO", description="Detect task type, class distribution, high-cardinality/identifier-like targets, and the safe CV fold count for a target column before running optimization.")
+def hpo_target_analysis(
+    file_name: str = Form(...),
+    target_column: str = Form(...),
+    task_type: str = Form(None),
+    cv_folds: int = Form(5),
+    current_user: dict = Depends(get_optional_user),
+):
+    try:
+        return analyze_target(file_name, target_column, task_type, cv_folds)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=friendly_hpo_error(e))
+
+
 @app.post("/api/v1/hpo/run", tags=["HPO"], summary="Run HPO", description="Run hyperparameter optimization asynchronously with SSE progress.")
 def run_hpo(
     file_name: str = Form(...),
@@ -2280,6 +2294,20 @@ def run_hpo(
 ):
     try:
         model_list = json.loads(models)
+    except Exception:
+        raise HTTPException(status_code=400, detail="'models' must be a valid JSON array of model names.")
+
+    try:
+        analysis = analyze_target(file_name, target_column, task_type, cv_folds)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=friendly_hpo_error(e))
+
+    if analysis.get("blocked"):
+        raise HTTPException(status_code=400, detail=analysis.get("block_reason") or "This target cannot be used for optimization.")
+
+    effective_cv = analysis.get("safe_cv_folds") or int(cv_folds)
+
+    try:
         job_id = str(uuid.uuid4())
 
         _hpo_update(job_id, "", "starting", 0, len(model_list), None, None)
@@ -2309,7 +2337,7 @@ def run_hpo(
                     hpo_progress_store[job_id]["model_results"] = results_list
 
                 runner = HPORunner(
-                    X, y, task, model_list, method, cv_folds, n_iter, callback=progress_callback,
+                    X, y, task, model_list, method, effective_cv, n_iter, callback=progress_callback,
                 )
                 result = runner.run()
 
@@ -2362,7 +2390,7 @@ def run_hpo(
                 with hpo_lock:
                     hpo_progress_store[job_id].update({
                         "status": "failed",
-                        "error": str(e),
+                        "error": friendly_hpo_error(e),
                     })
 
         thread = threading.Thread(target=run_in_background, daemon=True)

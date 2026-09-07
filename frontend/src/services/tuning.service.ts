@@ -1,10 +1,19 @@
 import { http } from './http';
-import type { HPOAvailability, HPOProgress } from '../types/api';
+import type { HPOAvailability, HPOProgress, TargetAnalysis } from '../types/api';
 
 export const tuningService = {
   availability: () => http.get<HPOAvailability>('/hpo/availability'),
 
   params: () => http.get('/hpo/params'),
+
+  analyzeTarget: (file_name: string, target_column: string, opts?: { task_type?: string; cv_folds?: number }) => {
+    const form = new FormData();
+    form.append('file_name', file_name);
+    form.append('target_column', target_column);
+    if (opts?.task_type) form.append('task_type', opts.task_type);
+    form.append('cv_folds', String(opts?.cv_folds ?? 5));
+    return http.post<TargetAnalysis>('/hpo/target-analysis', form);
+  },
 
   run: (config: {
     file_name: string;

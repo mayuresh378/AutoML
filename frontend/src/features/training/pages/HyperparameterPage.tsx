@@ -13,7 +13,7 @@ import {
 } from 'recharts';
 import { datasetsService } from '../../../services/datasets.service';
 import { tuningService } from '../../../services/tuning.service';
-import type { HPOProgress } from '../../../types/api';
+import type { HPOProgress, TargetAnalysis } from '../../../types/api';
 import styles from './HyperparameterPage.module.css';
 
 const METHODS = [
@@ -65,6 +65,9 @@ export default function HyperparameterPage() {
   const [progress, setProgress] = useState<HPOProgress | null>(null);
   const [expandedResults, setExpandedResults] = useState<Set<string>>(new Set());
   const [runError, setRunError] = useState<string | null>(null);
+  const [targetProfile, setTargetProfile] = useState<TargetAnalysis | null>(null);
+  const [targetAnalyzing, setTargetAnalyzing] = useState(false);
+  const [targetError, setTargetError] = useState<string | null>(null);
   const unsubRef = useRef<(() => void) | null>(null);
 
   const selectedDs = useMemo(
@@ -108,7 +111,8 @@ export default function HyperparameterPage() {
 
   const isRunning = progress?.status === 'running' || progress?.status === 'queued' || progress?.status === 'starting';
   const isDone = progress?.status === 'completed' || progress?.status === 'failed';
-  const canRun = selectedDataset && targetColumn && selectedModels.size > 0 && isMethodAvailable(method) && !isRunning;
+  const targetBlocked = !!targetProfile?.blocked;
+  const canRun = selectedDataset && targetColumn && selectedModels.size > 0 && isMethodAvailable(method) && !isRunning && !targetBlocked;
 
   const completedModels = progress?.model_results?.length || 0;
   const bestScore = progress?.best_score ?? null;
@@ -172,6 +176,33 @@ export default function HyperparameterPage() {
     unsubRef.current = unsub;
     return () => { unsub(); unsubRef.current = null; };
   }, [jobId]);
+
+  useEffect(() => {
+    if (!selectedDataset || !targetColumn) {
+      setTargetProfile(null);
+      setTargetError(null);
+      setTargetAnalyzing(false);
+      return;
+    }
+    let cancelled = false;
+    setTargetAnalyzing(true);
+    setTargetError(null);
+    tuningService.analyzeTarget(selectedDataset, targetColumn, { cv_folds: cvFolds })
+      .then((p) => { if (!cancelled) { setTargetProfile(p); setTargetAnalyzing(false); } })
+      .catch((err: any) => {
+        if (cancelled) return;
+        setTargetProfile(null);
+        setTargetError(err?.message || 'Could not analyze target column');
+        setTargetAnalyzing(false);
+      });
+    return () => { cancelled = true; };
+  }, [selectedDataset, targetColumn, cvFolds]);
+
+  useEffect(() => {
+    if (!targetProfile || targetProfile.task_type !== 'classification') return;
+    const safe = targetProfile.safe_cv_folds;
+    if (safe && safe >= 2 && safe < cvFolds) setCvFolds(safe);
+  }, [targetProfile, cvFolds]);
 
   function toggleExpandResult(name: string) {
     setExpandedResults((prev) => {
@@ -240,6 +271,63 @@ export default function HyperparameterPage() {
                 </select>
               </div>
 
+              {targetAnalyzing && (
+                <div className={styles.targetState}>
+                  <Loader2 size={13} className={styles.spinIcon} /> Analyzing target… (class balance, CV validity)
+                </div>
+              )}
+
+              {targetError && (
+                <div className={styles.targetBlock}>
+                  <XCircle size={14} />
+                  <span>{targetError}</span>
+                </div>
+              )}
+
+              {targetProfile && !targetAnalyzing && (
+                <div className={styles.targetInfo}>
+                  <div className={styles.targetInfoHeader}>
+                    <span className={styles.targetInfoTitle}>Target Profile</span>
+                    <span className={`${styles.targetTypeBadge} ${targetProfile.task_type === 'classification' ? styles.badgeClf : styles.badgeReg}`}>
+                      {targetProfile.task_type === 'classification' ? 'Classification' : 'Regression'}
+                    </span>
+                  </div>
+                  <div className={styles.targetStats}>
+                    <div className={styles.targetStat}>
+                      <span className={styles.targetStatLabel}>Classes</span>
+                      <span className={styles.targetStatValue}>{targetProfile.n_classes ?? '—'}</span>
+                    </div>
+                    <div className={styles.targetStat}>
+                      <span className={styles.targetStatLabel}>Min Class Size</span>
+                      <span className={styles.targetStatValue}>{targetProfile.min_class_count ?? '—'}</span>
+                    </div>
+                    <div className={styles.targetStat}>
+                      <span className={styles.targetStatLabel}>CV Folds</span>
+                      <span className={styles.targetStatValue}>
+                        {targetProfile.cv_valid
+                          ? (targetProfile.cv_adjusted ? `${targetProfile.safe_cv_folds} (auto)` : `${targetProfile.safe_cv_folds}`)
+                          : 'Invalid'}
+                      </span>
+                    </div>
+                  </div>
+                  {targetProfile.cv_note && targetProfile.cv_valid && (
+                    <div className={styles.cvHint}>{targetProfile.cv_note}</div>
+                  )}
+                  {targetProfile.warning && (
+                    <div className={styles.targetWarn}>
+                      <AlertTriangle size={14} />
+                      <span>{targetProfile.warning}</span>
+                    </div>
+                  )}
+                  {targetProfile.blocked && (
+                    <div className={styles.targetBlock}>
+                      <XCircle size={14} />
+                      <span>{targetProfile.block_reason}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Search Method */}
               <div className={styles.field}>
                 <label className={styles.label}>Search Method</label>
@@ -280,6 +368,7 @@ export default function HyperparameterPage() {
                   <label className={styles.label}>CV Folds</label>
                   <select value={cvFolds} onChange={(e) => setCvFolds(Number(e.target.value))} disabled={isRunning}>
                     {[3, 5, 7, 10].map((n) => <option key={n} value={n}>{n}</option>)}
+                    {![3, 5, 7, 10].includes(cvFolds) && <option value={cvFolds}>{cvFolds}</option>}
                   </select>
                 </div>
                 <div className={styles.field}>

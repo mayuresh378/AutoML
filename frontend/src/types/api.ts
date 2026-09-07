@@ -551,6 +551,29 @@ export interface HPOAvailability {
   param_ranges: Record<string, Record<string, HPOParamRange>>;
 }
 
+export interface TargetAnalysis {
+  target_column: string;
+  task_type: 'classification' | 'regression';
+  total_samples: number;
+  missing_count: number;
+  n_classes?: number;
+  min_class_count?: number;
+  max_class_count?: number;
+  class_counts?: Record<string, number>;
+  high_cardinality: boolean;
+  identifier_like: boolean;
+  cardinality_reason?: string;
+  example_values?: string[];
+  blocked: boolean;
+  block_reason?: string;
+  warning?: string;
+  cv_folds_selected: number;
+  safe_cv_folds: number;
+  cv_adjusted: boolean;
+  cv_valid: boolean;
+  cv_note?: string;
+}
+
 export type EngineTaskType = 'classification' | 'regression' | 'clustering' | 'time_series';
 
 export interface EngineDataset {

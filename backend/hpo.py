@@ -88,6 +88,30 @@ def get_param_ranges(model_name):
     return PARAM_RANGES.get(model_name, {})
 
 
+def friendly_hpo_error(error) -> str:
+    msg = error if isinstance(error, str) else str(error)
+    low = msg.lower()
+    if any(k in low for k in ("least populated class", "only 1 member", "minimum number of groups", "every label in y")):
+        return (
+            "This target column can't be used for the selected task: one of its classes has only a single "
+            "sample. Each class must have at least 2 samples so the data can be split into train/test and "
+            "cross-validated. Pick a different target or use a dataset with more samples per class."
+        )
+    if any(k in low for k in ("n_splits", "cannot have number of splits", "less than n_classes", "was less than n_classes")):
+        return (
+            "Cross-validation failed: the requested number of folds is not possible for this target. "
+            "For classification the number of folds cannot exceed the size of the smallest class. "
+            "Try fewer folds or a more balanced target."
+        )
+    if "unknown label type" in low:
+        return "The target column contains a data type that can't be used here. Use discrete labels for classification or numeric values for regression."
+    if "expected 2d array" in low:
+        return "The dataset features couldn't be formed for this model. Try different preprocessing options."
+    if "could not convert string" in low:
+        return "Some feature values couldn't be converted to numbers. Clean or recode the data and retry."
+    return msg
+
+
 def _sklearn_search(method, base_model, param_space, X_train, y_train, scoring, cv, n_iter, n_jobs_inner):
     if method == "grid":
         return GridSearchCV(
@@ -162,11 +186,26 @@ class HPORunner:
         self.task_type = task_type
         self.models = models if isinstance(models, list) else [models]
         self.method = method
-        self.cv_folds = max(2, min(cv_folds, 10))
         self.n_iter = n_iter
         self.callback = callback
         self.scoring = _default_scoring(task_type)
         self._cancelled = False
+
+        if task_type == "classification":
+            counts = pd.Series(y).value_counts(dropna=True)
+            min_class_count = int(counts.min()) if len(counts) else 0
+            self._min_class_count = min_class_count
+            if min_class_count < 2:
+                n_classes = int(len(counts))
+                raise ValueError(
+                    f"Target cannot be used for classification: it has {n_classes} class(es) and the smallest "
+                    f"class has only {min_class_count} sample(s). Each class must have at least 2 samples so "
+                    f"data can be split into train/test and cross-validated."
+                )
+            self.cv_folds = max(2, min(cv_folds, min_class_count))
+        else:
+            self._min_class_count = None
+            self.cv_folds = max(2, min(cv_folds, 10))
 
     def cancel(self):
         self._cancelled = True
@@ -197,9 +236,10 @@ class HPORunner:
                 )
                 all_results.append(result)
             except Exception as e:
-                all_results.append({"name": model_name, "error": str(e)})
+                emsg = friendly_hpo_error(e)
+                all_results.append({"name": model_name, "error": emsg})
                 if self.callback:
-                    self.callback(model_name, "failed", i + 1, total, None, None, str(e))
+                    self.callback(model_name, "failed", i + 1, total, None, None, emsg)
 
         successful = [r for r in all_results if "error" not in r]
         if self.task_type == "classification":
