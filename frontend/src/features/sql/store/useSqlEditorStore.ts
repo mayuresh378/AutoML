@@ -67,8 +67,8 @@ export const useSqlEditorStore = create<SqlEditorState>()(
 
       setActiveTab: (id) => set({ activeTabId: id }),
       updateTabQuery: (id, query) => set((s) => ({ tabs: s.tabs.map((t) => t.id === id ? { ...t, query, isDirty: true, updatedAt: Date.now() } : t) })),
-      updateTabResult: (id, result) => set((s) => ({ tabs: s.tabs.map((t) => t.id === id ? { ...t, result, error: null, isRunning: false } : t) })),
-      updateTabError: (id, error) => set((s) => ({ tabs: s.tabs.map((t) => t.id === id ? { ...t, error, isRunning: false } : t) })),
+      updateTabResult: (id, result) => set((s) => ({ tabs: s.tabs.map((t) => t.id === id ? { ...t, result, error: null } : t) })),
+      updateTabError: (id, error) => set((s) => ({ tabs: s.tabs.map((t) => t.id === id ? { ...t, error } : t) })),
       updateTabRunning: (id, isRunning) => set((s) => ({ tabs: s.tabs.map((t) => t.id === id ? { ...t, isRunning } : t) })),
       updateTabRunningInfo: (id, runningInfo) => set((s) => ({ tabs: s.tabs.map((t) => t.id === id ? { ...t, runningInfo } : t) })),
       renameTab: (id, name) => set((s) => ({ tabs: s.tabs.map((t) => t.id === id ? { ...t, name } : t) })),
