@@ -52,6 +52,9 @@ class Settings:
     # Feature flags
     ENABLE_TELEMETRY: bool = os.getenv("ENABLE_TELEMETRY", "false").lower() == "true"
     DEBUG: bool = os.getenv("DEBUG", "false").lower() == "true"
+    # Dev shortcut: when true, get_current_user is bypassed and returns a demo
+    # user so every endpoint works without a token. Do not enable in production.
+    AUTH_DISABLED: bool = os.getenv("AUTH_DISABLED", "false").lower() == "true"
 
     @property
     def is_production(self) -> bool:

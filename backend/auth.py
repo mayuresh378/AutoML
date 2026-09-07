@@ -259,10 +259,28 @@ def refresh_token(token: str, db: Session) -> dict:
     return {"token": new_token, "refresh_token": new_refresh}
 
 
+def _demo_user() -> dict:
+    return {
+        "id": "demo_user",
+        "email": "demo@automl.local",
+        "name": "Demo User",
+        "role": "admin",
+        "firebase_uid": None,
+        "avatar_url": None,
+        "profile_picture": None,
+        "email_verified": True,
+        "preferences": {},
+        "created_at": None,
+    }
+
+
 def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db),
 ) -> dict:
+    if settings.AUTH_DISABLED:
+        return _demo_user()
+
     if credentials is None:
         raise HTTPException(status_code=401, detail="Authentication token missing")
 
@@ -374,6 +392,9 @@ def get_optional_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db),
 ) -> dict:
+    if settings.AUTH_DISABLED:
+        return _demo_user()
+
     if credentials is None:
         return {"id": "anonymous", "email": "guest@automl.local", "name": "Guest", "role": "guest"}
     try:
