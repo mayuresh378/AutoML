@@ -18,7 +18,7 @@ function getMetricDisplay(metrics: Record<string, any> | undefined, taskType: st
     { label: 'Precision', value: metrics.precision != null ? metrics.precision.toFixed(4) : '-' },
     { label: 'Recall', value: metrics.recall != null ? metrics.recall.toFixed(4) : '-' },
   ];
-  if (taskType === 'regression') return [
+  if (taskType === 'regression' || taskType === 'time_series') return [
     { label: 'R\u00B2', value: metrics.r2 != null ? metrics.r2.toFixed(4) : '-' },
     { label: 'RMSE', value: metrics.rmse != null ? metrics.rmse.toFixed(4) : '-' },
     { label: 'MAE', value: metrics.mae != null ? metrics.mae.toFixed(4) : '-' },
@@ -29,19 +29,24 @@ function getMetricDisplay(metrics: Record<string, any> | undefined, taskType: st
     { label: 'Davies-Bouldin', value: metrics.davies_bouldin != null ? metrics.davies_bouldin.toFixed(4) : '-' },
     { label: 'Clusters', value: metrics.n_clusters != null ? String(metrics.n_clusters) : '-' },
   ];
-  if (taskType === 'time_series') return [
-    { label: 'R\u00B2', value: metrics.r2 != null ? metrics.r2.toFixed(4) : '-' },
-    { label: 'RMSE', value: metrics.rmse != null ? metrics.rmse.toFixed(4) : '-' },
-    { label: 'MAPE', value: metrics.mape != null ? `${metrics.mape.toFixed(2)}%` : '-' },
-    { label: 'SMAPE', value: metrics.smape != null ? `${metrics.smape.toFixed(2)}%` : '-' },
-  ];
   return [];
 }
 
+function bestMetrics(r: EngineResult): Record<string, any> {
+  return r.optimized_metrics || r.metrics || {};
+}
+
 function getPrimaryMetric(r: EngineResult, taskType: string): number | null {
-  if (taskType === 'clustering') return r.metrics?.silhouette ?? null;
-  if (taskType === 'classification') return r.metrics?.accuracy ?? null;
-  return r.metrics?.r2 ?? null;
+  const m = bestMetrics(r);
+  if (taskType === 'clustering') return m.silhouette ?? null;
+  if (taskType === 'classification') return m.accuracy ?? null;
+  return m.r2 ?? null;
+}
+
+function getDelta(r: EngineResult, taskType: string): number | null {
+  const primaryKey = taskType === 'clustering' ? 'silhouette' : taskType === 'classification' ? 'accuracy' : 'r2';
+  const d = r.optimized_delta?.[primaryKey];
+  return typeof d === 'number' ? d : null;
 }
 
 function getRankIcon(i: number) {
@@ -95,6 +100,9 @@ export function ResultsPanel({ progress, taskType, expandedModels, onToggleExpan
                 </div>
               ))}
             </div>
+            {successful.find(r => r.name === progress.best_model)?.baseline_improved && (
+              <span className={styles.optimizedBadge}>HPO optimized</span>
+            )}
           </div>
         </motion.div>
       )}
@@ -135,7 +143,8 @@ export function ResultsPanel({ progress, taskType, expandedModels, onToggleExpan
             {successful.map((r, i) => {
               const isBest = progress.best_model === r.name;
               const isExpanded = expandedModels.has(r.name);
-              const allMetrics = getMetricDisplay(r.metrics, taskType);
+              const allMetrics = getMetricDisplay(bestMetrics(r), taskType);
+              const delta = getDelta(r, taskType);
               return (
                 <motion.div
                   key={r.name}
@@ -150,9 +159,15 @@ export function ResultsPanel({ progress, taskType, expandedModels, onToggleExpan
                       <span className={styles.lbName}>
                         {r.name}
                         {isBest && <span className={styles.bestBadge}>BEST</span>}
+                        {r.baseline_improved && <span className={styles.hpoBadge}>HPO</span>}
                       </span>
                       <span className={styles.lbTime}>
                         <Timer className={styles.lbTimeIcon} /> {r.training_time?.toFixed(2)}s
+                        {delta != null && (
+                          <span className={delta >= 0 ? styles.deltaPos : styles.deltaNeg}>
+                            {delta >= 0 ? '+' : ''}{(delta * 100).toFixed(1)}% vs baseline
+                          </span>
+                        )}
                       </span>
                     </div>
                     <div className={styles.lbMetrics}>

@@ -10,11 +10,13 @@ interface Props {
   canRun: boolean;
   isRunning: boolean;
   onRun: () => void;
+  mode?: string;
+  hpoBudget?: number;
 }
 
-export function RunSection({ dataset, algorithmCount, taskType, validationLabel, canRun, isRunning, onRun }: Props) {
+export function RunSection({ dataset, algorithmCount, taskType, validationLabel, canRun, isRunning, onRun, mode = 'auto', hpoBudget = 8 }: Props) {
   return (
-    <SectionCard number={6} title="Launch Training" subtitle="Review your configuration and start the AutoML run">
+    <SectionCard number={8} title="Launch Training" subtitle="Review your configuration and start the AutoML run">
       <div className={styles.summary}>
         <div className={styles.item}>
           <span className={styles.itemLabel}>Dataset</span>
@@ -31,6 +33,12 @@ export function RunSection({ dataset, algorithmCount, taskType, validationLabel,
         <div className={styles.item}>
           <span className={styles.itemLabel}>Validation</span>
           <span className={styles.itemValue}>{validationLabel}</span>
+        </div>
+        <div className={styles.item}>
+          <span className={styles.itemLabel}>Mode</span>
+          <span className={styles.itemValue}>
+            {mode === 'advanced' ? `Advanced · ${hpoBudget} HPO` : 'Auto'}
+          </span>
         </div>
       </div>
 

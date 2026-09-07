@@ -73,6 +73,7 @@ from analytics import dashboard_analytics
 from train import CLASSIFICATION_MODELS, REGRESSION_MODELS, run_engine_training, run_tuning, XGB_AVAILABLE, LGBM_AVAILABLE, CATB_AVAILABLE
 from hpo import HPORunner, get_param_ranges, OPTUNA_AVAILABLE, SKOPT_AVAILABLE, PARAM_RANGES as HPO_PARAM_RANGES
 from engine import get_all_models, run_engine_job, CLASSIFICATION_MODELS as ENGINE_CLF_MODELS, REGRESSION_MODELS as ENGINE_REG_MODELS, CLUSTERING_MODELS, TIME_SERIES_MODELS
+from intel_engine import run_intelligent_job, recommend_models, build_dataset_profile, get_models_response as intel_models_response
 from features import generate_features, suggest_features
 from explain import explain_prediction
 from ai_assistant import answer_question, list_datasets as ai_list_datasets, load_experiments as ai_load_experiments
@@ -2411,6 +2412,20 @@ engine_lock = threading.Lock()
 def engine_models():
     return get_all_models()
 
+@app.get("/api/v1/engine/analyze", tags=["Engine"], summary="Dataset intelligence & model recommendations", description="Run dataset intelligence (target/task/quality detection) and get transparent, dataset-driven model recommendations.")
+def engine_analyze(
+    file_name: str = Query(...),
+    target_column: str = Query(""),
+    task_type: str = Query("classification"),
+    current_user: dict = Depends(get_optional_user),
+):
+    try:
+        profile = build_dataset_profile(file_name, target_column or None)
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=f"Could not analyze dataset: {e}")
+    rec = recommend_models(profile, task_type)
+    return {"profile": profile, "recommendation": rec}
+
 @app.get("/api/v1/engine/datasets", tags=["Engine"], summary="List datasets for engine")
 def engine_datasets():
     items = []
@@ -2428,7 +2443,7 @@ def engine_datasets():
             items.append({"name": f, "columns": [], "rows": 0})
     return {"datasets": items}
 
-@app.post("/api/v1/engine/run", tags=["Engine"], summary="Run AutoML Engine", description="Asynchronously train all selected models with live SSE progress.")
+@app.post("/api/v1/engine/run", tags=["Engine"], summary="Run AutoML Engine", description="Run an intelligent AutoML job (dataset intelligence + transparent recommendations + leakage-safe per-model preprocessing + adaptive HPO) with live SSE progress.")
 def engine_run(
     file_name: str = Form(...),
     target_column: str = Form(""),
@@ -2439,6 +2454,8 @@ def engine_run(
     n_clusters: int = Form(None),
     preprocess: str = Form("{}"),
     validation: str = Form("{}"),
+    mode: str = Form("auto"),
+    hpo_budget: int = Form(8),
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
@@ -2450,6 +2467,8 @@ def engine_run(
                    "clustering": list(CLUSTERING_MODELS.keys()),
                    "time_series": list(TIME_SERIES_MODELS.keys())}
         model_list = cat_map.get(task_type, [])
+    run_mode = mode if mode in ("auto", "advanced") else "auto"
+    budget = max(2, min(int(hpo_budget or 8), 30))
 
     try:
         preprocess_options = json.loads(preprocess) if preprocess else {}
@@ -2465,7 +2484,9 @@ def engine_run(
             "status": "queued", "current_model": None, "current": 0,
             "total": len(model_list), "task_type": task_type,
             "message": "Job queued...", "results": [], "best_model": None,
-            "timestamp": time.time(), "error": None,
+            "timestamp": time.time(), "error": None, "mode": run_mode,
+            "hpo_budget": budget, "profile": None, "report": None,
+            "recommendation": None,
         }
 
     def _engine_progress_callback(data):
@@ -2482,12 +2503,22 @@ def engine_run(
                 engine_progress_store[job_id]["status"] = "running"
                 engine_progress_store[job_id]["message"] = "Starting training..."
 
-            result = run_engine_job(
-                file_name=file_name, target_column=target_column, task_type=task_type,
-                model_names=model_list, progress_callback=_engine_progress_callback,
-                cv_folds=cv_folds, n_clusters=n_clusters,
-                preprocess_options=preprocess_options, validation=validation_options,
-            )
+            if run_mode in ("auto", "advanced"):
+                result = run_intelligent_job(
+                    file_name=file_name, target=target_column or None,
+                    task=task_type, model_names=model_list,
+                    progress_callback=_engine_progress_callback,
+                    cv_folds=cv_folds, n_clusters=n_clusters,
+                    preprocess_options=preprocess_options, validation=validation_options,
+                    mode=run_mode, hpo_budget=budget,
+                )
+            else:
+                result = run_engine_job(
+                    file_name=file_name, target_column=target_column, task_type=task_type,
+                    model_names=model_list, progress_callback=_engine_progress_callback,
+                    cv_folds=cv_folds, n_clusters=n_clusters,
+                    preprocess_options=preprocess_options, validation=validation_options,
+                )
 
             with engine_lock:
                 store = engine_progress_store[job_id]
@@ -2497,6 +2528,9 @@ def engine_run(
                 store["best_metrics"] = result.get("best_metrics")
                 store["elapsed"] = result["elapsed"]
                 store["message"] = f"Done — {result['successful']}/{result['total']} models"
+                store["profile"] = result.get("profile")
+                store["report"] = result.get("report")
+                store["mode"] = result.get("mode", run_mode)
                 store["timestamp"] = time.time()
 
             exp_list = []
@@ -2507,7 +2541,7 @@ def engine_run(
                     exp_data = {
                         "name": f"{file_name.split('.')[0]}-{r['name']}",
                         "model": r["name"], "task_type": task_type,
-                        "cv_score": r.get("cv_score"), "metrics": r.get("metrics"),
+                        "cv_score": r.get("cv_score"), "metrics": r.get("optimized_metrics") or r.get("metrics"),
                         "dataset": file_name, "target": target_column,
                         "training_time": r.get("training_time"), "total_time": result["elapsed"],
                         "status": "success", "run_at": datetime.now(timezone.utc),
@@ -2523,7 +2557,7 @@ def engine_run(
                         "name": f"{file_name.split('.')[0]}_{r['name']}",
                         "model_type": r["name"], "task_type": task_type,
                         "file_path": model_path, "file_size_kb": model_size,
-                        "cv_score": r.get("cv_score"), "metrics": r.get("metrics"),
+                        "cv_score": r.get("cv_score"), "metrics": r.get("optimized_metrics") or r.get("metrics"),
                         "params": r.get("best_params"), "status": "staging",
                     })
                     exp_list.append({"id": exp.id, "name": exp.name, "model": r["name"]})

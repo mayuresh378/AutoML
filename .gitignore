@@ -13,12 +13,14 @@ frontend/.venv_front/
 
 # Dataset files
 dataset/*.csv
+dataset/*.xlsx
 dataset/archive/
 dataset/tmp*.csv
 
 # Models (generated build artifacts)
 models/*.pkl
 models/*_meta.json
+models/onnx/
 
 # Environment
 .env

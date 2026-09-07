@@ -1,22 +1,27 @@
 import { useState, useEffect, useRef } from 'react';
-import { engineService, EngineProgress, EngineDataset, EngineModelsResponse } from '../../../services/engine.service';
+import { engineService, EngineProgress, EngineDataset, EngineModelsResponse, EngineDatasetProfile, EngineRecommendation } from '../../../services/engine.service';
 import { datasetsService } from '../../../services/datasets.service';
 import type { DatasetProfile } from '../../../types/api';
 import { EngineHero } from './components/EngineHero';
 import { EngineStepper } from './components/EngineStepper';
 import { DatasetStep } from './components/DatasetStep';
+import { IntelligencePanel } from './components/IntelligencePanel';
 import { TaskStep } from './components/TaskStep';
+import { RunModeStep } from './components/RunModeStep';
 import { PreprocessStep } from './components/PreprocessStep';
 import { AlgorithmStep } from './components/AlgorithmStep';
 import { ValidationStep } from './components/ValidationStep';
 import { RunSection } from './components/RunSection';
 import { TrainingScreen } from './components/TrainingScreen';
 import { ResultsPanel } from './components/ResultsPanel';
+import { ReportPanel } from './components/ReportPanel';
 import styles from './AutoMLEnginePage.module.css';
 
 const STEPS = [
   { id: 'dataset', label: 'Dataset' },
+  { id: 'intelligence', label: 'Intelligence' },
   { id: 'task', label: 'Task' },
+  { id: 'mode', label: 'Run Mode' },
   { id: 'preprocess', label: 'Preprocessing' },
   { id: 'algorithms', label: 'Algorithms' },
   { id: 'validation', label: 'Validation' },
@@ -37,6 +42,13 @@ export default function AutoMLEnginePage() {
   const [targetColumn, setTargetColumn] = useState('');
   const [models, setModels] = useState<EngineModelsResponse | null>(null);
   const [selectedAlgos, setSelectedAlgos] = useState<string[]>([]);
+
+  const [intelProfile, setIntelProfile] = useState<EngineDatasetProfile | null>(null);
+  const [recommendation, setRecommendation] = useState<EngineRecommendation | null>(null);
+  const [intelLoading, setIntelLoading] = useState(false);
+
+  const [mode, setMode] = useState('auto');
+  const [hpoBudget, setHpoBudget] = useState(8);
 
   const [preprocess, setPreprocess] = useState<Record<string, boolean>>({
     imputation: true,
@@ -85,6 +97,35 @@ export default function AutoMLEnginePage() {
     return () => { cancelled = true; };
   }, [selectedDataset]);
 
+  // Dataset intelligence + transparent recommendations
+  useEffect(() => {
+    if (!selectedDataset || taskType === 'clustering') {
+      setIntelProfile(null);
+      setRecommendation(null);
+      setIntelLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setIntelLoading(true);
+    engineService.analyze(selectedDataset, { target_column: targetColumn, task_type: taskType })
+      .then(({ profile: p, recommendation: rec }) => {
+        if (cancelled) return;
+        setIntelProfile(p);
+        setRecommendation(rec);
+        setIntelLoading(false);
+        if (!targetColumn && p.target) {
+          setTargetColumn(p.target);
+        }
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setIntelProfile(null);
+        setRecommendation(null);
+        setIntelLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [selectedDataset, targetColumn, taskType]);
+
   useEffect(() => {
     const observer = new IntersectionObserver((entries) => {
       const visible = entries.filter(e => e.isIntersecting);
@@ -107,6 +148,13 @@ export default function AutoMLEnginePage() {
 
   const toggleAlgo = (algo: string) => setSelectedAlgos(p => p.includes(algo) ? p.filter(a => a !== algo) : [...p, algo]);
   const togglePreprocess = (k: string) => setPreprocess(p => ({ ...p, [k]: !p[k] }));
+
+  const applyRecommended = (modelsToApply: string[]) => {
+    if (!models) return;
+    const avail = new Set(getTaskAlgorithms(models, taskType));
+    const valid = modelsToApply.filter(m => avail.has(m));
+    if (valid.length > 0) setSelectedAlgos(valid);
+  };
 
   const canRun = !!selectedDataset && (isClusterOrTS || !!targetColumn) && selectedAlgos.length > 0;
 
@@ -136,6 +184,8 @@ export default function AutoMLEnginePage() {
           shuffle,
           random_seed: randomSeed,
         },
+        mode,
+        hpo_budget: mode === 'advanced' ? hpoBudget : 0,
       });
       unsubRef.current = engineService.subscribeProgress(resp.job_id, (data) => {
         setProgress(data);
@@ -150,6 +200,8 @@ export default function AutoMLEnginePage() {
     }
   };
 
+  const recommendedModels = (recommendation?.recommended || []).map(r => r.model);
+
   return (
     <div className={styles.page}>
       <EngineHero
@@ -157,6 +209,7 @@ export default function AutoMLEnginePage() {
         canRun={canRun}
         onRun={startRun}
         algorithmCount={selectedAlgos.length}
+        mode={mode}
       />
 
       <EngineStepper steps={STEPS} active={activeSection} onNavigate={scrollTo} />
@@ -182,11 +235,39 @@ export default function AutoMLEnginePage() {
         </div>
 
         <div
+          ref={(el) => { sectionRefs.current['intelligence'] = el; }}
+          data-section="intelligence"
+          className={styles.section}
+        >
+          <IntelligencePanel
+            profile={intelProfile}
+            recommendation={recommendation}
+            loading={intelLoading}
+            taskType={taskType}
+            selected={selectedAlgos}
+            onApplyRecommended={applyRecommended}
+          />
+        </div>
+
+        <div
           ref={(el) => { sectionRefs.current['task'] = el; }}
           data-section="task"
           className={styles.section}
         >
           <TaskStep selected={taskType} onSelect={setTaskType} />
+        </div>
+
+        <div
+          ref={(el) => { sectionRefs.current['mode'] = el; }}
+          data-section="mode"
+          className={styles.section}
+        >
+          <RunModeStep
+            mode={mode}
+            hpoBudget={hpoBudget}
+            onModeChange={setMode}
+            onHpoBudgetChange={setHpoBudget}
+          />
         </div>
 
         <div
@@ -206,6 +287,7 @@ export default function AutoMLEnginePage() {
             algorithms={getTaskAlgorithms(models, taskType)}
             selected={selectedAlgos}
             onToggle={toggleAlgo}
+            recommendedModels={recommendedModels}
           />
         </div>
 
@@ -241,6 +323,8 @@ export default function AutoMLEnginePage() {
             canRun={canRun}
             isRunning={isRunning}
             onRun={startRun}
+            mode={mode}
+            hpoBudget={hpoBudget}
           />
         </div>
 
@@ -256,6 +340,8 @@ export default function AutoMLEnginePage() {
           expandedModels={expandedModels}
           onToggleExpand={(name: string) => setExpandedModels(p => { const n = new Set(p); n.has(name) ? n.delete(name) : n.add(name); return n; })}
         />
+
+        <ReportPanel report={progress?.report || null} />
       </div>
     </div>
   );

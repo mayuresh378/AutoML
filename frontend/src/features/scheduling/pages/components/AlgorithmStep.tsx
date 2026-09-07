@@ -8,7 +8,6 @@ interface AlgoMeta {
   accuracy: number;
   speed: number;
   memory: 'Low' | 'Medium' | 'High';
-  recommended?: boolean;
   desc: string;
 }
 
@@ -52,8 +51,7 @@ function getMeta(name: string): AlgoMeta {
   if (n.includes('mixture')) { accuracy = 3; speed = 3; memory = 'Medium'; desc = 'Probabilistic clustering'; }
   if (n.includes('linear')) { accuracy = 3; speed = 5; memory = 'Low'; desc = 'Linear regression'; }
 
-  const recommended = n.includes('random') || n.includes('xgb') || n.includes('catboost');
-  return { icon, accuracy, speed, memory, recommended, desc };
+  return { icon, accuracy, speed, memory, desc };
 }
 
 function Stars({ value }: { value: number }) {
@@ -70,17 +68,18 @@ interface Props {
   algorithms: string[];
   selected: string[];
   onToggle: (algo: string) => void;
+  recommendedModels?: string[];
 }
 
-export function AlgorithmStep({ algorithms, selected, onToggle }: Props) {
-  const recommended = algorithms.filter(a => getMeta(a).recommended);
+export function AlgorithmStep({ algorithms, selected, onToggle, recommendedModels = [] }: Props) {
+  const recommended = algorithms.filter(a => recommendedModels.includes(a));
 
   const applyRecommended = () => {
     recommended.forEach(a => { if (!selected.includes(a)) onToggle(a); });
   };
 
   return (
-    <SectionCard number={4} title="Algorithms" subtitle={`Select models to train (${selected.length}/${algorithms.length} selected)`}
+    <SectionCard number={6} title="Algorithms" subtitle={`Select models to train (${selected.length}/${algorithms.length} selected)`}
       action={
         <button className={styles.selBtn} onClick={applyRecommended} disabled={recommended.length === 0}>
           Apply recommended
@@ -115,7 +114,7 @@ export function AlgorithmStep({ algorithms, selected, onToggle }: Props) {
                 <span className={styles.iconWrap}>
                   <Icon size={18} />
                 </span>
-                {meta.recommended && <span className={styles.badge}>Recommended</span>}
+                {recommendedModels.includes(name) && <span className={styles.badge}>Recommended</span>}
                 <span className={`${styles.check} ${on ? styles.checkOn : ''}`}>
                   {on && <Check size={12} />}
                 </span>

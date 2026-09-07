@@ -24,7 +24,7 @@ interface Props {
 
 export function PreprocessStep({ options, onToggle }: Props) {
   return (
-    <SectionCard number={3} title="Data Preprocessing" subtitle="Enable preprocessing steps to run before training">
+    <SectionCard number={5} title="Data Preprocessing" subtitle="Enable preprocessing steps to run before training">
       <div className={styles.wrap}>
         <div className={styles.checkGrid}>
           {OPTIONS.map(o => {

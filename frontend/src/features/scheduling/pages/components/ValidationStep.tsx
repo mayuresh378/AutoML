@@ -27,7 +27,7 @@ export function ValidationStep({
   shuffle, onShuffleChange, randomSeed, onRandomSeedChange,
 }: Props) {
   return (
-    <SectionCard number={5} title="Validation" subtitle="Choose how the model performance is validated">
+    <SectionCard number={7} title="Validation" subtitle="Choose how the model performance is validated">
       <div className={styles.methods}>
         {METHODS.map(m => (
           <button

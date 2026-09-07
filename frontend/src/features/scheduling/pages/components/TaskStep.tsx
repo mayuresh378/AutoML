@@ -16,7 +16,7 @@ interface Props {
 
 export function TaskStep({ selected, onSelect }: Props) {
   return (
-    <SectionCard number={2} title="Task Selection" subtitle="Choose the type of problem you're solving">
+    <SectionCard number={3} title="Task Selection" subtitle="Choose the type of problem you're solving">
       <div className={styles.grid}>
         {TASKS.map(t => {
           const active = selected === t.id;

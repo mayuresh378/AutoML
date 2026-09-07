@@ -1,4 +1,4 @@
-import { Play, Loader2, Clock, Cpu, Zap } from 'lucide-react';
+import { Play, Loader2, Cpu, Zap } from 'lucide-react';
 import styles from './EngineHero.module.css';
 
 interface Props {
@@ -6,9 +6,10 @@ interface Props {
   canRun: boolean;
   onRun: () => void;
   algorithmCount: number;
+  mode?: string;
 }
 
-export function EngineHero({ isRunning, canRun, onRun, algorithmCount }: Props) {
+export function EngineHero({ isRunning, canRun, onRun, algorithmCount, mode = 'auto' }: Props) {
   return (
     <div className={styles.hero}>
       <div className={styles.left}>
@@ -28,10 +29,10 @@ export function EngineHero({ isRunning, canRun, onRun, algorithmCount }: Props) 
         </button>
         <div className={styles.stats}>
           <div className={styles.stat}>
-            <Clock size={13} />
+            <Zap size={13} />
             <div>
-              <span className={styles.statVal}>3-5 min</span>
-              <span className={styles.statLabel}>Est. time</span>
+              <span className={styles.statVal}>{mode === 'advanced' ? 'Advanced' : 'Auto'}</span>
+              <span className={styles.statLabel}>Mode</span>
             </div>
           </div>
           <div className={styles.stat}>

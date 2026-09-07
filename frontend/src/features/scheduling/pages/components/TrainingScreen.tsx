@@ -1,13 +1,25 @@
-import { Loader2, CheckCircle2, XCircle } from 'lucide-react';
+import { Loader2, CheckCircle2, XCircle, Sparkles } from 'lucide-react';
 import type { EngineProgress } from '../../../../services/engine.service';
 import styles from './TrainingScreen.module.css';
 
 const PIPELINE = [
   { id: 'queued', label: 'Queued' },
+  { id: 'intelligence', label: 'Intelligence' },
+  { id: 'recommend', label: 'Recommendations' },
   { id: 'preprocessing', label: 'Preprocessing' },
   { id: 'training', label: 'Training' },
   { id: 'completed', label: 'Completed' },
 ] as const;
+
+function stageIndex(status: string): number {
+  const idx = PIPELINE.findIndex(s => s.id === status);
+  if (idx >= 0) return idx;
+  if (status === 'preprocessing' || status === 'training' || status === 'running') {
+    const base = PIPELINE.findIndex(s => s.id === 'preprocessing');
+    return base;
+  }
+  return 0;
+}
 
 interface Props {
   progress: EngineProgress | null;
@@ -18,7 +30,7 @@ export function TrainingScreen({ progress, isRunning }: Props) {
   const status = progress?.status ?? 'queued';
   const done = status === 'completed';
   const failed = status === 'failed' || status === 'cancelled';
-  const stepIndex = PIPELINE.findIndex(s => s.id === status);
+  const stepIndex = stageIndex(status);
   const percent = progress?.total ? Math.round(((progress.current || 0) / progress.total) * 100) : 0;
 
   return (
@@ -30,12 +42,12 @@ export function TrainingScreen({ progress, isRunning }: Props) {
         {!done && !failed && <span className={styles.elapsed}>{formatElapsed(progress?.elapsed)}</span>}
       </div>
 
-      {isRunning || status === 'queued' || status === 'preprocessing' || status === 'training' ? (
+      {isRunning || status === 'queued' || status === 'intelligence' || status === 'recommend' || status === 'preprocessing' || status === 'training' ? (
         <>
           <div className={styles.steps}>
             {PIPELINE.map((s, i) => {
-              const isCurrent = status === s.id;
-              const isPast = done || i < stepIndex || (status === 'preprocessing' && s.id === 'queued');
+              const isCurrent = status === s.id || (status === 'running' && s.id === 'training');
+              const isPast = done || i < stepIndex;
               return (
                 <div key={s.id} className={`${styles.step} ${isCurrent ? styles.active : ''} ${isPast ? styles.past : ''}`}>
                   {isCurrent ? <Loader2 size={14} className={styles.spin} /> : isPast ? <CheckCircle2 size={14} /> : <span className={styles.dot} />}
@@ -46,6 +58,18 @@ export function TrainingScreen({ progress, isRunning }: Props) {
           </div>
 
           <div className={styles.modelLine}>
+            {status === 'intelligence' && (
+              <span className={styles.model}>
+                <Sparkles size={13} className={styles.spin} />
+                Running dataset intelligence…
+              </span>
+            )}
+            {status === 'recommend' && (
+              <span className={styles.model}>
+                <Sparkles size={13} className={styles.spin} />
+                Ranking models with transparent rationale…
+              </span>
+            )}
             {progress?.current_model && (
               <span className={styles.model}>
                 <Loader2 size={13} className={styles.spin} />
