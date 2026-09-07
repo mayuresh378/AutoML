@@ -163,6 +163,12 @@ export const ResultsGrid = memo(function ResultsGrid({ result, dataset, onLoadMo
             Result capped at {result.total_rows ?? result.data.length} rows (server limit). Use Export for the full dataset.
           </div>
         )}
+        {result.data.length === 0 && (
+          <div className={styles.emptyBanner}>
+            <Table2 size={13} style={{ verticalAlign: 'middle', marginRight: 6 }} />
+            0 rows returned
+          </div>
+        )}
         <table className={styles.table}>
           <thead className={styles.thead}>
             {table.getHeaderGroups().map((hg) => (

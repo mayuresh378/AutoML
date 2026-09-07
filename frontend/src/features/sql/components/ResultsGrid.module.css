@@ -298,6 +298,16 @@
   border-bottom: 1px solid rgba(245, 158, 11, 0.3);
 }
 
+.emptyBanner {
+  display: flex;
+  align-items: center;
+  padding: 5px 12px;
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+  background: rgba(148, 163, 184, 0.1);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+}
+
 .footerControls {
   display: flex;
   align-items: center;

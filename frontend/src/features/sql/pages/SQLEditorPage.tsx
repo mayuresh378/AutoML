@@ -137,7 +137,10 @@ export default function SQLEditorPage() {
   const handleRun = useCallback(async (queryOverride?: string, confirm = false, datasetOverride?: string) => {
     const ds = datasetOverride ?? selectedDataset;
     const raw = queryOverride ?? activeTab?.query ?? '';
-    if (!raw.trim()) return;
+    if (!raw.trim()) {
+      notifyError('Enter a SQL query to run.', 'Type a SQL query in the editor, then click Run.');
+      return;
+    }
     const resolvedQuery = resolveTable(raw.trim());
     updateTabRunning(activeTabId, true);
     updateTabResult(activeTabId, null);
@@ -169,11 +172,16 @@ export default function SQLEditorPage() {
       notifySuccess('Query completed', `${data.total_rows ?? data.rows} row(s) returned in ${data.execution_time_ms ?? data.executionTime}ms`);
     } catch (err: any) {
       const aborted = err?.name === 'AbortError' || err?.code === 'ABORTED' || err?.code === 'TIMEOUT';
-      const msg = aborted
-        ? (err?.code === 'ABORTED' ? 'Query cancelled' : 'Query timed out after 75s')
-        : err.message || String(err);
+      const networkError = err instanceof TypeError;
+      const msg = networkError
+        ? 'Backend connection failed.'
+        : aborted
+          ? (err?.code === 'ABORTED' ? 'Query cancelled' : 'Query timed out after 75s')
+          : err.message || String(err);
       updateTabError(activeTabId, msg);
-      if (!aborted || err?.code !== 'ABORTED') notifyError(aborted ? 'Query timed out' : 'Query failed', msg);
+      if (!aborted || err?.code !== 'ABORTED') {
+        notifyError(networkError ? 'Backend connection failed' : aborted ? 'Query timed out' : 'Query failed', msg);
+      }
     } finally {
       abortRef.current = null;
       updateTabRunningInfo(activeTabId, null);
@@ -586,7 +594,7 @@ export default function SQLEditorPage() {
                     />
                   )}
                   {bottomPanelTab === 'results' && !result && (
-                    <div className={styles.emptyState}>Run a query to see results</div>
+                    <div className={styles.emptyState}>No query executed yet. Run a query to see the result below.</div>
                   )}
                   {bottomPanelTab === 'profiling' && (
                     <DataProfile query={activeTab?.query || ''} dataset={selectedDataset} />
@@ -769,7 +777,7 @@ function RunningBar({ startedAt, onCancel }: { startedAt?: number; onCancel: () 
   return (
     <div className={styles.runningBar}>
       <div className={styles.runningSpinner} />
-      <span className={styles.runningText}>Running query...</span>
+      <span className={styles.runningText}>Executing query...</span>
       <span className={styles.runningElapsed}>
         <Clock size={13} style={{ verticalAlign: 'middle', marginRight: 4 }} />
         {elapsed}s

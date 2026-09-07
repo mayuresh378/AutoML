@@ -61,12 +61,19 @@ async function handleResponse<T>(res: Response): Promise<T> {
       throw new HttpError(res.status, 'UNKNOWN_ERROR', res.statusText || `Request failed (${res.status})`);
     }
     const errData = body?.error || body;
+    const detail = body?.detail;
+    let message = `Request failed (${res.status})`;
+    if (typeof errData?.message === 'string') message = errData.message;
+    else if (typeof errData?.details === 'string') message = errData.details;
+    else if (typeof detail === 'string') message = detail;
+    else if (detail && typeof detail.message === 'string') message = detail.message;
+    else if (Array.isArray(detail)) message = detail.map((d: any) => d?.msg).filter(Boolean).join('; ') || message;
     throw new HttpError(
       res.status,
-      errData.code || 'REQUEST_ERROR',
-      errData.details || errData.message || body.detail || `Request failed (${res.status})`,
-      errData.details,
-      errData.field,
+      errData.code || (detail?.code as string | undefined) || 'REQUEST_ERROR',
+      message,
+      errData.details || (detail?.details as string | undefined) || undefined,
+      errData.field || (detail?.field as string | undefined) || undefined,
     );
   }
   if (res.status === 204) return undefined as T;
