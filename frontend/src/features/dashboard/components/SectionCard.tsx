@@ -47,7 +47,7 @@ export default function SectionCard({
   className,
   children,
 }: SectionCardProps) {
-  const showError = isError || !!error;
+  const showError = isError === true;
   const body = loading ? (
     skeleton ?? (
       <div className="space-y-3">

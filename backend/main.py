@@ -3915,13 +3915,19 @@ def activity(db: Session = Depends(get_db), offset: int = Query(0, ge=0), limit:
     uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
     if uid is None:
         return paginated([], 0, offset, limit, key="activities")
-    logs = list_audit_logs(db)
-    items = [{
-        "id": l.id, "actor": l.actor, "action": l.action,
-        "target": l.target, "resource_type": l.resource_type,
-        "status": l.status,
-        "time": l.created_at.isoformat() if l.created_at else None,
-    } for l in logs]
+    uid_lower = uid.lower()
+    actor_matches = {uid_lower, (current_user.get("name") or "").strip().lower()}
+    logs = list_audit_logs(db, limit=500)
+    items = []
+    for l in logs:
+        log_uid = (l.user_id or "").lower()
+        if log_uid == uid_lower or (not log_uid and (l.actor or "").strip().lower() in actor_matches):
+            items.append({
+                "id": l.id, "actor": l.actor, "action": l.action,
+                "target": l.target, "resource_type": l.resource_type,
+                "status": l.status,
+                "time": l.created_at.isoformat() if l.created_at else None,
+            })
     total = len(items)
     items = items[offset:offset + limit]
     return paginated(items, total, offset, limit, key="activities")
@@ -3931,6 +3937,11 @@ def activity(db: Session = Depends(get_db), offset: int = Query(0, ge=0), limit:
 def get_activity_api(log_id: str, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     log = get_audit_log(db, log_id)
     if not log:
+        raise HTTPException(status_code=404, detail="Activity log not found")
+    uid_lower = (current_user.get("id") or "").lower()
+    actor_matches = {uid_lower, (current_user.get("name") or "").strip().lower()}
+    log_uid = (log.user_id or "").lower()
+    if log_uid != uid_lower and (log_uid or (log.actor or "").strip().lower() not in actor_matches):
         raise HTTPException(status_code=404, detail="Activity log not found")
     return {
         "id": log.id, "actor": log.actor, "action": log.action,
