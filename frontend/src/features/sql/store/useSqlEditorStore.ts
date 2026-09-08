@@ -11,7 +11,7 @@ interface SqlEditorState {
   resultsPanelTab: string;
   leftPanelWidth: number;
   rightPanelWidth: number;
-  resultsPanelWidth: number;
+  resultsPanelHeight: number;
 
   addTab: () => void;
   closeTab: (id: string) => void;
@@ -30,7 +30,7 @@ interface SqlEditorState {
   setResultsPanelTab: (tab: string) => void;
   setLeftPanelWidth: (w: number) => void;
   setRightPanelWidth: (w: number) => void;
-  setResultsPanelWidth: (w: number) => void;
+  setResultsPanelHeight: (h: number) => void;
 }
 
 let _tabCounter = 1;
@@ -46,7 +46,7 @@ export const useSqlEditorStore = create<SqlEditorState>()(
       resultsPanelTab: 'results',
       leftPanelWidth: 280,
       rightPanelWidth: 320,
-      resultsPanelWidth: 480,
+      resultsPanelHeight: 300,
 
       addTab: () => {
         _tabCounter++;
@@ -89,11 +89,11 @@ export const useSqlEditorStore = create<SqlEditorState>()(
       setResultsPanelTab: (tab) => set({ resultsPanelTab: tab }),
       setLeftPanelWidth: (w) => set({ leftPanelWidth: w }),
       setRightPanelWidth: (w) => set({ rightPanelWidth: w }),
-      setResultsPanelWidth: (w) => set({ resultsPanelWidth: w }),
+      setResultsPanelHeight: (h) => set({ resultsPanelHeight: h }),
     }),
     {
       name: 'sql-editor-state',
-      partialize: (state) => ({ tabs: state.tabs, activeTabId: state.activeTabId, leftPanelWidth: state.leftPanelWidth, rightPanelWidth: state.rightPanelWidth, resultsPanelWidth: state.resultsPanelWidth }),
+      partialize: (state) => ({ tabs: state.tabs, activeTabId: state.activeTabId, leftPanelWidth: state.leftPanelWidth, rightPanelWidth: state.rightPanelWidth, resultsPanelHeight: state.resultsPanelHeight }),
     },
   ),
 );

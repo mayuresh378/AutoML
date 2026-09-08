@@ -119,7 +119,7 @@ export const SqlEditor = memo(function SqlEditor({
           lineNumbers: 'on',
           minimap: { enabled: minimap },
           scrollBeyondLastLine: false,
-          wordWrap: 'on',
+          wordWrap: 'off',
           tabSize: 2,
           insertSpaces: true,
           automaticLayout: true,

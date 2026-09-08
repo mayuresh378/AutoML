@@ -58,16 +58,16 @@ export default function SQLEditorPage() {
 
   const {
     tabs, activeTabId, leftPanelOpen, rightPanelOpen, resultsPanelOpen, resultsPanelTab,
-    leftPanelWidth, rightPanelWidth, resultsPanelWidth,
+    leftPanelWidth, rightPanelWidth, resultsPanelHeight,
     addTab, closeTab, setActiveTab, updateTabQuery, updateTabResult, updateTabError, updateTabRunning,
     updateTabRunningInfo, renameTab, duplicateTab,
     toggleLeftPanel, toggleRightPanel, toggleResultsPanel, setResultsPanelOpen, setResultsPanelTab,
-    setLeftPanelWidth, setRightPanelWidth, setResultsPanelWidth,
+    setLeftPanelWidth, setRightPanelWidth, setResultsPanelHeight,
   } = useSqlEditorStore(useShallow((s) => ({
     tabs: s.tabs, activeTabId: s.activeTabId, leftPanelOpen: s.leftPanelOpen,
     rightPanelOpen: s.rightPanelOpen, resultsPanelOpen: s.resultsPanelOpen,
     resultsPanelTab: s.resultsPanelTab, leftPanelWidth: s.leftPanelWidth,
-    rightPanelWidth: s.rightPanelWidth, resultsPanelWidth: s.resultsPanelWidth,
+    rightPanelWidth: s.rightPanelWidth, resultsPanelHeight: s.resultsPanelHeight,
     addTab: s.addTab, closeTab: s.closeTab, setActiveTab: s.setActiveTab,
     updateTabQuery: s.updateTabQuery, updateTabResult: s.updateTabResult,
     updateTabError: s.updateTabError, updateTabRunning: s.updateTabRunning,
@@ -77,7 +77,7 @@ export default function SQLEditorPage() {
     toggleResultsPanel: s.toggleResultsPanel, setResultsPanelOpen: s.setResultsPanelOpen,
     setResultsPanelTab: s.setResultsPanelTab,
     setLeftPanelWidth: s.setLeftPanelWidth, setRightPanelWidth: s.setRightPanelWidth,
-    setResultsPanelWidth: s.setResultsPanelWidth,
+    setResultsPanelHeight: s.setResultsPanelHeight,
   })));
 
   const activeTab = tabs.find((t) => t.id === activeTabId) || tabs[0];
@@ -399,7 +399,8 @@ export default function SQLEditorPage() {
       } else if (resizerRef.current.panel === 'right') {
         setRightPanelWidth(Math.max(250, Math.min(500, rightPanelWidth - deltaX)));
       } else if (resizerRef.current.panel === 'results') {
-        setResultsPanelWidth(Math.max(320, Math.min(2000, resultsPanelWidth - deltaX)));
+        const deltaY = ev.clientY - (resizerRef.current.startY || 0);
+        setResultsPanelHeight(Math.max(160, Math.min(650, resultsPanelHeight - deltaY)));
       }
       resizerRef.current.startX = ev.clientX;
       resizerRef.current.startY = ev.clientY;
@@ -411,7 +412,7 @@ export default function SQLEditorPage() {
     };
     document.addEventListener('mousemove', handler);
     document.addEventListener('mouseup', upHandler);
-  }, [leftPanelWidth, rightPanelWidth, resultsPanelWidth, setLeftPanelWidth, setRightPanelWidth, setResultsPanelWidth]);
+  }, [leftPanelWidth, rightPanelWidth, resultsPanelHeight, setLeftPanelWidth, setRightPanelWidth, setResultsPanelHeight]);
 
   const resultsTabs = [
     { id: 'results', label: 'Results', icon: Table2 },
@@ -548,78 +549,6 @@ export default function SQLEditorPage() {
           )}
         </div>
 
-        {resultsPanelOpen && (
-          <>
-            <div className={styles.resizerVertical} onMouseDown={(e) => handleResizeStart(e, 'results')} />
-            <div className={styles.resultsPanel} style={{ width: resultsPanelWidth }}>
-              <div className={styles.resultsTabs}>
-                {resultsTabs.map((tab) => {
-                  const Icon = tab.icon;
-                  return (
-                    <button
-                      key={tab.id}
-                      onClick={() => setResultsPanelTab(tab.id)}
-                      className={`${styles.resultsTab} ${resultsPanelTab === tab.id ? styles.resultsTabActive : ''}`}
-                    >
-                      <Icon className={styles.resultsTabIcon} />
-                      {tab.label}
-                    </button>
-                  );
-                })}
-                <div className={styles.resultsTabSpacer} />
-                <button
-                  onClick={handleSaveAsDataset}
-                  disabled={savingDataset || !(typeof activeTab?.query === 'string' && activeTab.query.trim())}
-                  className={styles.trainBtn}
-                  title="Save query result as dataset and go to Training"
-                >
-                  {savingDataset ? (
-                    <Loader2 className={styles.trainBtnIcon} />
-                  ) : (
-                    <Rocket className={styles.trainBtnIcon} />
-                  )}
-                  {savingDataset ? 'Saving...' : 'Use for Training'}
-                </button>
-                <button onClick={toggleResultsPanel} className={styles.resultsTabClose}>
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </div>
-
-              <div className={styles.resultsTabContent}>
-                {resultsPanelTab === 'results' && result && (
-                  <ResultsGrid
-                    result={result}
-                    dataset={selectedDataset}
-                    onLoadMore={loadMoreResults}
-                    loadingMore={nextPageLoading}
-                  />
-                )}
-                {resultsPanelTab === 'results' && !result && (
-                  <div className={styles.emptyState}>No query executed yet. Run a query to see the result here.</div>
-                )}
-                {resultsPanelTab === 'profiling' && (
-                  <DataProfile query={activeTab?.query || ''} dataset={selectedDataset} />
-                )}
-                {resultsPanelTab === 'charts' && result && (
-                  <ChartView result={result} chartConfig={chartConfig} setChartConfig={setChartConfig} />
-                )}
-                {resultsPanelTab === 'charts' && !result && (
-                  <div className={styles.emptyState}>Run a query to visualize data</div>
-                )}
-                {resultsPanelTab === 'aiRecs' && (
-                  <AiRecommendations profile={profile} onInsertQuery={(q) => handleInsertQuery(resolveTable(q))} />
-                )}
-                {resultsPanelTab === 'explain' && (
-                  <ExplainTab query={activeTab?.query || ''} dataset={selectedDataset} />
-                )}
-                {resultsPanelTab === 'history' && (
-                  <QueryHistory onRestoreQuery={handleRestoreQuery} onClose={() => setResultsPanelOpen(false)} />
-                )}
-              </div>
-            </div>
-          </>
-        )}
-
         {rightPanelOpen && (
           <div className={styles.resizerVertical} onMouseDown={(e) => handleResizeStart(e, 'right')} />
         )}
@@ -647,6 +576,78 @@ export default function SQLEditorPage() {
           )}
         </AnimatePresence>
       </div>
+
+      {resultsPanelOpen && (
+        <div className={styles.resultsSection} style={{ height: resultsPanelHeight }}>
+          <div className={styles.resultsResizer} onMouseDown={(e) => handleResizeStart(e, 'results')} />
+          <div className={styles.resultsPanel}>
+            <div className={styles.resultsTabs}>
+              {resultsTabs.map((tab) => {
+                const Icon = tab.icon;
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => setResultsPanelTab(tab.id)}
+                    className={`${styles.resultsTab} ${resultsPanelTab === tab.id ? styles.resultsTabActive : ''}`}
+                  >
+                    <Icon className={styles.resultsTabIcon} />
+                    {tab.label}
+                  </button>
+                );
+              })}
+              <div className={styles.resultsTabSpacer} />
+              <button
+                onClick={handleSaveAsDataset}
+                disabled={savingDataset || !(typeof activeTab?.query === 'string' && activeTab.query.trim())}
+                className={styles.trainBtn}
+                title="Save query result as dataset and go to Training"
+              >
+                {savingDataset ? (
+                  <Loader2 className={styles.trainBtnIcon} />
+                ) : (
+                  <Rocket className={styles.trainBtnIcon} />
+                )}
+                {savingDataset ? 'Saving...' : 'Use for Training'}
+              </button>
+              <button onClick={toggleResultsPanel} className={styles.resultsTabClose}>
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            <div className={styles.resultsTabContent}>
+              {resultsPanelTab === 'results' && result && (
+                <ResultsGrid
+                  result={result}
+                  dataset={selectedDataset}
+                  onLoadMore={loadMoreResults}
+                  loadingMore={nextPageLoading}
+                />
+              )}
+              {resultsPanelTab === 'results' && !result && (
+                <div className={styles.emptyState}>No query executed yet. Run a query to see the result here.</div>
+              )}
+              {resultsPanelTab === 'profiling' && (
+                <DataProfile query={activeTab?.query || ''} dataset={selectedDataset} />
+              )}
+              {resultsPanelTab === 'charts' && result && (
+                <ChartView result={result} chartConfig={chartConfig} setChartConfig={setChartConfig} />
+              )}
+              {resultsPanelTab === 'charts' && !result && (
+                <div className={styles.emptyState}>Run a query to visualize data</div>
+              )}
+              {resultsPanelTab === 'aiRecs' && (
+                <AiRecommendations profile={profile} onInsertQuery={(q) => handleInsertQuery(resolveTable(q))} />
+              )}
+              {resultsPanelTab === 'explain' && (
+                <ExplainTab query={activeTab?.query || ''} dataset={selectedDataset} />
+              )}
+              {resultsPanelTab === 'history' && (
+                <QueryHistory onRestoreQuery={handleRestoreQuery} onClose={() => setResultsPanelOpen(false)} />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       <AnimatePresence>
         {showHistory && (
