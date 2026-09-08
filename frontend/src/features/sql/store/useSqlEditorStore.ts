@@ -7,11 +7,11 @@ interface SqlEditorState {
   activeTabId: string;
   leftPanelOpen: boolean;
   rightPanelOpen: boolean;
-  bottomPanelOpen: boolean;
-  bottomPanelTab: string;
+  resultsPanelOpen: boolean;
+  resultsPanelTab: string;
   leftPanelWidth: number;
   rightPanelWidth: number;
-  bottomPanelHeight: number;
+  resultsPanelWidth: number;
 
   addTab: () => void;
   closeTab: (id: string) => void;
@@ -25,12 +25,12 @@ interface SqlEditorState {
   duplicateTab: (id: string) => void;
   toggleLeftPanel: () => void;
   toggleRightPanel: () => void;
-  toggleBottomPanel: () => void;
-  setBottomPanelOpen: (open: boolean) => void;
-  setBottomPanelTab: (tab: string) => void;
+  toggleResultsPanel: () => void;
+  setResultsPanelOpen: (open: boolean) => void;
+  setResultsPanelTab: (tab: string) => void;
   setLeftPanelWidth: (w: number) => void;
   setRightPanelWidth: (w: number) => void;
-  setBottomPanelHeight: (h: number) => void;
+  setResultsPanelWidth: (w: number) => void;
 }
 
 let _tabCounter = 1;
@@ -42,11 +42,11 @@ export const useSqlEditorStore = create<SqlEditorState>()(
       activeTabId: 'tab-1',
       leftPanelOpen: true,
       rightPanelOpen: false,
-      bottomPanelOpen: false,
-      bottomPanelTab: 'results',
+      resultsPanelOpen: true,
+      resultsPanelTab: 'results',
       leftPanelWidth: 280,
       rightPanelWidth: 320,
-      bottomPanelHeight: 300,
+      resultsPanelWidth: 480,
 
       addTab: () => {
         _tabCounter++;
@@ -66,7 +66,7 @@ export const useSqlEditorStore = create<SqlEditorState>()(
       }),
 
       setActiveTab: (id) => set({ activeTabId: id }),
-      updateTabQuery: (id, query) => set((s) => ({ tabs: s.tabs.map((t) => t.id === id ? { ...t, query, isDirty: true, updatedAt: Date.now() } : t) })),
+      updateTabQuery: (id, query) => set((s) => ({ tabs: s.tabs.map((t) => t.id === id ? { ...t, query: typeof query === 'string' ? query : (t.query || ''), isDirty: true, updatedAt: Date.now() } : t) })),
       updateTabResult: (id, result) => set((s) => ({ tabs: s.tabs.map((t) => t.id === id ? { ...t, result, error: null } : t) })),
       updateTabError: (id, error) => set((s) => ({ tabs: s.tabs.map((t) => t.id === id ? { ...t, error } : t) })),
       updateTabRunning: (id, isRunning) => set((s) => ({ tabs: s.tabs.map((t) => t.id === id ? { ...t, isRunning } : t) })),
@@ -84,16 +84,16 @@ export const useSqlEditorStore = create<SqlEditorState>()(
 
       toggleLeftPanel: () => set((s) => ({ leftPanelOpen: !s.leftPanelOpen })),
       toggleRightPanel: () => set((s) => ({ rightPanelOpen: !s.rightPanelOpen })),
-      toggleBottomPanel: () => set((s) => ({ bottomPanelOpen: !s.bottomPanelOpen })),
-      setBottomPanelOpen: (open) => set({ bottomPanelOpen: open }),
-      setBottomPanelTab: (tab) => set({ bottomPanelTab: tab }),
+      toggleResultsPanel: () => set((s) => ({ resultsPanelOpen: !s.resultsPanelOpen })),
+      setResultsPanelOpen: (open) => set({ resultsPanelOpen: open }),
+      setResultsPanelTab: (tab) => set({ resultsPanelTab: tab }),
       setLeftPanelWidth: (w) => set({ leftPanelWidth: w }),
       setRightPanelWidth: (w) => set({ rightPanelWidth: w }),
-      setBottomPanelHeight: (h) => set({ bottomPanelHeight: h }),
+      setResultsPanelWidth: (w) => set({ resultsPanelWidth: w }),
     }),
     {
       name: 'sql-editor-state',
-      partialize: (state) => ({ tabs: state.tabs, activeTabId: state.activeTabId, leftPanelWidth: state.leftPanelWidth, rightPanelWidth: state.rightPanelWidth, bottomPanelHeight: state.bottomPanelHeight }),
+      partialize: (state) => ({ tabs: state.tabs, activeTabId: state.activeTabId, leftPanelWidth: state.leftPanelWidth, rightPanelWidth: state.rightPanelWidth, resultsPanelWidth: state.resultsPanelWidth }),
     },
   ),
 );

@@ -57,27 +57,27 @@ export default function SQLEditorPage() {
   const resizerRef = useRef<{ startX?: number; startY?: number; panel?: string }>({});
 
   const {
-    tabs, activeTabId, leftPanelOpen, rightPanelOpen, bottomPanelOpen, bottomPanelTab,
-    leftPanelWidth, rightPanelWidth, bottomPanelHeight,
+    tabs, activeTabId, leftPanelOpen, rightPanelOpen, resultsPanelOpen, resultsPanelTab,
+    leftPanelWidth, rightPanelWidth, resultsPanelWidth,
     addTab, closeTab, setActiveTab, updateTabQuery, updateTabResult, updateTabError, updateTabRunning,
     updateTabRunningInfo, renameTab, duplicateTab,
-    toggleLeftPanel, toggleRightPanel, toggleBottomPanel, setBottomPanelOpen, setBottomPanelTab,
-    setLeftPanelWidth, setRightPanelWidth, setBottomPanelHeight,
+    toggleLeftPanel, toggleRightPanel, toggleResultsPanel, setResultsPanelOpen, setResultsPanelTab,
+    setLeftPanelWidth, setRightPanelWidth, setResultsPanelWidth,
   } = useSqlEditorStore(useShallow((s) => ({
     tabs: s.tabs, activeTabId: s.activeTabId, leftPanelOpen: s.leftPanelOpen,
-    rightPanelOpen: s.rightPanelOpen, bottomPanelOpen: s.bottomPanelOpen,
-    bottomPanelTab: s.bottomPanelTab, leftPanelWidth: s.leftPanelWidth,
-    rightPanelWidth: s.rightPanelWidth, bottomPanelHeight: s.bottomPanelHeight,
+    rightPanelOpen: s.rightPanelOpen, resultsPanelOpen: s.resultsPanelOpen,
+    resultsPanelTab: s.resultsPanelTab, leftPanelWidth: s.leftPanelWidth,
+    rightPanelWidth: s.rightPanelWidth, resultsPanelWidth: s.resultsPanelWidth,
     addTab: s.addTab, closeTab: s.closeTab, setActiveTab: s.setActiveTab,
     updateTabQuery: s.updateTabQuery, updateTabResult: s.updateTabResult,
     updateTabError: s.updateTabError, updateTabRunning: s.updateTabRunning,
     updateTabRunningInfo: s.updateTabRunningInfo,
     renameTab: s.renameTab, duplicateTab: s.duplicateTab,
     toggleLeftPanel: s.toggleLeftPanel, toggleRightPanel: s.toggleRightPanel,
-    toggleBottomPanel: s.toggleBottomPanel, setBottomPanelOpen: s.setBottomPanelOpen,
-    setBottomPanelTab: s.setBottomPanelTab,
+    toggleResultsPanel: s.toggleResultsPanel, setResultsPanelOpen: s.setResultsPanelOpen,
+    setResultsPanelTab: s.setResultsPanelTab,
     setLeftPanelWidth: s.setLeftPanelWidth, setRightPanelWidth: s.setRightPanelWidth,
-    setBottomPanelHeight: s.setBottomPanelHeight,
+    setResultsPanelWidth: s.setResultsPanelWidth,
   })));
 
   const activeTab = tabs.find((t) => t.id === activeTabId) || tabs[0];
@@ -136,7 +136,8 @@ export default function SQLEditorPage() {
 
   const handleRun = useCallback(async (queryOverride?: string, confirm = false, datasetOverride?: string) => {
     const ds = datasetOverride ?? selectedDataset;
-    const raw = queryOverride ?? activeTab?.query ?? '';
+    const rawVal = queryOverride ?? activeTab?.query;
+    const raw = typeof rawVal === 'string' ? rawVal : '';
     if (!raw.trim()) {
       notifyError('Enter a SQL query to run.', 'Type a SQL query in the editor, then click Run.');
       return;
@@ -167,8 +168,8 @@ export default function SQLEditorPage() {
         return;
       }
       updateTabResult(activeTabId, data);
-      setBottomPanelOpen(true);
-      setBottomPanelTab('results');
+      setResultsPanelOpen(true);
+      setResultsPanelTab('results');
       notifySuccess('Query completed', `${data.total_rows ?? data.rows} row(s) returned in ${data.execution_time_ms ?? data.executionTime}ms`);
     } catch (err: any) {
       const aborted = err?.name === 'AbortError' || err?.code === 'ABORTED' || err?.code === 'TIMEOUT';
@@ -247,7 +248,7 @@ export default function SQLEditorPage() {
   }, []);
 
   const handleSave = useCallback(() => {
-    if (!activeTab?.query?.trim()) {
+    if (!(typeof activeTab?.query === 'string' && activeTab.query.trim())) {
       notifyError('Save failed', 'No query to save');
       return;
     }
@@ -256,7 +257,7 @@ export default function SQLEditorPage() {
   }, [activeTab, notifyError]);
 
   const handleSaveConfirm = useCallback(async () => {
-    if (!saveName.trim() || !activeTab?.query?.trim()) return;
+    if (!saveName.trim() || !(typeof activeTab?.query === 'string' && activeTab.query.trim())) return;
     try {
       await sqlService.saveQuery({
         name: saveName.trim(),
@@ -347,7 +348,7 @@ export default function SQLEditorPage() {
 
   const handleExport = useCallback((format: string) => {
     const rs = activeTab?.result ?? null;
-    const query = activeTab?.query;
+    const query = typeof activeTab?.query === 'string' ? activeTab.query : '';
     const ts = Date.now();
     if (format === 'csv' || format === 'json') {
       if (!query?.trim()) {
@@ -374,7 +375,7 @@ export default function SQLEditorPage() {
   }, [activeTab, selectedDataset, notifySuccess, notifyError]);
 
   const handleSaveAsDataset = useCallback(async () => {
-    if (!activeTab?.query?.trim()) return;
+    if (!(typeof activeTab?.query === 'string' && activeTab.query.trim())) return;
     setSavingDataset(true);
     try {
       const result = await sqlService.resultToDataset(activeTab.query.trim(), selectedDataset);
@@ -393,13 +394,12 @@ export default function SQLEditorPage() {
     const handler = (ev: MouseEvent) => {
       if (!resizerRef.current) return;
       const deltaX = ev.clientX - (resizerRef.current.startX || 0);
-      const deltaY = ev.clientY - (resizerRef.current.startY || 0);
       if (resizerRef.current.panel === 'left') {
         setLeftPanelWidth(Math.max(200, Math.min(500, leftPanelWidth + deltaX)));
       } else if (resizerRef.current.panel === 'right') {
         setRightPanelWidth(Math.max(250, Math.min(500, rightPanelWidth - deltaX)));
-      } else if (resizerRef.current.panel === 'bottom') {
-        setBottomPanelHeight(Math.max(100, Math.min(600, bottomPanelHeight - deltaY)));
+      } else if (resizerRef.current.panel === 'results') {
+        setResultsPanelWidth(Math.max(320, Math.min(2000, resultsPanelWidth - deltaX)));
       }
       resizerRef.current.startX = ev.clientX;
       resizerRef.current.startY = ev.clientY;
@@ -411,9 +411,9 @@ export default function SQLEditorPage() {
     };
     document.addEventListener('mousemove', handler);
     document.addEventListener('mouseup', upHandler);
-  }, [leftPanelWidth, rightPanelWidth, bottomPanelHeight, setLeftPanelWidth, setRightPanelWidth, setBottomPanelHeight]);
+  }, [leftPanelWidth, rightPanelWidth, resultsPanelWidth, setLeftPanelWidth, setRightPanelWidth, setResultsPanelWidth]);
 
-  const bottomTabs = [
+  const resultsTabs = [
     { id: 'results', label: 'Results', icon: Table2 },
     { id: 'profiling', label: 'Statistics', icon: BarChart3 },
     { id: 'charts', label: 'Charts', icon: BarChart3 },
@@ -433,20 +433,20 @@ export default function SQLEditorPage() {
         onRun={handleRun}
         onSave={handleSave}
         onFormat={handleFormat}
-        onExplain={() => { setBottomPanelOpen(true); setBottomPanelTab('explain'); }}
+        onExplain={() => { setResultsPanelOpen(true); setResultsPanelTab('explain'); }}
         onAiAssistant={handleAiAssistantToggle}
         onToggleHistory={() => setShowHistory(true)}
         onToggleSaved={() => setShowSaved(true)}
         onToggleLeft={toggleLeftPanel}
         onToggleRight={toggleRightPanel}
-        onToggleBottom={toggleBottomPanel}
+        onToggleResults={toggleResultsPanel}
         onToggleTemplates={() => setShowTemplates(!showTemplates)}
         onToggleShortcuts={() => setShowShortcuts(true)}
         onExport={handleExport}
         isRunning={activeTab?.isRunning || false}
         leftOpen={leftPanelOpen}
         rightOpen={rightPanelOpen}
-        bottomOpen={bottomPanelOpen}
+        resultsOpen={resultsPanelOpen}
       />
 
       <AnimatePresence>
@@ -546,79 +546,79 @@ export default function SQLEditorPage() {
           {activeTab?.isRunning && (
             <RunningBar startedAt={activeTab.runningInfo?.startedAt} onCancel={handleCancel} />
           )}
-
-          {bottomPanelOpen && (
-            <>
-              <div className={styles.resizerHorizontal} onMouseDown={(e) => handleResizeStart(e, 'bottom')} />
-              <div className={styles.bottomPanel} style={{ height: bottomPanelHeight }}>
-                <div className={styles.bottomTabs}>
-                  {bottomTabs.map((tab) => {
-                    const Icon = tab.icon;
-                    return (
-                      <button
-                        key={tab.id}
-                        onClick={() => setBottomPanelTab(tab.id)}
-                        className={`${styles.bottomTab} ${bottomPanelTab === tab.id ? styles.bottomTabActive : ''}`}
-                      >
-                        <Icon className={styles.bottomTabIcon} />
-                        {tab.label}
-                      </button>
-                    );
-                  })}
-                  <div className={styles.bottomTabSpacer} />
-                  <button
-                    onClick={handleSaveAsDataset}
-                    disabled={savingDataset || !activeTab?.query?.trim()}
-                    className={styles.trainBtn}
-                    title="Save query result as dataset and go to Training"
-                  >
-                    {savingDataset ? (
-                      <Loader2 className={styles.trainBtnIcon} />
-                    ) : (
-                      <Rocket className={styles.trainBtnIcon} />
-                    )}
-                    {savingDataset ? 'Saving...' : 'Use for Training'}
-                  </button>
-                  <button onClick={toggleBottomPanel} className={styles.bottomTabClose}>
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-
-                <div className={styles.bottomTabContent}>
-                  {bottomPanelTab === 'results' && result && (
-                    <ResultsGrid
-                      result={result}
-                      dataset={selectedDataset}
-                      onLoadMore={loadMoreResults}
-                      loadingMore={nextPageLoading}
-                    />
-                  )}
-                  {bottomPanelTab === 'results' && !result && (
-                    <div className={styles.emptyState}>No query executed yet. Run a query to see the result below.</div>
-                  )}
-                  {bottomPanelTab === 'profiling' && (
-                    <DataProfile query={activeTab?.query || ''} dataset={selectedDataset} />
-                  )}
-                  {bottomPanelTab === 'charts' && result && (
-                    <ChartView result={result} chartConfig={chartConfig} setChartConfig={setChartConfig} />
-                  )}
-                  {bottomPanelTab === 'charts' && !result && (
-                    <div className={styles.emptyState}>Run a query to visualize data</div>
-                  )}
-                  {bottomPanelTab === 'aiRecs' && (
-                    <AiRecommendations profile={profile} onInsertQuery={(q) => handleInsertQuery(resolveTable(q))} />
-                  )}
-                  {bottomPanelTab === 'explain' && (
-                    <ExplainTab query={activeTab?.query || ''} dataset={selectedDataset} />
-                  )}
-                  {bottomPanelTab === 'history' && (
-                    <QueryHistory onRestoreQuery={handleRestoreQuery} onClose={() => setBottomPanelOpen(false)} />
-                  )}
-                </div>
-              </div>
-            </>
-          )}
         </div>
+
+        {resultsPanelOpen && (
+          <>
+            <div className={styles.resizerVertical} onMouseDown={(e) => handleResizeStart(e, 'results')} />
+            <div className={styles.resultsPanel} style={{ width: resultsPanelWidth }}>
+              <div className={styles.resultsTabs}>
+                {resultsTabs.map((tab) => {
+                  const Icon = tab.icon;
+                  return (
+                    <button
+                      key={tab.id}
+                      onClick={() => setResultsPanelTab(tab.id)}
+                      className={`${styles.resultsTab} ${resultsPanelTab === tab.id ? styles.resultsTabActive : ''}`}
+                    >
+                      <Icon className={styles.resultsTabIcon} />
+                      {tab.label}
+                    </button>
+                  );
+                })}
+                <div className={styles.resultsTabSpacer} />
+                <button
+                  onClick={handleSaveAsDataset}
+                  disabled={savingDataset || !(typeof activeTab?.query === 'string' && activeTab.query.trim())}
+                  className={styles.trainBtn}
+                  title="Save query result as dataset and go to Training"
+                >
+                  {savingDataset ? (
+                    <Loader2 className={styles.trainBtnIcon} />
+                  ) : (
+                    <Rocket className={styles.trainBtnIcon} />
+                  )}
+                  {savingDataset ? 'Saving...' : 'Use for Training'}
+                </button>
+                <button onClick={toggleResultsPanel} className={styles.resultsTabClose}>
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              <div className={styles.resultsTabContent}>
+                {resultsPanelTab === 'results' && result && (
+                  <ResultsGrid
+                    result={result}
+                    dataset={selectedDataset}
+                    onLoadMore={loadMoreResults}
+                    loadingMore={nextPageLoading}
+                  />
+                )}
+                {resultsPanelTab === 'results' && !result && (
+                  <div className={styles.emptyState}>No query executed yet. Run a query to see the result here.</div>
+                )}
+                {resultsPanelTab === 'profiling' && (
+                  <DataProfile query={activeTab?.query || ''} dataset={selectedDataset} />
+                )}
+                {resultsPanelTab === 'charts' && result && (
+                  <ChartView result={result} chartConfig={chartConfig} setChartConfig={setChartConfig} />
+                )}
+                {resultsPanelTab === 'charts' && !result && (
+                  <div className={styles.emptyState}>Run a query to visualize data</div>
+                )}
+                {resultsPanelTab === 'aiRecs' && (
+                  <AiRecommendations profile={profile} onInsertQuery={(q) => handleInsertQuery(resolveTable(q))} />
+                )}
+                {resultsPanelTab === 'explain' && (
+                  <ExplainTab query={activeTab?.query || ''} dataset={selectedDataset} />
+                )}
+                {resultsPanelTab === 'history' && (
+                  <QueryHistory onRestoreQuery={handleRestoreQuery} onClose={() => setResultsPanelOpen(false)} />
+                )}
+              </div>
+            </div>
+          </>
+        )}
 
         {rightPanelOpen && (
           <div className={styles.resizerVertical} onMouseDown={(e) => handleResizeStart(e, 'right')} />

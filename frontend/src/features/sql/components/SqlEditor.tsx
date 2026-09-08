@@ -89,15 +89,6 @@ export const SqlEditor = memo(function SqlEditor({
 
     registerCompletions(columns, tableNames);
 
-    editor.addAction({
-      id: 'run-query',
-      label: 'Run Query',
-      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter],
-      run: () => {
-        editor.getAction('editor.action.executeCommand')?.run();
-      },
-    });
-
     if (onMount) onMount(editor, monaco);
   }, [onMount, columns, tableNames]);
 

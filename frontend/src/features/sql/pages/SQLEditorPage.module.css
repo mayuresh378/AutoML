@@ -133,28 +133,18 @@
   opacity: 0.2;
 }
 
-.resizerHorizontal {
-  height: 6px;
-  flex-shrink: 0;
-  cursor: row-resize;
-  transition: background var(--transition-fast);
-}
-
-.resizerHorizontal:hover {
-  background: var(--color-secondary);
-  opacity: 0.2;
-}
-
-/* ── Bottom Panel ── */
-.bottomPanel {
-  border-top: 1px solid var(--color-border);
+/* ── Results Panel ── */
+.resultsPanel {
+  border-left: 1px solid var(--color-border);
   background: var(--color-surface);
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
 }
 
-.bottomTabs {
+.resultsTabs {
   display: flex;
   align-items: center;
   height: 36px;
@@ -164,7 +154,7 @@
   padding: 0 var(--space-2);
 }
 
-.bottomTab {
+.resultsTab {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -176,25 +166,25 @@
   transition: all var(--transition-fast);
 }
 
-.bottomTab:hover {
+.resultsTab:hover {
   color: var(--color-text-secondary);
 }
 
-.bottomTabActive {
+.resultsTabActive {
   border-bottom-color: var(--color-secondary);
   color: var(--color-text);
 }
 
-.bottomTabIcon {
+.resultsTabIcon {
   width: 14px;
   height: 14px;
 }
 
-.bottomTabSpacer {
+.resultsTabSpacer {
   flex: 1;
 }
 
-.bottomTabClose {
+.resultsTabClose {
   display: flex;
   align-items: center;
   padding: 4px;
@@ -203,7 +193,7 @@
   transition: all var(--transition-fast);
 }
 
-.bottomTabClose:hover {
+.resultsTabClose:hover {
   color: var(--color-text-secondary);
   background: var(--color-surface-hover);
 }
@@ -239,7 +229,7 @@
   height: 12px;
 }
 
-.bottomTabContent {
+.resultsTabContent {
   flex: 1;
   overflow: hidden;
 }

@@ -2,7 +2,7 @@ import { memo, useState, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import {
   Play, Save, Wand2, Sparkles, History, Download, Keyboard, ChevronDown,
-  Database, Columns3, Code2, PanelLeft, PanelRight, PanelBottom, Bookmark,
+  Database, Columns3, Code2, PanelLeft, PanelRight, Bookmark,
   FileJson, FileText, Table2,
 } from 'lucide-react';
 import styles from './SqlToolbar.module.css';
@@ -20,20 +20,20 @@ interface SqlToolbarProps {
   onToggleSaved: () => void;
   onToggleLeft: () => void;
   onToggleRight: () => void;
-  onToggleBottom: () => void;
+  onToggleResults: () => void;
   onToggleTemplates: () => void;
   onToggleShortcuts: () => void;
   onExport: (format: string) => void;
   isRunning: boolean;
   leftOpen: boolean;
   rightOpen: boolean;
-  bottomOpen: boolean;
+  resultsOpen: boolean;
 }
 
 export const SqlToolbar = memo(function SqlToolbar({
   selectedDataset, datasets, onDatasetChange, onRun, onSave, onFormat,
   onExplain, onAiAssistant, onToggleHistory, onToggleSaved, onToggleLeft, onToggleRight,
-  onToggleBottom, onToggleTemplates, onToggleShortcuts, onExport, isRunning, leftOpen, rightOpen, bottomOpen,
+  onToggleResults, onToggleTemplates, onToggleShortcuts, onExport, isRunning, leftOpen, rightOpen, resultsOpen,
 }: SqlToolbarProps) {
   const [exportOpen, setExportOpen] = useState(false);
   const exportRef = useRef<HTMLDivElement>(null);
@@ -137,8 +137,8 @@ export const SqlToolbar = memo(function SqlToolbar({
         <button onClick={onToggleRight} className={`${styles.btn} ${!rightOpen ? styles.panelToggleInactive : ''}`} title="Toggle AI Assistant">
           <PanelRight className={styles.btnIcon} />
         </button>
-        <button onClick={onToggleBottom} className={`${styles.btn} ${!bottomOpen ? styles.panelToggleInactive : ''}`} title="Toggle Results">
-          <PanelBottom className={styles.btnIcon} />
+        <button onClick={onToggleResults} className={`${styles.btn} ${!resultsOpen ? styles.panelToggleInactive : ''}`} title="Toggle Results">
+          <Table2 className={styles.btnIcon} />
         </button>
 
         <div className={styles.divider} />
@@ -146,7 +146,7 @@ export const SqlToolbar = memo(function SqlToolbar({
         <motion.button
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.96 }}
-          onClick={onRun}
+          onClick={() => onRun()}
           disabled={isRunning}
           className={styles.runBtn}
         >
