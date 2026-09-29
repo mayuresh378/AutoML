@@ -2,8 +2,7 @@ FROM python:3.11-slim AS builder
 
 WORKDIR /build
 COPY backend/requirements.txt .
-RUN pip install --no-cache-dir --prefix=/install -r requirements.txt && \
-    pip install --no-cache-dir --prefix=/install psycopg2-binary
+RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 
 FROM python:3.11-slim
 
