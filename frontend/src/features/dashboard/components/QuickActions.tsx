@@ -1,10 +1,6 @@
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { Upload, FlaskConical, Play, Rocket } from 'lucide-react';
-
-interface QuickActionsProps {
-  onNewExperiment: () => void;
-}
+import { Upload, Play, Rocket } from 'lucide-react';
 
 const ACTION_CLASSES = [
   'hover:border-cyan-500/30 hover:bg-cyan-500/[0.06]',
@@ -13,7 +9,7 @@ const ACTION_CLASSES = [
   'hover:border-amber-500/30 hover:bg-amber-500/[0.06]',
 ];
 
-export default function QuickActions({ onNewExperiment }: QuickActionsProps) {
+export default function QuickActions() {
   const navigate = useNavigate();
 
   const actions = [
@@ -24,14 +20,6 @@ export default function QuickActions({ onNewExperiment }: QuickActionsProps) {
       color: 'text-cyan-400',
       bg: 'bg-cyan-500/10 border-cyan-500/20',
       onClick: () => navigate('/app/datasets'),
-    },
-    {
-      label: 'New Experiment',
-      description: 'Configure an AutoML run',
-      icon: FlaskConical,
-      color: 'text-indigo-400',
-      bg: 'bg-indigo-500/10 border-indigo-500/20',
-      onClick: onNewExperiment,
     },
     {
       label: 'Start Training',
@@ -52,7 +40,7 @@ export default function QuickActions({ onNewExperiment }: QuickActionsProps) {
   ];
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
       {actions.map((action, i) => {
         const Icon = action.icon;
         return (

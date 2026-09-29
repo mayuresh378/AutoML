@@ -1,13 +1,12 @@
 import { useEffect, useState, useCallback } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Search, Upload, Cpu, FlaskConical, Rocket, FileText, Users, FolderOpen, Database, Box, Loader2, ArrowRight } from 'lucide-react';
+import { Search, Upload, Cpu, Rocket, FileText, Users, FolderOpen, Database, Box, Loader2, ArrowRight } from 'lucide-react';
 import { useUIStore } from '../store/useUIStore';
 import { useGlobalSearch } from '../hooks/useApi';
 
 const ACTIONS = [
   { icon: Upload, label: 'Upload a new dataset', page: 'Datasets', hint: 'Data' },
   { icon: Cpu, label: 'Start a new training run', page: 'Training', hint: 'Training' },
-  { icon: FlaskConical, label: 'Open recent experiments', page: 'Experiments', hint: 'Experiments' },
   { icon: Rocket, label: 'Deploy a model', page: 'Deployment', hint: 'Deployment' },
   { icon: FileText, label: 'Read the documentation', page: 'Documentation', hint: 'Docs' },
 ];

@@ -20,7 +20,6 @@ erDiagram
     User ||--o{ PredictionLog : "makes"
     User ||--o{ Notification : "receives"
     User ||--o{ Webhook : "creates"
-    User ||--o{ Pipeline : "builds"
     User ||--o{ UserSession : "has"
 
     Team ||--o{ TeamMember : "includes"
@@ -33,8 +32,6 @@ erDiagram
     Experiment ||--o{ ModelRegistry : "produces"
 
     ModelRegistry ||--o{ Deployment : "serves"
-
-    Pipeline ||--o{ PipelineRun : "executes"
 ```
 
 ## Table Descriptions
@@ -50,8 +47,6 @@ erDiagram
 | experiments | ML Pipeline | Training run records |
 | model_registry | ML Pipeline | Trained model artifacts |
 | deployments | ML Pipeline | Deployed model endpoints |
-| pipelines | ML Pipeline | Multi-step pipeline definitions |
-| pipeline_runs | ML Pipeline | Pipeline execution records |
 | datasets | Data | Uploaded dataset metadata |
 | prediction_logs | Data | Inference request history |
 | notifications | Operations | User notification messages |
@@ -66,5 +61,4 @@ erDiagram
 - Project -> Experiments (1:N): A project contains many experiment runs
 - Experiment -> ModelRegistry (1:N): An experiment can produce multiple registered models
 - ModelRegistry -> Deployment (1:N): A registered model can have multiple deployments
-- Pipeline -> PipelineRun (1:N): A pipeline can be executed multiple times
 - User <-> Team (M:N): Through team_members junction table

@@ -625,67 +625,6 @@ Returns a paginated log of all past prediction requests.
 
 ---
 
-## Pipelines
-
-| Method | Endpoint | Description | Auth |
-|--------|----------|-------------|------|
-| GET | `/api/v1/pipelines` | List all pipelines (paginated) | Optional |
-| POST | `/api/v1/pipelines` | Create a pipeline | Optional |
-| GET | `/api/v1/pipelines/{pipeline_id}` | Get pipeline details | No |
-| PUT | `/api/v1/pipelines/{pipeline_id}` | Update pipeline config | No |
-| DELETE | `/api/v1/pipelines/{pipeline_id}` | Delete pipeline | No |
-| POST | `/api/v1/pipelines/{pipeline_id}/run` | Execute a pipeline run | No |
-| GET | `/api/v1/pipelines/{pipeline_id}/runs` | List pipeline run history (paginated) | No |
-| GET | `/api/v1/pipeline-runs/{run_id}` | Get specific run details | No |
-
-### POST `/api/v1/pipelines`
-
-**Request body** (`application/json`):
-
-```json
-{
-  "name": "My Pipeline",
-  "description": "Training pipeline",
-  "steps": [
-    {"type": "preprocess", "params": {}},
-    {"type": "train", "params": {"model": "RandomForest"}},
-    {"type": "evaluate", "params": {}}
-  ],
-  "schedule": null
-}
-```
-
-**Pipeline object fields:**
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | string | Unique identifier |
-| `name` | string | Pipeline name |
-| `description` | string | Description |
-| `steps` | array | Ordered list of pipeline step objects |
-| `status` | string | `idle`, `running`, `completed`, `failed` |
-| `schedule` | string | Cron expression or `null` |
-| `created_at` | ISO timestamp | Creation time |
-| `updated_at` | ISO timestamp | Last update time |
-
-### POST `/api/v1/pipelines/{pipeline_id}/run`
-
-**Response** `200 OK`:
-
-```json
-{
-  "id": "run-uuid",
-  "pipeline_id": "pipeline-uuid",
-  "status": "completed",
-  "current_step": 2,
-  "error": null,
-  "started_at": "2026-07-14T12:00:00",
-  "completed_at": "2026-07-14T12:00:15"
-}
-```
-
----
-
 ## Projects
 
 | Method | Endpoint | Description | Auth |
@@ -1215,7 +1154,6 @@ The following tags are used to group endpoints in the auto-generated OpenAPI doc
 | Models | Model registry, download, metadata |
 | Deployments | Model deployment management |
 | Predictions | Single & batch predictions, explanation |
-| Pipelines | ML pipeline management & execution |
 | Webhooks | Webhook integration management |
 | Teams | Team management |
 | API Keys | API key management |

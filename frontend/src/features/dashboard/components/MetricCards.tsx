@@ -1,12 +1,11 @@
 import { useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { FlaskConical, Database, Cpu, Server, TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { Database, Cpu, Server, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import AnimatedNumber from '../../../components/motion/AnimatedNumber';
 import { MetricSkeleton } from '../../../components/Skeleton';
 import { ErrorState } from '../../../components/ui/ErrorState';
 import {
-  useExperiments,
   useDatasets,
   useModels,
   useDeployments,
@@ -24,7 +23,7 @@ interface MetricCardDef {
   key: string;
   label: string;
   value: number;
-  icon: typeof FlaskConical;
+  icon: typeof Database;
   colorText: string;
   colorBg: string;
   path: string;
@@ -61,24 +60,21 @@ function TrendBadge({ delta }: { delta: number | null }) {
 
 export default function MetricCards() {
   const navigate = useNavigate();
-  const experiments = useExperiments();
   const datasets = useDatasets();
   const models = useModels();
   const deployments = useDeployments();
   const analytics = useAnalytics();
 
   const isLoading =
-    experiments.isLoading || datasets.isLoading || models.isLoading || deployments.isLoading;
-  const hasError = experiments.isError || datasets.isError || models.isError || deployments.isError;
+    datasets.isLoading || models.isLoading || deployments.isLoading;
+  const hasError = datasets.isError || models.isError || deployments.isError;
   const refetch = () => {
-    experiments.refetch();
     datasets.refetch();
     models.refetch();
     deployments.refetch();
   };
 
   const cards = useMemo<MetricCardDef[]>(() => {
-    const expList = experiments.data ?? [];
     const dsList = datasets.data ?? [];
     const modelList = models.data ?? [];
     const depList = deployments.data ?? [];
@@ -86,10 +82,6 @@ export default function MetricCards() {
 
     const now = new Date();
     const daysAgo = (n: number) => new Date(now.getTime() - n * 24 * 60 * 60 * 1000);
-
-    const expCompleted = expList.filter((e) => e.status === 'completed' || e.status === 'success').length;
-    const expRunning = expList.filter((e) => e.status === 'running' || e.status === 'queued').length;
-    const expFailed = expList.filter((e) => e.status === 'failed').length;
 
     const dsReady = dsList.filter((d) => d.status === 'ready' || d.status === 'uploaded').length;
     const dsAttention = dsList.filter((d) => d.status === 'error' || d.status === 'processing').length;
@@ -102,21 +94,6 @@ export default function MetricCards() {
       (d) => d.status === 'running' || d.status === 'active',
     ).length;
     const depFailed = depList.filter((d) => d.status === 'failed').length;
-
-    // Real week-over-week trends derived from existing endpoints.
-    let expTrend: number | null = null;
-    if (analyticsData && Array.isArray(analyticsData.training_trends) && analyticsData.training_trends.length) {
-      const cutoff = (d: string) => new Date(d + 'T00:00:00Z').getTime();
-      const bound = daysAgo(7).getTime();
-      const prevBound = daysAgo(14).getTime();
-      const recent = analyticsData.training_trends.filter((t) => cutoff(t.date) >= bound).length;
-      const previous = analyticsData.training_trends.filter((t) => cutoff(t.date) >= prevBound && cutoff(t.date) < bound).length;
-      expTrend = computeDelta(recent, previous);
-    } else {
-      const recent = expList.filter((e) => e.created_at && new Date(e.created_at) >= daysAgo(7)).length;
-      const previous = expList.filter((e) => e.created_at && new Date(e.created_at) >= daysAgo(14) && new Date(e.created_at) < daysAgo(7)).length;
-      expTrend = computeDelta(recent, previous);
-    }
 
     let dsTrend: number | null = null;
     if (analyticsData && Array.isArray(analyticsData.dataset_growth) && analyticsData.dataset_growth.length) {
@@ -147,21 +124,6 @@ export default function MetricCards() {
           : null;
 
     return [
-      {
-        key: 'experiments',
-        label: 'Experiments',
-        value: expList.length,
-        icon: FlaskConical,
-        colorText: 'text-indigo-400',
-        colorBg: 'bg-indigo-500/10 border-indigo-500/20',
-        path: '/app/experiments',
-        trend: expTrend,
-        breakdown: [
-          { label: 'completed', value: String(expCompleted), color: 'text-emerald-400' },
-          { label: 'running', value: String(expRunning), color: 'text-amber-400' },
-          { label: 'failed', value: String(expFailed), color: 'text-rose-400' },
-        ],
-      },
       {
         key: 'datasets',
         label: 'Datasets',
@@ -204,12 +166,12 @@ export default function MetricCards() {
         ],
       },
     ];
-  }, [experiments.data, datasets.data, models.data, deployments.data, analytics.data]);
+  }, [datasets.data, models.data, deployments.data, analytics.data]);
 
   if (isLoading) {
     return (
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {Array.from({ length: 4 }).map((_, i) => <MetricSkeleton key={i} />)}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {Array.from({ length: 3 }).map((_, i) => <MetricSkeleton key={i} />)}
       </div>
     );
   }
@@ -219,7 +181,7 @@ export default function MetricCards() {
       <div className="rounded-xl border border-white/10 bg-white/[0.03]">
         <ErrorState
           title="Unable to load this section"
-          message={getErrorMessage(experiments.error || datasets.error || models.error || deployments.error, 'Failed to load dashboard metrics.')}
+          message={getErrorMessage(datasets.error || models.error || deployments.error, 'Failed to load dashboard metrics.')}
           onRetry={refetch}
           className="py-8"
         />
@@ -228,7 +190,7 @@ export default function MetricCards() {
   }
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
       {cards.map((card, i) => {
         const Icon = card.icon;
         return (

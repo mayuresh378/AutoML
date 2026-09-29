@@ -1,12 +1,10 @@
 export { authService } from './auth.service';
 export { datasetsService } from './datasets.service';
 export { trainingService } from './training.service';
-export { experimentsService } from './experiments.service';
 export { modelsService } from './models.service';
 export { deploymentsService } from './deployments.service';
 export { predictionsService } from './predictions.service';
 export { projectsService } from './projects.service';
-export { pipelinesService } from './pipelines.service';
 export { webhooksService } from './webhooks.service';
 export { monitoringService } from './monitoring.service';
 export { activityService } from './activity.service';

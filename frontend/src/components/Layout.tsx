@@ -47,7 +47,6 @@ const navigation = [
   { name: 'Model Registry', href: '/models', icon: Package },
   { name: 'Deployments', href: '/deployments', icon: Cloud },
   { name: 'Batch Predictions', href: '/batch', icon: Zap },
-  { name: 'Pipelines', href: '/pipelines', icon: GitBranch },
   { section: 'Operations' },
   { name: 'Team', href: '/team', icon: Users },
   { name: 'Integrations', href: '/integrations', icon: Puzzle },

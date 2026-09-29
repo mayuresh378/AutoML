@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Loader2, Play, CheckCircle2, XCircle, Clock, ArrowRight } from 'lucide-react';
 import SectionCard, { SectionRefresh } from './SectionCard';
-import { useTrainingQueue, useExperiments } from '../../../hooks/useApi';
+import { useTrainingQueue, useTrainingJobs } from '../../../hooks/useApi';
 import { getErrorMessage } from '../../../services/http';
 import type { TrainingJob } from '../../../types/api';
 
@@ -29,19 +29,19 @@ function formatElapsed(createdAt?: string): string {
 export default function TrainingActivity() {
   const navigate = useNavigate();
   const queue = useTrainingQueue();
-  const experiments = useExperiments();
-  const isFetching = queue.isFetching || experiments.isFetching;
+  const jobs = useTrainingJobs();
+  const isFetching = queue.isFetching || jobs.isFetching;
 
   const summary = useMemo(() => {
-    const exps = experiments.data ?? [];
-    const jobs = queue.data ?? [];
+    const runs = jobs.data ?? [];
+    const queueJobs = queue.data ?? [];
     return {
-      active: jobs.filter((j) => isActiveStatus(statusOf(j))).length,
-      queued: jobs.filter((j) => statusOf(j) === 'queued').length,
-      completed: exps.filter((e) => e.status === 'completed' || e.status === 'success').length,
-      failed: exps.filter((e) => e.status === 'failed').length,
+      active: queueJobs.filter((j) => isActiveStatus(statusOf(j))).length,
+      queued: queueJobs.filter((j) => statusOf(j) === 'queued').length,
+      completed: runs.filter((j) => statusOf(j) === 'completed' || statusOf(j) === 'success').length,
+      failed: runs.filter((j) => statusOf(j) === 'failed').length,
     };
-  }, [queue.data, experiments.data]);
+  }, [queue.data, jobs.data]);
 
   const activeJobs = (queue.data ?? []).filter((j) => {
     const s = statusOf(j);
@@ -55,12 +55,12 @@ export default function TrainingActivity() {
       title="Training Activity"
       icon={<Loader2 className="w-4 h-4 text-indigo-400" />}
       action={
-        <SectionRefresh refetch={() => { queue.refetch(); experiments.refetch(); }} isFetching={isFetching} updatedAt={updatedAt} />
+        <SectionRefresh refetch={() => { queue.refetch(); jobs.refetch(); }} isFetching={isFetching} updatedAt={updatedAt} />
       }
-      loading={queue.isLoading || experiments.isLoading}
-      isError={queue.isError || experiments.isError}
-      error={getErrorMessage(queue.error || experiments.error, 'Failed to load training jobs.')}
-      onRetry={() => { queue.refetch(); experiments.refetch(); }}
+      loading={queue.isLoading || jobs.isLoading}
+      isError={queue.isError || jobs.isError}
+      error={getErrorMessage(queue.error || jobs.error, 'Failed to load training jobs.')}
+      onRetry={() => { queue.refetch(); jobs.refetch(); }}
       empty={activeJobs.length === 0 && summary.completed === 0}
       emptyIcon={<Play className="w-8 h-8 text-indigo-400" />}
       emptyTitle="No training jobs running"

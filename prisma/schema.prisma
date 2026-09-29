@@ -29,7 +29,6 @@ model User {
   teams           TeamMember[]
   api_keys        ApiKey[]
   audit_logs      AuditLog[]
-  pipelines       Pipeline[]
   experiments     Experiment[]
   model_registry  ModelRegistry[]
   deployments     Deployment[]
@@ -216,41 +215,6 @@ model Deployment {
   history DeploymentHistory[]
 
   @@map("deployments")
-}
-
-model Pipeline {
-  id          String    @id @default(uuid())
-  name        String
-  description String?
-  steps       Json?
-  status      String?   @default("draft")
-  schedule    String?
-  deleted_at  DateTime?
-  created_at  DateTime? @default(now())
-  updated_at  DateTime? @default(now())
-
-  user_id         String?
-  created_by_user User?   @relation(fields: [user_id], references: [id])
-
-  runs PipelineRun[]
-
-  @@map("pipelines")
-}
-
-model PipelineRun {
-  id           String    @id @default(uuid())
-  status       String?   @default("pending")
-  current_step String?
-  results      Json?
-  error        String?
-  started_at   DateTime?
-  completed_at DateTime?
-  created_at   DateTime? @default(now())
-
-  pipeline_id String
-  pipeline    Pipeline @relation(fields: [pipeline_id], references: [id])
-
-  @@map("pipeline_runs")
 }
 
 model Dataset {

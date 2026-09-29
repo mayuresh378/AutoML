@@ -43,7 +43,6 @@
 | cleaning.py | Dataset profiling and cleaning |
 | features.py | Feature engineering and suggestion |
 | explain.py | SHAP-based prediction explanations |
-| pipeline_engine.py | Multi-step ML pipeline execution |
 | middleware.py | Security headers, rate limiting, CSRF protection |
 | security_utils.py | XSS sanitization, SQL injection prevention, CSRF tokens |
 | schemas.py | Pydantic request/response models |
@@ -76,7 +75,6 @@
 
 - users, teams, team_members
 - projects, experiments, model_registry, deployments
-- pipelines, pipeline_runs
 - datasets, prediction_logs
 - notifications, webhooks, api_keys, user_sessions
 - audit_logs, activity_logs

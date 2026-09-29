@@ -193,7 +193,7 @@ def _migrate_users_table():
 
 def init_db():
     from models import (User, Team, TeamMember, ApiKey, Experiment, ModelRegistry,
-                        Deployment, DeploymentHistory, Pipeline, PipelineRun, Webhook, AuditLog,
+                        Deployment, DeploymentHistory, Webhook, AuditLog,
                         Project, MarketplaceItem, Dataset, DatasetShare, Notification,
                         UserSession, PredictionLog, ActivityLog,
                         DatasetCleanStep, CleaningHistory)

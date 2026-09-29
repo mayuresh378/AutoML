@@ -40,7 +40,6 @@ const notificationEvents = [
   { id: 'deployment', name: 'Deployment Status', desc: 'When a deployment changes state' },
   { id: 'experiment', name: 'Experiment Results', desc: 'When an experiment completes' },
   { id: 'alerts', name: 'System Alerts', desc: 'When system resources are critical' },
-  { id: 'pipeline', name: 'Pipeline Runs', desc: 'When a pipeline run completes' },
 ];
 
 const sectionVariants = {
@@ -253,7 +252,6 @@ function NotificationsSection() {
     deployment: { email: true, slack: false, inApp: true },
     experiment: { email: false, slack: true, inApp: true },
     alerts: { email: true, slack: true, inApp: true },
-    pipeline: { email: false, slack: false, inApp: true },
   });
 
   const toggleEvent = (eventId: string, channel: 'email' | 'slack' | 'inApp') => {

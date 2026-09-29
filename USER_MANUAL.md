@@ -90,13 +90,7 @@ Select multiple models to compare:
 - Batch prediction: Upload CSV, download predictions
 - Prediction history: View past inference requests
 
-## Pipelines & Automations
-
-### Pipelines
-Create multi-step ML pipelines:
-1. Define steps (load -> clean -> train -> evaluate)
-2. Run pipeline manually or on schedule
-3. View execution history and results
+## Automations
 
 ### Automations
 Set up trigger-based automations:

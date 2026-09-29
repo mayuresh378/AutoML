@@ -35,8 +35,6 @@ const NAV_GROUPS: NavGroup[] = [
       { label: 'AutoML', path: '/app/engine', icon: 'Zap' },
       { label: 'Training', path: '/app/training', icon: 'Brain' },
       { label: 'Hyperparameter Tuning', path: '/app/hpo', icon: 'Sliders' },
-      { label: 'Experiments', path: '/app/experiments', icon: 'FlaskConical' },
-      { label: 'Pipeline Builder', path: '/app/pipelines', icon: 'GitBranch' },
     ],
   },
   {
@@ -98,8 +96,6 @@ function buildWorkspaceNav(projectId: string): NavGroup[] {
         { label: 'AutoML', path: `${base}/ml/automl`, icon: 'Zap' },
         { label: 'Training', path: `${base}/ml/training`, icon: 'Brain' },
         { label: 'Hyperparameter Tuning', path: `${base}/ml/hpo`, icon: 'Sliders' },
-        { label: 'Experiments', path: `${base}/ml/experiments`, icon: 'FlaskConical' },
-        { label: 'Leaderboard', path: `${base}/ml/leaderboard`, icon: 'Trophy' },
       ],
     },
     {
@@ -138,8 +134,6 @@ const iconComponents: Record<string, string> = {
   Zap: 'M13 2L3 14h9l-1 8 10-12h-9l1-8z',
   Brain: 'M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707M2 12h1m15.657 5.657l.707.707M12 20v1M12 3a9 9 0 00-9 9c0 2.1.72 4.03 1.93 5.56L6 20l2.07-1.44A8.97 8.97 0 0012 21a9 9 0 009-9 9 9 0 00-9-9z',
   Sliders: 'M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6',
-  FlaskConical: 'M6 2h12v2l-4 6v8h-4v-8L6 4V2zM6 2v2l4 6',
-  GitBranch: 'M6 3v12M6 3a3 3 0 11-6 0 3 3 0 016 0zM18 9a3 3 0 100-6 3 3 0 000 6zM18 9a9 9 0 01-9 9M6 21a3 3 0 100-6 3 3 0 000 6z',
   BarChart3: 'M18 20V10M12 20V4M6 20v-6',
   Sparkles: 'M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5L12 3zM5 17l.5 1.5L7 19l-1.5.5L5 21l-.5-1.5L3 19l1.5-.5L5 17zM17 17l.5 1.5L19 19l-1.5.5L17 21l-.5-1.5L15 19l1.5-.5L17 17z',
   Layers: 'M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5',
@@ -148,7 +142,6 @@ const iconComponents: Record<string, string> = {
   Send: 'M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z',
   Activity: 'M22 12h-4l-3 9L9 3l-3 9H2',
   Bot: 'M12 8V4M8 4h8M4 8h16a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2v-6a2 2 0 012-2zM8 14h.01M16 14h.01',
-  Trophy: 'M6 9H4.5a2.5 2.5 0 0 1 0-5H6M18 9h1.5a2.5 2.5 0 0 0 0-5H18M4 22h16M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22M18 2H6v7a6 6 0 0 0 12 0V2Z',
   Settings: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z',
 };
 

@@ -10,7 +10,6 @@ A full-stack automated machine learning platform with drag-and-drop dataset mana
 - **Deployment**: One-click deployment with REST endpoint generation
 - **Monitoring**: Track latency, request count, system metrics
 - **Explainable AI**: SHAP-based prediction explanations
-- **Pipeline Engine**: Multi-step ML pipelines with scheduling
 - **Data Tools**: Profiling, cleaning, feature engineering, SQL querying
 - **AI Assistant**: Natural language queries about your data and models
 - **Team Collaboration**: Projects, teams, API keys, role-based access
@@ -82,7 +81,7 @@ automl-platform/
 
 80+ REST endpoints at `/api/v1/*`. Full docs at `/docs` (Swagger) and `/redoc` (ReDoc).
 
-Core groups: Auth, Datasets, Training, Experiments, Models, Deployments, Predictions, Pipelines, Projects, Teams, Webhooks, Search, Notifications, Activity, Analytics, Admin, Monitoring, Health.
+Core groups: Auth, Datasets, Training, Experiments, Models, Deployments, Predictions, Projects, Teams, Webhooks, Search, Notifications, Activity, Analytics, Admin, Monitoring, Health.
 
 ## License
 

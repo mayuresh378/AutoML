@@ -5,11 +5,9 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { datasetsService } from '../services/datasets.service';
 import { trainingService } from '../services/training.service';
-import { experimentsService } from '../services/experiments.service';
 import { modelsService } from '../services/models.service';
 import { deploymentsService } from '../services/deployments.service';
 import { projectsService } from '../services/projects.service';
-import { pipelinesService } from '../services/pipelines.service';
 import { webhooksService } from '../services/webhooks.service';
 import { monitoringService } from '../services/monitoring.service';
 import { activityService } from '../services/activity.service';
@@ -23,16 +21,6 @@ import { http } from '../services/http';
 
 function pollWhenVisible(intervalMs: number) {
   return () => (typeof document !== 'undefined' && document.hidden ? false : intervalMs);
-}
-
-export function useExperiments() {
-  return useQuery({
-    queryKey: ['experiments'],
-    queryFn: () => experimentsService.list(),
-    select: (data) => data.experiments,
-    staleTime: 20_000,
-    refetchInterval: pollWhenVisible(20_000),
-  });
 }
 
 export function useModels() {
@@ -232,62 +220,6 @@ export function useGlobalSearch(q: string) {
     queryKey: ['search', q],
     queryFn: () => searchService.search(q),
     enabled: q.length >= 2,
-    staleTime: 30_000,
-    refetchInterval: 120_000,
-  });
-}
-
-export function usePipelines() {
-  return useQuery({
-    queryKey: ['pipelines'],
-    queryFn: () => pipelinesService.list(),
-    select: (data) => data.pipelines,
-    staleTime: 30_000,
-    refetchInterval: 120_000,
-  });
-}
-
-export function usePipeline(id: string) {
-  return useQuery({
-    queryKey: ['pipeline', id],
-    queryFn: () => pipelinesService.get(id),
-    enabled: !!id,
-    staleTime: 30_000,
-    refetchInterval: 120_000,
-  });
-}
-
-export function useCreatePipeline() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ name, steps, description }: { name: string; steps: any[]; description?: string }) =>
-      pipelinesService.create(name, steps, description),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['pipelines'] }),
-  });
-}
-
-export function useDeletePipeline() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => pipelinesService.delete(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['pipelines'] }),
-  });
-}
-
-export function useRunPipeline() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (pipeline_id: string) => pipelinesService.run(pipeline_id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['pipeline-runs'] }),
-  });
-}
-
-export function usePipelineRuns(pipeline_id: string) {
-  return useQuery({
-    queryKey: ['pipeline-runs', pipeline_id],
-    queryFn: () => pipelinesService.runs(pipeline_id),
-    select: (data) => data.runs,
-    enabled: !!pipeline_id,
     staleTime: 30_000,
     refetchInterval: 120_000,
   });
@@ -510,6 +442,16 @@ export function useTrainingQueue() {
   });
 }
 
+export function useTrainingJobs() {
+  return useQuery({
+    queryKey: ['training', 'jobs'],
+    queryFn: () => trainingService.list(),
+    select: (data) => data.jobs,
+    staleTime: 20_000,
+    refetchInterval: pollWhenVisible(30_000),
+  });
+}
+
 export function useHealthCheck() {
   return useQuery({
     queryKey: ['health'],
@@ -520,7 +462,6 @@ export function useHealthCheck() {
 }
 
 export function useDashboardData() {
-  const experiments = useExperiments();
   const models = useModels();
   const datasets = useDatasets();
   const deployments = useDeployments();
@@ -534,7 +475,6 @@ export function useDashboardData() {
   const healthCheck = useHealthCheck();
 
   return {
-    experiments: experiments.data ?? [],
     models: models.data ?? [],
     datasets: datasets.data ?? [],
     deployments: deployments.data ?? [],
@@ -546,10 +486,10 @@ export function useDashboardData() {
     unreadCount: unreadCount.data ?? 0,
     aiSuggestions: aiSuggestions.data ?? [],
     healthCheck: healthCheck.data ?? null,
-    isLoading: experiments.isLoading || models.isLoading || datasets.isLoading || deployments.isLoading || activity.isLoading,
-    isError: experiments.isError || models.isError || datasets.isError || deployments.isError || activity.isError,
-    error: experiments.error || models.error || datasets.error || deployments.error || activity.error,
-    isFetching: experiments.isFetching || models.isFetching || datasets.isFetching || deployments.isFetching || activity.isFetching || monitoringStats.isFetching || monitoringDashboard.isFetching,
+    isLoading: models.isLoading || datasets.isLoading || deployments.isLoading || activity.isLoading,
+    isError: models.isError || datasets.isError || deployments.isError || activity.isError,
+    error: models.error || datasets.error || deployments.error || activity.error,
+    isFetching: models.isFetching || datasets.isFetching || deployments.isFetching || activity.isFetching || monitoringStats.isFetching || monitoringDashboard.isFetching,
     lastUpdated: new Date(),
   };
 }

@@ -26,11 +26,6 @@ const FEATURES = [
     desc: 'Connect to any data source — SQL, S3, BigQuery, Snowflake — with smart schema detection and cleaning.',
   },
   {
-    icon: 'M12 8V4m0 0L8 8m4-4l4 4M12 16v4m0 0l-4-4m4 4l4-4M4 12H2m2 0h4m8 0h4m-4 0h-2m-8 0H6',
-    title: 'Experiment Tracking',
-    desc: 'Log, compare, and reproduce thousands of experiments with rich metadata and visual comparisons.',
-  },
-  {
     icon: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z',
     title: 'Model Registry',
     desc: 'Centralized model governance with staging/production stages, versioning, and approval workflows.',

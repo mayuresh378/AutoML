@@ -336,34 +336,6 @@ export interface Project {
   updated_at?: string;
 }
 
-export interface Pipeline {
-  id: string;
-  name: string;
-  description?: string;
-  steps: PipelineStep[];
-  schedule?: string | null;
-  status: 'draft' | 'active' | 'running' | 'failed' | string;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface PipelineStep {
-  type: string;
-  params: Record<string, any>;
-}
-
-export interface PipelineRun {
-  id: string;
-  pipeline_id: string;
-  status: 'running' | 'completed' | 'failed' | string;
-  current_step?: string | null;
-  results?: Record<string, any>;
-  error?: string | null;
-  started_at?: string | null;
-  completed_at?: string | null;
-  created_at?: string | null;
-}
-
 export interface Webhook {
   id: string;
   name: string;

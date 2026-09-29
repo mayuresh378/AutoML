@@ -70,7 +70,7 @@ export const trainingService = {
     return () => eventSource.close();
   },
 
-  list: () => http.get<{ experiments: Experiment[] }>('/training'),
+  list: () => http.get<{ jobs: TrainingJob[] }>('/training'),
 
   get: (id: string) => http.get<Experiment>(`/training/${id}`),
 

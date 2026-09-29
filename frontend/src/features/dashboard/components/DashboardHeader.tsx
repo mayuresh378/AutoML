@@ -13,13 +13,11 @@ import { useQueryClient } from '@tanstack/react-query';
 interface DashboardHeaderProps {
   onOpenSearch: () => void;
   onOpenNotifications: () => void;
-  onOpenWizard: () => void;
 }
 
 export default function DashboardHeader({
   onOpenSearch,
   onOpenNotifications,
-  onOpenWizard,
 }: DashboardHeaderProps) {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -48,7 +46,6 @@ export default function DashboardHeader({
   const allOperational = healthOnline && dbConnected;
 
   const refreshAll = () => {
-    queryClient.invalidateQueries({ queryKey: ['experiments'] });
     queryClient.invalidateQueries({ queryKey: ['datasets'] });
     queryClient.invalidateQueries({ queryKey: ['models'] });
     queryClient.invalidateQueries({ queryKey: ['deployments'] });

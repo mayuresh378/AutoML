@@ -33,8 +33,6 @@ from crud import (
     list_experiments, create_experiment,
     list_models, get_model, create_model, update_model_status,
     list_deployments, create_deployment, delete_deployment,
-    list_pipelines, create_pipeline, get_pipeline, update_pipeline,
-    delete_pipeline, run_pipeline, list_pipeline_runs, get_pipeline_run,
     list_webhooks, create_webhook, delete_webhook,
     list_api_keys, create_api_key, delete_api_key,
     list_teams, create_team,
@@ -51,7 +49,7 @@ from crud import (
     mark_all_notifications_read, delete_notification,
     list_marketplace_items, install_marketplace_item,
     get_prediction_log, delete_prediction_log,
-    get_experiment, delete_experiment, compare_experiments,
+    get_experiment,
     get_deployment, update_deployment,
     count_unread_notifications,
     get_audit_log,
@@ -61,7 +59,6 @@ from crud import (
 from api_responses import ok, error, created, deleted, paginated, TAGS_METADATA
 from fastapi.exceptions import RequestValidationError
 from schemas import (
-    PipelineCreate, PipelineUpdate, PipelineResponse, PipelineRunResponse,
     WebhookCreate, WebhookResponse,
 )
 from preprocess import auto_preprocess, analyze_target
@@ -1289,106 +1286,6 @@ def remove_share_api(name: str, share_id: str, db: Session = Depends(get_db), cu
     require_dataset_access(db, name, current_user, owner_only=True)
     remove_dataset_share(db, share_id)
     return {"message": "Share removed"}
-
-
-# ── Experiments ──────────────────────────────────────────────────────
-
-@app.get("/api/v1/experiments", tags=["Experiments"], summary="List experiments", description="Return a list of all training experiment records.")
-def list_experiments_api(db: Session = Depends(get_db), offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=500), current_user: dict = Depends(get_optional_user)):
-    uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
-    if uid is None:
-        return paginated([], 0, offset, limit, key="experiments")
-    experiments = [{
-        "id": e.id, "name": e.name, "model": e.model,
-        "task_type": e.task_type, "dataset": e.dataset, "target": e.target,
-        "dataset_version": e.dataset_version,
-        "cv_score": e.cv_score, "metrics": e.metrics,
-        "training_time": e.training_time, "total_time": e.total_time,
-        "memory_usage": e.memory_usage, "cpu_usage": e.cpu_usage,
-        "status": e.status,         "run_at": e.run_at.isoformat() if e.run_at else None,
-        "params": e.params, "notes": e.notes, "feature_importance": e.feature_importance,
-        "confusion_matrix": e.confusion_matrix,
-        "user_id": e.user_id, "project_id": getattr(e, "project_id", None),
-        "created_at": e.created_at.isoformat() if e.created_at else None,
-    } for e in list_experiments(db, user_id=uid)]
-    total = len(experiments)
-    experiments = experiments[offset:offset + limit]
-    return paginated(experiments, total, offset, limit, key="experiments")
-
-
-@app.get("/api/v1/experiments/{exp_id}", tags=["Experiments"], summary="Get experiment", description="Retrieve a specific experiment by ID.")
-def get_experiment_api(exp_id: str, current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-    e = get_experiment(db, exp_id)
-    if not e:
-        raise HTTPException(status_code=404, detail="Experiment not found")
-    return {
-        "id": e.id, "name": e.name, "model": e.model,
-        "task_type": e.task_type, "dataset": e.dataset, "target": e.target,
-        "dataset_version": e.dataset_version,
-        "cv_score": e.cv_score, "metrics": e.metrics,
-        "training_time": e.training_time, "total_time": e.total_time,
-        "memory_usage": e.memory_usage, "cpu_usage": e.cpu_usage,
-        "status": e.status, "run_at": e.run_at.isoformat() if e.run_at else None,
-        "params": e.params, "notes": e.notes, "feature_importance": e.feature_importance,
-        "confusion_matrix": e.confusion_matrix,
-        "user_id": e.user_id, "project_id": getattr(e, "project_id", None),
-        "created_at": e.created_at.isoformat() if e.created_at else None,
-    }
-
-
-@app.patch("/api/v1/experiments/{exp_id}", tags=["Experiments"], summary="Update experiment notes", description="Update notes or other fields on an experiment.")
-def update_experiment_api(exp_id: str, notes: str = Form(None), db: Session = Depends(get_db), current_user: dict = Depends(get_optional_user)):
-    e = get_experiment(db, exp_id)
-    if not e:
-        raise HTTPException(status_code=404, detail="Experiment not found")
-    if notes is not None:
-        e.notes = notes
-    db.commit()
-    log_audit(db, current_user.get("name", "User"), "experiment.updated", e.name, "experiment", e.id)
-    return {"id": e.id, "notes": e.notes}
-
-
-@app.delete("/api/v1/experiments/{exp_id}", tags=["Experiments"], summary="Delete experiment", description="Delete an experiment by ID.")
-def delete_experiment_api(exp_id: str, db: Session = Depends(get_db), current_user: dict = Depends(get_optional_user)):
-    if not delete_experiment(db, exp_id):
-        raise HTTPException(status_code=404, detail="Experiment not found")
-    log_audit(db, current_user.get("name", "User"), "experiment.deleted", exp_id, "experiment")
-    return {"status": "deleted"}
-
-
-@app.post("/api/v1/experiments/compare", tags=["Experiments"], summary="Compare experiments", description="Compare multiple experiments by their IDs.")
-def compare_experiments_api(ids: str = Form(...), current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-    try:
-        id_list = json.loads(ids)
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid IDs format")
-    exps = compare_experiments(db, id_list)
-    return {
-        "experiments": [{
-            "id": e.id, "name": e.name, "model": e.model,
-            "task_type": e.task_type, "dataset": e.dataset, "target": e.target,
-            "dataset_version": e.dataset_version,
-            "cv_score": e.cv_score, "metrics": e.metrics,
-            "training_time": e.training_time, "total_time": e.total_time,
-            "status": e.status, "run_at": e.run_at.isoformat() if e.run_at else None,
-            "params": e.params, "notes": e.notes, "feature_importance": e.feature_importance,
-            "created_at": e.created_at.isoformat() if e.created_at else None,
-        } for e in exps]
-    }
-
-
-@app.post("/api/v1/experiments/{exp_id}/stop", tags=["Experiments"], summary="Stop experiment", description="Stop a running experiment.")
-def stop_experiment_api(exp_id: str, db: Session = Depends(get_db), current_user: dict = Depends(get_optional_user)):
-    e = get_experiment(db, exp_id)
-    if not e:
-        raise HTTPException(status_code=404, detail="Experiment not found")
-    if e.status not in ("running", "queued"):
-        raise HTTPException(status_code=400, detail=f"Cannot stop experiment with status '{e.status}'")
-    e.status = "stopped"
-    e.updated_at = datetime.now(timezone.utc)
-    db.commit()
-    log_audit(db, current_user.get("name", "User"), "experiment.stopped", e.name, "experiment", e.id)
-    return {"id": e.id, "status": e.status}
 
 
 # ── Training ─────────────────────────────────────────────────────────
@@ -3170,109 +3067,6 @@ def delete_prediction_api(pred_id: str, db: Session = Depends(get_db), current_u
         raise HTTPException(status_code=404, detail="Prediction not found")
     log_audit(db, current_user.get("name", "User"), "prediction.deleted", pred_id, "prediction")
     return {"status": "deleted"}
-
-
-# ── Pipelines ────────────────────────────────────────────────────────
-
-@app.get("/api/v1/pipelines", tags=["Pipelines"], summary="List pipelines", description="List all ML pipelines.")
-def list_pipelines_api(db: Session = Depends(get_db), offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=500), current_user: dict = Depends(get_optional_user)):
-    uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
-    pipes = list_pipelines(db, user_id=uid)
-    items = [{
-        "id": p.id, "name": p.name, "description": p.description,
-        "steps": p.steps, "status": p.status, "schedule": p.schedule,
-        "created_at": p.created_at.isoformat() if p.created_at else None,
-        "updated_at": p.updated_at.isoformat() if p.updated_at else None,
-    } for p in pipes]
-    total = len(items)
-    items = items[offset:offset + limit]
-    return paginated(items, total, offset, limit, key="pipelines")
-
-@app.post("/api/v1/pipelines", tags=["Pipelines"], summary="Create pipeline", description="Create a new ML pipeline with steps and optional schedule.")
-def create_pipeline_api(data: PipelineCreate, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
-    pipe = create_pipeline(db, user_id=current_user.get("id") or "system",
-                           name=data.name, steps=data.steps,
-                           description=data.description, schedule=data.schedule)
-    return {
-        "id": pipe.id, "name": pipe.name, "description": pipe.description,
-        "steps": pipe.steps, "status": pipe.status, "schedule": pipe.schedule,
-        "created_at": pipe.created_at.isoformat() if pipe.created_at else None,
-        "updated_at": pipe.updated_at.isoformat() if pipe.updated_at else None,
-    }
-
-@app.get("/api/v1/pipelines/{pipeline_id}", tags=["Pipelines"], summary="Get pipeline", description="Retrieve a specific pipeline by ID.")
-def get_pipeline_api(pipeline_id: str, current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-    pipe = get_pipeline(db, pipeline_id)
-    if not pipe:
-        raise HTTPException(status_code=404, detail="Pipeline not found")
-    return {
-        "id": pipe.id, "name": pipe.name, "description": pipe.description,
-        "steps": pipe.steps, "status": pipe.status, "schedule": pipe.schedule,
-        "created_at": pipe.created_at.isoformat() if pipe.created_at else None,
-        "updated_at": pipe.updated_at.isoformat() if pipe.updated_at else None,
-    }
-
-@app.put("/api/v1/pipelines/{pipeline_id}", tags=["Pipelines"], summary="Update pipeline", description="Update pipeline configuration, steps, or schedule.")
-def update_pipeline_api(pipeline_id: str, data: PipelineUpdate, current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-    pipe = update_pipeline(db, pipeline_id, name=data.name, description=data.description,
-                           steps=data.steps, schedule=data.schedule)
-    if not pipe:
-        raise HTTPException(status_code=404, detail="Pipeline not found")
-    return {
-        "id": pipe.id, "name": pipe.name, "description": pipe.description,
-        "steps": pipe.steps, "status": pipe.status, "schedule": pipe.schedule,
-        "created_at": pipe.created_at.isoformat() if pipe.created_at else None,
-        "updated_at": pipe.updated_at.isoformat() if pipe.updated_at else None,
-    }
-
-@app.delete("/api/v1/pipelines/{pipeline_id}", tags=["Pipelines"], summary="Delete pipeline", description="Delete a pipeline by ID.")
-def delete_pipeline_api(pipeline_id: str, current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-    if not delete_pipeline(db, pipeline_id):
-        raise HTTPException(status_code=404, detail="Pipeline not found")
-    return {"status": "deleted"}
-
-@app.post("/api/v1/pipelines/{pipeline_id}/run", tags=["Pipelines"], summary="Run pipeline", description="Execute a pipeline run.")
-def run_pipeline_api(pipeline_id: str, current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-    try:
-        run = run_pipeline(db, pipeline_id)
-        return {
-            "id": run.id, "pipeline_id": run.pipeline_id,
-            "status": run.status, "current_step": run.current_step,
-            "error": run.error,
-            "started_at": run.started_at.isoformat() if run.started_at else None,
-            "completed_at": run.completed_at.isoformat() if run.completed_at else None,
-        }
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-
-@app.get("/api/v1/pipelines/{pipeline_id}/runs", tags=["Pipelines"], summary="List pipeline runs", description="List all runs for a specific pipeline.")
-def list_runs_api(pipeline_id: str, db: Session = Depends(get_db), offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=500)):
-    runs = list_pipeline_runs(db, pipeline_id)
-    items = [{
-        "id": r.id, "pipeline_id": r.pipeline_id,
-        "status": r.status, "current_step": r.current_step,
-        "results": r.results, "error": r.error,
-        "started_at": r.started_at.isoformat() if r.started_at else None,
-        "completed_at": r.completed_at.isoformat() if r.completed_at else None,
-        "created_at": r.created_at.isoformat() if r.created_at else None,
-    } for r in runs]
-    total = len(items)
-    items = items[offset:offset + limit]
-    return paginated(items, total, offset, limit, key="runs")
-
-@app.get("/api/v1/pipeline-runs/{run_id}", tags=["Pipelines"], summary="Get pipeline run", description="Retrieve details of a specific pipeline run.")
-def get_run_api(run_id: str, current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-    run = get_pipeline_run(db, run_id)
-    if not run:
-        raise HTTPException(status_code=404, detail="Run not found")
-    return {
-        "id": run.id, "pipeline_id": run.pipeline_id,
-        "status": run.status, "current_step": run.current_step,
-        "results": run.results, "error": run.error,
-        "started_at": run.started_at.isoformat() if run.started_at else None,
-        "completed_at": run.completed_at.isoformat() if run.completed_at else None,
-        "created_at": run.created_at.isoformat() if run.created_at else None,
-    }
 
 
 # ── Webhooks ─────────────────────────────────────────────────────────

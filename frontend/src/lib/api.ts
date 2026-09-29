@@ -8,13 +8,11 @@ import { http } from '../services/http';
 import { authService } from '../services/auth.service';
 import { datasetsService } from '../services/datasets.service';
 import { trainingService } from '../services/training.service';
-import { experimentsService } from '../services/experiments.service';
 import { modelsService } from '../services/models.service';
 import { deploymentsService } from '../services/deployments.service';
 import { predictionsService } from '../services/predictions.service';
 import { monitoringService } from '../services/monitoring.service';
 import { activityService } from '../services/activity.service';
-import { pipelinesService } from '../services/pipelines.service';
 import { webhooksService } from '../services/webhooks.service';
 import { searchService } from '../services/search.service';
 import { projectsService } from '../services/projects.service';
@@ -45,13 +43,11 @@ export const api = {
   },
   datasets: datasetsService,
   training: trainingService,
-  experiments: experimentsService,
   models: modelsService,
   deployments: deploymentsService,
   predictions: predictionsService,
   monitoring: monitoringService,
   activity: activityService,
-  pipelines: pipelinesService,
   webhooks: webhooksService,
   search: (q: string) => searchService.search(q),
   projects: projectsService,

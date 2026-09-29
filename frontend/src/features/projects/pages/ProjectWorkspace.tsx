@@ -4,8 +4,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, Copy, Pencil, Archive, Trash2, Target, TrendingUp, LineChart, Boxes,
   LayoutDashboard, Database, BarChart3, Sparkles, Terminal, BrainCircuit, GraduationCap,
-  SlidersHorizontal, FlaskConical, Gauge, Lightbulb, Package, Rocket, Activity, Settings,
-  Clock, User, Globe, UserRound, Users, Table, Trophy, GitCompare, Send, Zap,
+  SlidersHorizontal, Gauge, Lightbulb, Package, Rocket, Activity, Settings,
+  Clock, User, Globe, UserRound, Users, Table, GitCompare, Send, Zap,
 } from 'lucide-react';
 import { projectsService } from '../../../services/projects.service';
 import { useUIStore } from '../../../store/useUIStore';
@@ -57,8 +57,6 @@ const NAV_GROUPS: NavGroup[] = [
       { label: 'AutoML', path: 'ml/automl', icon: Zap },
       { label: 'Training', path: 'ml/training', icon: GraduationCap },
       { label: 'Hyperparameter Tuning', path: 'ml/hpo', icon: SlidersHorizontal },
-      { label: 'Experiments', path: 'ml/experiments', icon: FlaskConical },
-      { label: 'Leaderboard', path: 'ml/leaderboard', icon: Trophy },
     ],
   },
   {

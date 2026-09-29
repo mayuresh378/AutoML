@@ -41,7 +41,6 @@ class User(Base):
     teams = relationship("TeamMember", back_populates="user")
     api_keys = relationship("ApiKey", back_populates="user")
     audit_logs = relationship("AuditLog", back_populates="user")
-    pipelines = relationship("Pipeline", back_populates="created_by_user")
     experiments = relationship("Experiment", back_populates="user")
     model_registry = relationship("ModelRegistry", back_populates="user")
     deployments = relationship("Deployment", back_populates="user")
@@ -224,40 +223,6 @@ class Deployment(Base):
     project_id = Column(String, ForeignKey("projects.id"), nullable=True, index=True)
     project = relationship("Project", back_populates="deployments")
     history = relationship("DeploymentHistory", back_populates="deployment", order_by="desc(DeploymentHistory.created_at)")
-
-
-class Pipeline(Base):
-    __tablename__ = "pipelines"
-
-    id = Column(String, primary_key=True, default=_uuid)
-    name = Column(String, nullable=False)
-    description = Column(Text, nullable=True)
-    steps = Column(JSON, default=list)
-    status = Column(String, default="draft", index=True)
-    schedule = Column(String, nullable=True)
-    deleted_at = Column(DateTime, nullable=True, index=True)
-    created_at = Column(DateTime, default=_now, index=True)
-    updated_at = Column(DateTime, default=_now, onupdate=_now)
-
-    user_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
-    created_by_user = relationship("User", back_populates="pipelines")
-    runs = relationship("PipelineRun", back_populates="pipeline")
-
-
-class PipelineRun(Base):
-    __tablename__ = "pipeline_runs"
-
-    id = Column(String, primary_key=True, default=_uuid)
-    status = Column(String, default="pending", index=True)
-    current_step = Column(String, nullable=True)
-    results = Column(JSON, nullable=True)
-    error = Column(Text, nullable=True)
-    started_at = Column(DateTime, nullable=True)
-    completed_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=_now, index=True)
-
-    pipeline_id = Column(String, ForeignKey("pipelines.id"), nullable=False, index=True)
-    pipeline = relationship("Pipeline", back_populates="runs")
 
 
 class Dataset(Base):

@@ -34,16 +34,6 @@ export const projectSchema = z.object({
   status: z.enum(['active', 'archived', 'completed']).optional(),
 });
 
-export const pipelineSchema = z.object({
-  name: z.string().min(1, 'Pipeline name is required').max(200, 'Name too long'),
-  description: z.string().max(1000).optional(),
-  steps: z.array(z.object({
-    type: z.enum(['dataset', 'clean', 'feature_engineer', 'train', 'evaluate', 'deploy', 'notify', 'custom']),
-    name: z.string().min(1),
-    config: z.record(z.any()),
-  })).min(1, 'At least one step is required'),
-});
-
 export const deploymentSchema = z.object({
   model_name: z.string().min(1, 'Model is required'),
   endpoint_name: z.string().min(1, 'Endpoint name is required').regex(/^[a-z0-9-]+$/, 'Only lowercase letters, numbers, and hyphens'),

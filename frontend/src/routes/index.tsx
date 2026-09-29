@@ -15,7 +15,6 @@ const VerifyEmail = lazy(() => import('../features/auth/pages/VerifyEmailPage'))
 const Dashboard = lazy(() => import('../features/dashboard/pages/DashboardPage'));
 const Datasets = lazy(() => import('../features/datasets/pages/DatasetsPage'));
 const Training = lazy(() => import('../features/training/pages/TrainingPage'));
-const Experiments = lazy(() => import('../features/experiments/pages/ExperimentsPage'));
 const Models = lazy(() => import('../features/models/pages/ModelRegistryPage'));
 const Deployments = lazy(() => import('../features/deployments/pages/DeploymentsPage'));
 const Monitoring = lazy(() => import('../features/monitoring/pages/MonitoringPage'));
@@ -36,11 +35,9 @@ const Explorer = lazy(() => import('../features/datasets/pages/ExplorerPage'));
 const DataProfiling = lazy(() => import('../features/datasets/pages/DatasetAnalysisPage'));
 const DataCleaning = lazy(() => import('../features/datasets/pages/CleaningPage'));
 const FeatureEngineering = lazy(() => import('../features/datasets/pages/FeatureEngineeringPage'));
-const Pipelines = lazy(() => import('../features/pipelines/pages/PipelinesPage'));
 const ModelComparison = lazy(() => import('../features/models/pages/ModelComparisonPage'));
 const Prediction = lazy(() => import('../features/prediction/pages/PredictionPage'));
 const BatchPrediction = lazy(() => import('../features/prediction/pages/BatchPredictionPage'));
-const Leaderboard = lazy(() => import('../features/experiments/pages/LeaderboardPage'));
 
 export const router = createBrowserRouter([
   {
@@ -106,7 +103,6 @@ export const router = createBrowserRouter([
       { path: 'training', element: <Training /> },
       { path: 'hpo', element: <HPO /> },
       { path: 'engine', element: <AutoMLEngine /> },
-      { path: 'experiments', element: <Experiments /> },
       { path: 'models', element: <Models /> },
       { path: 'deployments', element: <Deployments /> },
       { path: 'monitoring', element: <Monitoring /> },
@@ -135,8 +131,6 @@ export const router = createBrowserRouter([
           { path: 'ml/automl', element: <AutoMLEngine /> },
           { path: 'ml/training', element: <Training /> },
           { path: 'ml/hpo', element: <HPO /> },
-          { path: 'ml/experiments', element: <Experiments /> },
-          { path: 'ml/leaderboard', element: <Leaderboard /> },
           { path: 'models', element: <Navigate to="registry" replace /> },
           { path: 'models/registry', element: <Models /> },
           { path: 'models/evaluation', element: <ModelEvaluation /> },
@@ -152,7 +146,6 @@ export const router = createBrowserRouter([
       { path: 'profiling', element: <DataProfiling /> },
       { path: 'cleaning', element: <DataCleaning /> },
       { path: 'feature-engineering', element: <FeatureEngineering /> },
-      { path: 'pipelines', element: <Pipelines /> },
       { path: 'model-comparison', element: <ModelComparison /> },
       { path: 'prediction', element: <Prediction /> },
       { path: '*', element: <NotFound /> },

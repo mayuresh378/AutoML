@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, Copy, Archive, Trash2, Pencil, Target, TrendingUp, LineChart, Boxes,
   LayoutDashboard, Database, BarChart3, Sparkles, Terminal, BrainCircuit, GraduationCap,
-  SlidersHorizontal, FlaskConical, Gauge, Lightbulb, Package, Rocket, Activity, Settings,
+  SlidersHorizontal, Gauge, Lightbulb, Package, Rocket, Activity, Settings,
   Clock, User, Globe, Upload, GitBranch, CheckCircle2, ExternalLink, PlayCircle,
   UserRound, Users,
 } from 'lucide-react';
@@ -26,7 +26,7 @@ import type { Project } from '../../../types/api';
 import styles from './ProjectDetailPage.module.css';
 
 type TabKey = 'overview' | 'datasets' | 'profiling' | 'cleaning' | 'features' | 'sql'
-  | 'automl' | 'training' | 'hpo' | 'experiments' | 'evaluation' | 'explain'
+  | 'automl' | 'training' | 'hpo' | 'evaluation' | 'explain'
   | 'registry' | 'deployment' | 'monitoring' | 'settings';
 
 interface TabDef {
@@ -47,7 +47,6 @@ const TABS: TabDef[] = [
   { key: 'automl', label: 'AutoML', icon: <BrainCircuit className="w-4 h-4" />, route: '/app/engine', blurb: 'Launch automated ML pipelines that search the best models for you.' },
   { key: 'training', label: 'Training', icon: <GraduationCap className="w-4 h-4" />, route: '/app/training', blurb: 'Configure and run manual training jobs with full control.' },
   { key: 'hpo', label: 'HPO', icon: <SlidersHorizontal className="w-4 h-4" />, route: '/app/hpo', blurb: 'Run hyperparameter optimization sweeps to tune your models.' },
-  { key: 'experiments', label: 'Experiments', icon: <FlaskConical className="w-4 h-4" />, route: '/app/experiments', blurb: 'Track, compare, and version all training runs in this project.' },
   { key: 'evaluation', label: 'Evaluation', icon: <Gauge className="w-4 h-4" />, route: '/app/evaluation', blurb: 'Evaluate model performance against test sets and baselines.' },
   { key: 'explain', label: 'Explain AI', icon: <Lightbulb className="w-4 h-4" />, route: '/app/explain', blurb: 'Generate explanations and feature attributions for your models.' },
   { key: 'registry', label: 'Model Registry', icon: <Package className="w-4 h-4" />, route: '/app/models', blurb: 'Version, stage, approve, and promote models across environments.' },
@@ -160,7 +159,7 @@ export default function ProjectDetailPage() {
       items.push({ title: 'Datasets linked', detail: `${project.dataset_count || (project as any).datasets.length} dataset${(project.dataset_count || 1) === 1 ? '' : 's'} attached`, time: project.updated_at || project.created_at });
     }
     if (project.experiment_count) {
-      items.push({ title: 'Experiments recorded', detail: `${project.experiment_count} training run${project.experiment_count === 1 ? '' : 's'} tracked`, time: project.updated_at || project.created_at });
+      items.push({ title: 'Training runs recorded', detail: `${project.experiment_count} training run${project.experiment_count === 1 ? '' : 's'} tracked`, time: project.updated_at || project.created_at });
     }
     if (project.model_count) {
       items.push({ title: 'Models registered', detail: `${project.model_count} model${project.model_count === 1 ? '' : 's'} in the registry`, time: project.updated_at || project.created_at });
@@ -203,7 +202,6 @@ export default function ProjectDetailPage() {
   const quickActions = [
     { icon: <Upload className="w-4 h-4" />, title: 'Upload Dataset', desc: 'Add data to this project', onClick: () => navigate('/app/datasets') },
     { icon: <BrainCircuit className="w-4 h-4" />, title: 'Run AutoML', desc: 'Let the engine find a model', onClick: () => navigate('/app/engine') },
-    { icon: <FlaskConical className="w-4 h-4" />, title: 'New Experiment', desc: 'Start a training run', onClick: () => navigate('/app/experiments') },
     { icon: <Rocket className="w-4 h-4" />, title: 'Deploy Model', desc: 'Ship a model to production', onClick: () => navigate('/app/deployments') },
     { icon: <Terminal className="w-4 h-4" />, title: 'SQL Studio', desc: 'Query your data', onClick: () => navigate('/app/sql') },
     { icon: <Activity className="w-4 h-4" />, title: 'Monitoring', desc: 'Check endpoint health', onClick: () => navigate('/app/monitoring') },
@@ -271,7 +269,7 @@ export default function ProjectDetailPage() {
               <span className={styles.statSub}>{datasets.length ? `${datasets.length} linked now` : 'No data attached yet'}</span>
             </div>
             <div className={styles.statCard}>
-              <div className={styles.statTop}><span className={styles.statLabel}>Experiments</span><div className={styles.statIcon}><FlaskConical className="w-4 h-4" /></div></div>
+              <div className={styles.statTop}><span className={styles.statLabel}>Training Runs</span><div className={styles.statIcon}><GraduationCap className="w-4 h-4" /></div></div>
               <span className={styles.statValue}>{p.experiment_count || 0}</span>
               <span className={styles.statSub}>tracked training runs</span>
             </div>

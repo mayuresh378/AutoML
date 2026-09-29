@@ -72,46 +72,6 @@ class DeploymentResponse(BaseModel):
     created_at: datetime
 
 
-class PipelineCreate(BaseModel):
-    name: str = Field(..., min_length=1, max_length=200)
-    description: Optional[str] = Field(None, max_length=2000)
-    steps: list = []
-    schedule: Optional[str] = Field(None, max_length=100)
-
-
-class PipelineUpdate(BaseModel):
-    name: Optional[str] = Field(None, min_length=1, max_length=200)
-    description: Optional[str] = Field(None, max_length=2000)
-    steps: Optional[list] = None
-    schedule: Optional[str] = Field(None, max_length=100)
-
-
-class PipelineResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: str
-    name: str
-    description: Optional[str] = None
-    steps: list = []
-    status: str
-    schedule: Optional[str] = None
-    created_at: datetime
-
-
-class PipelineRunResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: str
-    pipeline_id: str
-    status: str
-    current_step: Optional[str] = None
-    results: Optional[Any] = None
-    error: Optional[str] = None
-    started_at: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
-    created_at: datetime
-
-
 class WebhookCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
     url: str = Field(..., max_length=500)

@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { Search, Database, Cpu, FlaskConical, Folder, Command, X, Loader2, FileText, Boxes } from 'lucide-react';
+import { Search, Database, Cpu, Folder, Command, X, Loader2, FileText, Boxes } from 'lucide-react';
 import { useGlobalSearch } from '../../../hooks/useApi';
 
 interface Props {
@@ -49,8 +49,6 @@ export default function GlobalSearchModal({ isOpen, onClose }: Props) {
       items.push({ title: m.name || m.filename || '', category: 'MODELS', path: '/app/models', icon: Cpu }));
     (searchResults.registry_models || []).forEach((m: any) =>
       items.push({ title: m.name || '', category: 'MODELS', path: '/app/models', icon: Boxes }));
-    (searchResults.experiments || []).forEach((e: any) =>
-      items.push({ title: e.name || '', category: 'EXPERIMENTS', path: '/app/experiments', icon: FlaskConical }));
     (searchResults.predictions || []).forEach((p: any) =>
       items.push({ title: p.model_name || '', category: 'PREDICTIONS', path: '/app/monitoring', icon: FileText }));
   }
@@ -70,7 +68,7 @@ export default function GlobalSearchModal({ isOpen, onClose }: Props) {
           <input
             type="text"
             autoFocus
-            placeholder="Search projects, datasets, models, experiments..."
+            placeholder="Search projects, datasets, models..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             className="w-full bg-transparent text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none"

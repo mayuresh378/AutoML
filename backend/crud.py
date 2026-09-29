@@ -9,7 +9,7 @@ from sqlalchemy import desc
 from jose import jwt
 
 from models import (User, Team, TeamMember, ApiKey, Experiment, ModelRegistry,
-                    Deployment, Pipeline, PipelineRun, PredictionLog, Webhook, AuditLog,
+                    Deployment, PredictionLog, Webhook, AuditLog,
                     Project, MarketplaceItem, Dataset, DatasetShare, Notification, ActivityLog,
                     DatasetCleanStep, CleaningHistory, SavedQuery, QueryHistory)
 
@@ -225,127 +225,6 @@ def delete_deployment(db: Session, dep_id: str) -> bool:
         log_audit(db, "system", "deployment.deleted", name, "deployment", dep_id)
         return True
     return False
-
-
-# ─── Pipelines ────────────────────────────────────────────────────────
-
-def list_pipelines(db: Session, limit: int = 100, offset: int = 0, user_id: str = None) -> list:
-    q = db.query(Pipeline).options(
-        selectinload(Pipeline.runs),
-        selectinload(Pipeline.created_by_user),
-    ).order_by(desc(Pipeline.created_at))
-    if user_id:
-        q = q.filter((Pipeline.user_id == user_id) | (Pipeline.user_id == None))
-    return q.offset(offset).limit(limit).all()
-
-
-def create_pipeline(db: Session, user_id: str, name: str, steps: list,
-                    description: str = None, schedule: str = None) -> Pipeline:
-    pipe = Pipeline(id=_uid(), user_id=user_id, name=name, steps=steps,
-                    description=description, schedule=schedule, created_at=_now())
-    try:
-        db.add(pipe)
-        db.commit()
-        db.refresh(pipe)
-    except Exception:
-        db.rollback()
-        raise
-    log_audit(db, user_id or "system", "pipeline.created", name, "pipeline", pipe.id)
-    return pipe
-
-
-def get_pipeline(db: Session, pipeline_id: str) -> Optional[Pipeline]:
-    return db.query(Pipeline).filter(Pipeline.id == pipeline_id).first()
-
-
-def update_pipeline(db: Session, pipeline_id: str, name: str = None,
-                    description: str = None, steps: list = None,
-                    schedule: str = None) -> Optional[Pipeline]:
-    pipe = get_pipeline(db, pipeline_id)
-    if not pipe:
-        return None
-    if name is not None:
-        pipe.name = name
-    if description is not None:
-        pipe.description = description
-    if steps is not None:
-        pipe.steps = steps
-    if schedule is not None:
-        pipe.schedule = schedule
-    pipe.updated_at = _now()
-    db.commit()
-    db.refresh(pipe)
-    log_audit(db, "system", "pipeline.updated", pipe.name, "pipeline", pipe.id)
-    return pipe
-
-
-def delete_pipeline(db: Session, pipeline_id: str) -> bool:
-    pipe = get_pipeline(db, pipeline_id)
-    if not pipe:
-        return False
-    name = pipe.name
-    db.query(PipelineRun).filter(PipelineRun.pipeline_id == pipeline_id).delete()
-    db.delete(pipe)
-    db.commit()
-    log_audit(db, "system", "pipeline.deleted", name, "pipeline", pipeline_id)
-    return True
-
-
-def run_pipeline(db: Session, pipeline_id: str) -> PipelineRun:
-    from pipeline_engine import execute_pipeline_steps
-    pipeline = get_pipeline(db, pipeline_id)
-    if not pipeline:
-        raise ValueError("Pipeline not found")
-    run = PipelineRun(id=_uid(), pipeline_id=pipeline_id, status="running",
-                      current_step="Starting...",
-                      started_at=_now(), created_at=_now())
-    db.add(run)
-    pipeline.status = "running"
-    db.commit()
-    db.refresh(run)
-
-    for update in execute_pipeline_steps(pipeline, run.id):
-        step_info = update.get("step", "")
-        step_status = update.get("status", "")
-        if step_status == "failed":
-            run.status = "failed"
-            run.current_step = step_info
-            run.error = update.get("error", "Unknown error")
-            run.completed_at = _now()
-            pipeline.status = "failed"
-        elif step_status == "running":
-            run.current_step = step_info
-        elif step_info == "complete":
-            run.status = "completed"
-            run.current_step = "Complete"
-            run.completed_at = _now()
-            pipeline.status = "active"
-        else:
-            run.current_step = step_info
-        run.results = {
-            "step": step_info,
-            "status": step_status,
-            "state_keys": update.get("state_keys", []),
-        }
-        db.commit()
-
-    db.refresh(run)
-    log_audit(db, "system", "pipeline.run", pipeline.name, "pipeline", pipeline.id,
-              details={"run_id": run.id, "status": run.status})
-    return run
-
-
-def list_pipeline_runs(db: Session, pipeline_id: str, limit: int = 20, offset: int = 0) -> list:
-    return (db.query(PipelineRun).options(
-        selectinload(PipelineRun.pipeline),
-    ).filter(PipelineRun.pipeline_id == pipeline_id)
-            .order_by(desc(PipelineRun.created_at))
-            .offset(offset).limit(limit)
-            .all())
-
-
-def get_pipeline_run(db: Session, run_id: str) -> Optional[PipelineRun]:
-    return db.query(PipelineRun).filter(PipelineRun.id == run_id).first()
 
 
 # ─── Webhooks ─────────────────────────────────────────────────────────
@@ -812,25 +691,6 @@ def get_experiment(db: Session, exp_id: str) -> Optional[Experiment]:
         selectinload(Experiment.project),
         selectinload(Experiment.model_registry),
     ).filter(Experiment.id == exp_id).first()
-
-
-def delete_experiment(db: Session, exp_id: str) -> bool:
-    exp = db.query(Experiment).filter(Experiment.id == exp_id).first()
-    if exp:
-        name = exp.name
-        db.delete(exp)
-        db.commit()
-        log_audit(db, "system", "experiment.deleted", name, "experiment", exp_id)
-        return True
-    return False
-
-
-def compare_experiments(db: Session, ids: list) -> list:
-    return db.query(Experiment).filter(Experiment.id.in_(ids)).options(
-        selectinload(Experiment.user),
-        selectinload(Experiment.project),
-        selectinload(Experiment.model_registry),
-    ).all()
 
 
 def get_deployment(db: Session, dep_id: str) -> Optional[Deployment]:

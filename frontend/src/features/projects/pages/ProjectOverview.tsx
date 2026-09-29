@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
-  Database, FlaskConical, Package, Rocket, Gauge, Activity, CheckCircle2,
+  Database, Package, Rocket, Gauge, Activity, CheckCircle2,
   Upload, BrainCircuit, Terminal, Settings, ExternalLink, Target, TrendingUp,
   LineChart, Boxes, GitBranch, GraduationCap, Sparkles,
 } from 'lucide-react';
@@ -51,7 +51,7 @@ export default function ProjectOverview() {
       items.push({ title: 'Datasets linked', detail: `${project.dataset_count || (project as any).datasets.length} dataset${(project.dataset_count || 1) === 1 ? '' : 's'} attached`, time: project.updated_at || project.created_at });
     }
     if (project.experiment_count) {
-      items.push({ title: 'Experiments recorded', detail: `${project.experiment_count} training run${project.experiment_count === 1 ? '' : 's'} tracked`, time: project.updated_at || project.created_at });
+      items.push({ title: 'Training runs recorded', detail: `${project.experiment_count} training run${project.experiment_count === 1 ? '' : 's'} tracked`, time: project.updated_at || project.created_at });
     }
     if (project.model_count) {
       items.push({ title: 'Models registered', detail: `${project.model_count} model${project.model_count === 1 ? '' : 's'} in the registry`, time: project.updated_at || project.created_at });
@@ -84,7 +84,6 @@ export default function ProjectOverview() {
   const quickActions = [
     { icon: <Upload className="w-4 h-4" />, title: 'Upload Dataset', desc: 'Add data to this project', onClick: () => navigate(`${base}/data/datasets`) },
     { icon: <BrainCircuit className="w-4 h-4" />, title: 'Run AutoML', desc: 'Let the engine find a model', onClick: () => navigate(`${base}/ml/automl`) },
-    { icon: <FlaskConical className="w-4 h-4" />, title: 'New Experiment', desc: 'Start a training run', onClick: () => navigate(`${base}/ml/experiments`) },
     { icon: <Rocket className="w-4 h-4" />, title: 'Deploy Model', desc: 'Ship a model to production', onClick: () => navigate(`${base}/production/deployment`) },
     { icon: <Terminal className="w-4 h-4" />, title: 'SQL Studio', desc: 'Query your data', onClick: () => navigate(`${base}/data/sql`) },
     { icon: <Activity className="w-4 h-4" />, title: 'Monitoring', desc: 'Check endpoint health', onClick: () => navigate(`${base}/production/monitoring`) },
@@ -99,7 +98,7 @@ export default function ProjectOverview() {
           <span className={styles.statSub}>{datasets.length ? `${datasets.length} linked now` : 'No data attached yet'}</span>
         </div>
         <div className={styles.statCard}>
-          <div className={styles.statTop}><span className={styles.statLabel}>Experiments</span><div className={styles.statIcon}><FlaskConical className="w-4 h-4" /></div></div>
+          <div className={styles.statTop}><span className={styles.statLabel}>Training Runs</span><div className={styles.statIcon}><GraduationCap className="w-4 h-4" /></div></div>
           <span className={styles.statValue}>{p.experiment_count || 0}</span>
           <span className={styles.statSub}>tracked training runs</span>
         </div>
