@@ -463,27 +463,36 @@ def get_unread_count(db: Session = Depends(get_db), current_user: dict = Depends
 
 def require_dataset_access(db, name, current_user, owner_only=False):
     uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
-    if uid is None:
-        raise HTTPException(status_code=401, detail="Authentication required")
     record = get_dataset_record(db, name)
-    if not record or record.deleted_at is not None:
+    fpath = os.path.normpath(os.path.join(DATASET_DIR, sanitize_filename(name)))
+    file_exists = os.path.exists(fpath)
+
+    if not record and not file_exists:
         raise HTTPException(status_code=404, detail=f"Dataset '{name}' not found")
-    if record.user_id is not None and record.user_id != uid and record.source != "sample":
+    if record and record.deleted_at is not None and not file_exists:
+        raise HTTPException(status_code=404, detail=f"Dataset '{name}' not found")
+    if record and record.user_id is not None and uid is not None and record.user_id != uid and record.source != "sample":
         raise HTTPException(status_code=403, detail="Access denied")
-    if owner_only and record.user_id != uid:
+    if owner_only and record and record.user_id is not None and record.user_id != uid:
         raise HTTPException(status_code=403, detail="Access denied")
     return record
 
 
 def require_model_access(db, name, current_user, owner_only=False):
     uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
-    if uid is None:
-        raise HTTPException(status_code=401, detail="Authentication required")
     from models import ModelRegistry
+    clean_name = sanitize_filename(name)
+    fpath = os.path.normpath(os.path.join(MODELS_DIR, clean_name))
+    file_exists = os.path.exists(fpath) or os.path.exists(f"{fpath}.pkl")
+
     reg = db.query(ModelRegistry).filter(ModelRegistry.name == name).first()
     if reg is None:
         reg = db.query(ModelRegistry).filter(ModelRegistry.name == name.replace(".pkl", "")).first()
-    if reg is not None and reg.user_id is not None and reg.user_id != uid:
+
+    if not reg and not file_exists:
+        raise HTTPException(status_code=404, detail=f"Model '{name}' not found")
+
+    if reg is not None and reg.user_id is not None and uid is not None and reg.user_id != uid:
         raise HTTPException(status_code=403, detail="Access denied")
     if owner_only and reg is not None and reg.user_id != uid:
         raise HTTPException(status_code=403, detail="Access denied")

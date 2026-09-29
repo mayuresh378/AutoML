@@ -76,10 +76,29 @@ def _sanitize_nan(obj):
     return obj
 
 
+def _read_dataset(file_name):
+    file_path = os.path.join(DATASET_DIR, file_name)
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"Dataset file '{file_name}' not found")
+    ext = os.path.splitext(file_name)[1].lower()
+    if ext == ".csv":
+        return pd.read_csv(file_path)
+    elif ext in (".xlsx", ".xls"):
+        return pd.read_excel(file_path)
+    elif ext == ".parquet":
+        return pd.read_parquet(file_path)
+    elif ext == ".json":
+        try:
+            return pd.read_json(file_path, lines=True)
+        except Exception:
+            return pd.read_json(file_path)
+    else:
+        return pd.read_csv(file_path)
+
+
 def _prepare_data(file_name, target_column, pipeline, meta, task_type):
     warnings = []
-    file_path = os.path.join(DATASET_DIR, file_name)
-    df = pd.read_csv(file_path)
+    df = _read_dataset(file_name)
 
     if target_column not in df.columns:
         raise ValueError(f"Target column '{target_column}' not found in dataset. Available: {list(df.columns)}")
@@ -295,7 +314,7 @@ def compute_learning_curve(pipeline, X, y, task_type):
             train_sizes=np.linspace(0.1, 1.0, 10),
             cv=min(5, len(y) // 2) if len(y) >= 10 else 2,
             scoring="accuracy" if task_type == "classification" else "r2",
-            n_jobs=-1,
+            n_jobs=1,
             random_state=42,
         )
         return {
@@ -315,24 +334,28 @@ def compute_validation_curve(pipeline, X, y, task_type, estimator):
     param_range = None
     inner_model = estimator
 
+    step_prefix = ""
+    if isinstance(pipeline, Pipeline) and hasattr(pipeline, "named_steps"):
+        for key in ("model", "classifier", "estimator", "regressor"):
+            if key in pipeline.named_steps:
+                step_prefix = f"{key}__"
+                break
+
     if hasattr(estimator, "n_estimators"):
-        param_name = "model__n_estimators"
+        param_name = f"{step_prefix}n_estimators"
         param_range = [10, 25, 50, 75, 100, 150, 200]
     elif hasattr(estimator, "C"):
-        param_name = "model__C"
+        param_name = f"{step_prefix}C"
         param_range = [0.01, 0.1, 1, 10, 100]
     elif hasattr(estimator, "max_depth"):
-        param_name = "model__max_depth"
+        param_name = f"{step_prefix}max_depth"
         param_range = [2, 3, 5, 7, 10, 15]
     elif hasattr(estimator, "n_neighbors"):
-        param_name = "model__n_neighbors"
+        param_name = f"{step_prefix}n_neighbors"
         param_range = [3, 5, 7, 9, 11, 15, 21]
 
     if param_name is None:
         return {"error": "No tunable hyperparameter found for validation curve"}
-
-    if not isinstance(pipeline, Pipeline):
-        param_name = param_name.replace("model__", "")
 
     try:
         valid_range = [p for p in param_range if p is not None]
@@ -347,7 +370,7 @@ def compute_validation_curve(pipeline, X, y, task_type, estimator):
             param_range=valid_range,
             cv=min(5, len(y) // 2) if len(y) >= 10 else 2,
             scoring="accuracy" if task_type == "classification" else "r2",
-            n_jobs=-1,
+            n_jobs=1,
         )
         return {
             "param_name": param_name.split("__")[-1] if "__" in param_name else param_name,
@@ -487,12 +510,28 @@ def evaluate_model_comprehensive(model_name, file_name, target_column):
     else:
         metrics = _compute_regression_metrics(y_test, y_pred)
 
-    roc = compute_roc_curve(model_obj, X_test, y_test, task_type, meta)
+    def _safe_call(fn, default=None):
+        try:
+            return fn()
+        except Exception:
+            return default
+
+    cm = _safe_call(lambda: compute_confusion_matrix(model_obj, X_test, y_test, task_type, meta))
+    roc = _safe_call(lambda: compute_roc_curve(model_obj, X_test, y_test, task_type, meta))
     if roc and task_type == "classification":
         if "auc" in roc:
             metrics["roc_auc"] = roc["auc"]
         elif "macro_auc" in roc:
             metrics["roc_auc"] = roc["macro_auc"]
+
+    pr = _safe_call(lambda: compute_pr_curve(model_obj, X_test, y_test, task_type, meta))
+    feat_imp = _safe_call(lambda: compute_feature_importance(model, feature_names), default=[])
+    lc = _safe_call(lambda: compute_learning_curve(model_obj, X_for_split, y_processed, task_type), default={"error": "Learning curve unavailable"})
+    vc = _safe_call(lambda: compute_validation_curve(model_obj, X_for_split, y_processed, task_type, model), default={"error": "Validation curve unavailable"})
+    res_plot = _safe_call(lambda: compute_residual_plot(model_obj, X_test, y_test, task_type))
+    pred_dist = _safe_call(lambda: compute_prediction_distribution(y_test, y_pred, task_type))
+    pred_samples = _safe_call(lambda: compute_prediction_samples(model_obj, X_test, y_test, y_proba, task_type, meta), default=[])
+    class_dist = _safe_call(lambda: compute_class_distribution(y_test, task_type))
 
     result = {
         "model_name": model_name,
@@ -501,16 +540,16 @@ def evaluate_model_comprehensive(model_name, file_name, target_column):
         "metrics": metrics,
         "train_size": len(X_train),
         "test_size": len(X_test),
-        "confusion_matrix": compute_confusion_matrix(model_obj, X_test, y_test, task_type, meta),
+        "confusion_matrix": cm,
         "roc_curve": roc,
-        "pr_curve": compute_pr_curve(model_obj, X_test, y_test, task_type, meta),
-        "feature_importance": compute_feature_importance(model, feature_names),
-        "learning_curve": compute_learning_curve(model_obj, X_for_split, y_processed, task_type),
-        "validation_curve": compute_validation_curve(model_obj, X_for_split, y_processed, task_type, model),
-        "residual_plot": compute_residual_plot(model_obj, X_test, y_test, task_type),
-        "prediction_distribution": compute_prediction_distribution(y_test, y_pred, task_type),
-        "prediction_samples": compute_prediction_samples(model_obj, X_test, y_test, y_proba, task_type, meta),
-        "class_distribution": compute_class_distribution(y_test, task_type),
+        "pr_curve": pr,
+        "feature_importance": feat_imp,
+        "learning_curve": lc,
+        "validation_curve": vc,
+        "residual_plot": res_plot,
+        "prediction_distribution": pred_dist,
+        "prediction_samples": pred_samples,
+        "class_distribution": class_dist,
         "warnings": data_warnings,
     }
 
