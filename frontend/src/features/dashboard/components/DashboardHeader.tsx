@@ -5,7 +5,6 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../hooks/useAuth';
 import {
   useHealthCheck,
-  useMonitoringDashboard,
   useUnreadNotificationCount,
 } from '../../../hooks/useApi';
 import { useQueryClient } from '@tanstack/react-query';
@@ -23,7 +22,6 @@ export default function DashboardHeader({
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const healthCheck = useHealthCheck();
-  const monitoringDashboard = useMonitoringDashboard();
   const unreadCountQuery = useUnreadNotificationCount();
 
   const [now, setNow] = useState(() => new Date());
@@ -48,10 +46,8 @@ export default function DashboardHeader({
   const refreshAll = () => {
     queryClient.invalidateQueries({ queryKey: ['datasets'] });
     queryClient.invalidateQueries({ queryKey: ['models'] });
-    queryClient.invalidateQueries({ queryKey: ['deployments'] });
     queryClient.invalidateQueries({ queryKey: ['activity'] });
     queryClient.invalidateQueries({ queryKey: ['training'] });
-    queryClient.invalidateQueries({ queryKey: ['monitoring'] });
     queryClient.invalidateQueries({ queryKey: ['analytics'] });
     queryClient.invalidateQueries({ queryKey: ['health'] });
   };
@@ -130,11 +126,6 @@ export default function DashboardHeader({
           >
             {healthOnline ? <Wifi className="w-3.5 h-3.5" /> : <WifiOff className="w-3.5 h-3.5" />}
             <span className="hidden sm:inline">{healthOnline ? 'Live' : 'Offline'}</span>
-            {monitoringDashboard.data && (
-              <span className="text-zinc-500 hidden md:inline">
-                · {monitoringDashboard.data.latency?.avg != null ? `${Math.round(monitoringDashboard.data.latency.avg)}ms` : ''}
-              </span>
-            )}
           </div>
 
           {/* Time */}
@@ -190,12 +181,6 @@ export default function DashboardHeader({
             <span className="flex items-center gap-1.5 text-zinc-400">
               <Wifi className="w-3 h-3 text-emerald-400" />
               <span>Redis connected</span>
-            </span>
-          )}
-
-          {monitoringDashboard.data?.latency?.avg != null && (
-            <span className="text-zinc-400">
-              API latency <span className="text-zinc-200 font-semibold">{Math.round(monitoringDashboard.data.latency.avg)}ms</span>
             </span>
           )}
 

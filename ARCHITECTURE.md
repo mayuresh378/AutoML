@@ -74,7 +74,7 @@
 18 tables with full foreign key relationships:
 
 - users, teams, team_members
-- projects, experiments, model_registry, deployments
+- projects, experiments, model_registry
 - datasets, prediction_logs
 - notifications, webhooks, api_keys, user_sessions
 - audit_logs, activity_logs

@@ -12,7 +12,7 @@ export default function AutomationsPage() {
           <EmptyState
             icon={<Zap className="w-8 h-8" />}
             title="No automations yet"
-            description="Create automated workflows to handle repetitive ML tasks like scheduled retraining, data drift detection, and model deployment."
+            description="Create automated workflows to handle repetitive ML tasks like scheduled retraining and model evaluation."
           />
         </CardContent>
       </Card>

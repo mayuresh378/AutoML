@@ -288,9 +288,8 @@ python -m uvicorn main:app --reload --port 8000
 ### Long-term
 1. Add team collaboration features
 2. Implement role-based access control (RBAC)
-3. Add deployment management
-4. Create model registry/versioning
-5. Add monitoring and alerts dashboard
+3. Create model registry/versioning
+4. Add alerting for failed training runs
 
 ---
 
@@ -648,9 +647,8 @@ python -m uvicorn main:app --reload --port 8000
 ### Long-term
 1. Add team collaboration features
 2. Implement role-based access control (RBAC)
-3. Add deployment management
-4. Create model registry/versioning
-5. Add monitoring and alerts dashboard
+3. Create model registry/versioning
+4. Add alerting for failed training runs
 
 ---
 

@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  History, FlaskConical, Cpu, Database, Server, Activity as ActivityIcon, ArrowRight,
+  History, FlaskConical, Cpu, Database, Activity as ActivityIcon, ArrowRight,
 } from 'lucide-react';
 import SectionCard, { SectionRefresh } from './SectionCard';
 import { useActivity } from '../../../hooks/useApi';
@@ -26,7 +26,6 @@ function pickIcon(item: any) {
   if (r.includes('experiment')) return <FlaskConical className="w-3.5 h-3.5 text-indigo-400" />;
   if (r.includes('model')) return <Cpu className="w-3.5 h-3.5 text-emerald-400" />;
   if (r.includes('dataset')) return <Database className="w-3.5 h-3.5 text-cyan-400" />;
-  if (r.includes('deploy')) return <Server className="w-3.5 h-3.5 text-amber-400" />;
   return <ActivityIcon className="w-3.5 h-3.5 text-zinc-400" />;
 }
 

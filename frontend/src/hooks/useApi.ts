@@ -6,7 +6,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { datasetsService } from '../services/datasets.service';
 import { trainingService } from '../services/training.service';
 import { modelsService } from '../services/models.service';
-import { deploymentsService } from '../services/deployments.service';
 import { projectsService } from '../services/projects.service';
 import { webhooksService } from '../services/webhooks.service';
 import { monitoringService } from '../services/monitoring.service';
@@ -62,69 +61,6 @@ export function useUpdateModelTags() {
   return useMutation({
     mutationFn: ({ name, tags }: { name: string; tags: string[] }) => modelsService.updateTags(name, tags),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['models'] }),
-  });
-}
-
-export function useDeployments() {
-  return useQuery({
-    queryKey: ['deployments'],
-    queryFn: () => deploymentsService.list(),
-    select: (data) => data.deployments,
-    staleTime: 30_000,
-    refetchInterval: pollWhenVisible(30_000),
-  });
-}
-
-export function useCreateDeployment() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ model_name, endpoint_name }: { model_name: string; endpoint_name: string }) =>
-      deploymentsService.create(model_name, endpoint_name),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['deployments'] }),
-  });
-}
-
-export function useDeleteDeployment() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (dep_id: string) => deploymentsService.remove(dep_id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['deployments'] }),
-  });
-}
-
-export function useDeploymentDetail(id: string | null) {
-  return useQuery({
-    queryKey: ['deployments', id],
-    queryFn: () => deploymentsService.get(id!),
-    enabled: !!id,
-    staleTime: 10_000,
-  });
-}
-
-export function useDeploymentHistory(id: string | null) {
-  return useQuery({
-    queryKey: ['deployments', id, 'history'],
-    queryFn: () => deploymentsService.history(id!),
-    select: (data) => data.history,
-    enabled: !!id,
-    staleTime: 10_000,
-  });
-}
-
-export function useUpdateDeploymentStatus() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, status }: { id: string; status: string }) => deploymentsService.updateStatus(id, status),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['deployments'] }); },
-  });
-}
-
-export function useUpdateDeploymentAccess() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, ...data }: { id: string; allow_anonymous?: boolean; api_key_required?: boolean; rate_limit?: number | null; allowed_users?: string[]; allowed_ips?: string[] }) =>
-      deploymentsService.updateAccess(id, data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['deployments'] }); },
   });
 }
 
@@ -353,28 +289,10 @@ export function useAnalytics(days = 30) {
   });
 }
 
-export function useMonitoringMetrics() {
-  return useQuery({
-    queryKey: ['monitoring', 'metrics'],
-    queryFn: () => monitoringService.metrics(),
-    staleTime: 10_000,
-    refetchInterval: pollWhenVisible(15_000),
-  });
-}
-
 export function useMonitoringStats() {
   return useQuery({
     queryKey: ['monitoring', 'stats'],
     queryFn: () => monitoringService.stats(),
-    staleTime: 10_000,
-    refetchInterval: pollWhenVisible(15_000),
-  });
-}
-
-export function useMonitoringDashboard() {
-  return useQuery({
-    queryKey: ['monitoring', 'dashboard'],
-    queryFn: () => monitoringService.dashboard(),
     staleTime: 10_000,
     refetchInterval: pollWhenVisible(15_000),
   });
@@ -459,37 +377,4 @@ export function useHealthCheck() {
     staleTime: 30_000,
     refetchInterval: pollWhenVisible(30_000),
   });
-}
-
-export function useDashboardData() {
-  const models = useModels();
-  const datasets = useDatasets();
-  const deployments = useDeployments();
-  const activity = useActivity();
-  const monitoringStats = useMonitoringStats();
-  const monitoringDashboard = useMonitoringDashboard();
-  const trainingQueue = useTrainingQueue();
-  const notifications = useNotifications();
-  const unreadCount = useUnreadNotificationCount();
-  const aiSuggestions = useAISuggestions();
-  const healthCheck = useHealthCheck();
-
-  return {
-    models: models.data ?? [],
-    datasets: datasets.data ?? [],
-    deployments: deployments.data ?? [],
-    activity: activity.data ?? [],
-    monitoringStats: monitoringStats.data ?? null,
-    monitoringDashboard: monitoringDashboard.data ?? null,
-    trainingQueue: trainingQueue.data ?? [],
-    notifications: notifications.data ?? [],
-    unreadCount: unreadCount.data ?? 0,
-    aiSuggestions: aiSuggestions.data ?? [],
-    healthCheck: healthCheck.data ?? null,
-    isLoading: models.isLoading || datasets.isLoading || deployments.isLoading || activity.isLoading,
-    isError: models.isError || datasets.isError || deployments.isError || activity.isError,
-    error: models.error || datasets.error || deployments.error || activity.error,
-    isFetching: models.isFetching || datasets.isFetching || deployments.isFetching || activity.isFetching || monitoringStats.isFetching || monitoringDashboard.isFetching,
-    lastUpdated: new Date(),
-  };
 }

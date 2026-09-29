@@ -16,8 +16,6 @@ const Dashboard = lazy(() => import('../features/dashboard/pages/DashboardPage')
 const Datasets = lazy(() => import('../features/datasets/pages/DatasetsPage'));
 const Training = lazy(() => import('../features/training/pages/TrainingPage'));
 const Models = lazy(() => import('../features/models/pages/ModelRegistryPage'));
-const Deployments = lazy(() => import('../features/deployments/pages/DeploymentsPage'));
-const Monitoring = lazy(() => import('../features/monitoring/pages/MonitoringPage'));
 const Settings = lazy(() => import('../features/settings/pages/SettingsPage'));
 const SQLEditor = lazy(() => import('../features/sql/pages/SQLEditorPage'));
 const Explain = lazy(() => import('../features/explain/pages/ExplainPage'));
@@ -37,7 +35,6 @@ const DataCleaning = lazy(() => import('../features/datasets/pages/CleaningPage'
 const FeatureEngineering = lazy(() => import('../features/datasets/pages/FeatureEngineeringPage'));
 const ModelComparison = lazy(() => import('../features/models/pages/ModelComparisonPage'));
 const Prediction = lazy(() => import('../features/prediction/pages/PredictionPage'));
-const BatchPrediction = lazy(() => import('../features/prediction/pages/BatchPredictionPage'));
 
 export const router = createBrowserRouter([
   {
@@ -104,8 +101,6 @@ export const router = createBrowserRouter([
       { path: 'hpo', element: <HPO /> },
       { path: 'engine', element: <AutoMLEngine /> },
       { path: 'models', element: <Models /> },
-      { path: 'deployments', element: <Deployments /> },
-      { path: 'monitoring', element: <Monitoring /> },
       { path: 'settings', element: <Settings /> },
       { path: 'sql', element: <SQLEditor /> },
       { path: 'explain', element: <Explain /> },
@@ -136,10 +131,6 @@ export const router = createBrowserRouter([
           { path: 'models/evaluation', element: <ModelEvaluation /> },
           { path: 'models/explain', element: <Explain /> },
           { path: 'models/comparison', element: <ModelComparison /> },
-          { path: 'production', element: <Navigate to="deployment" replace /> },
-          { path: 'production/deployment', element: <Deployments /> },
-          { path: 'production/monitoring', element: <Monitoring /> },
-          { path: 'production/batch', element: <BatchPrediction /> },
         ],
       },
       { path: 'explorer', element: <Explorer /> },

@@ -1,20 +1,19 @@
 # AutoML Platform
 
-A full-stack automated machine learning platform with drag-and-drop dataset management, AutoML training, model registry, deployment, monitoring, and AI-powered assistance.
+A full-stack automated machine learning platform with drag-and-drop dataset management, AutoML training, model registry, and AI-powered assistance.
 
 ## Features
 
 - **Automated ML Pipeline**: Upload CSV/Excel/Parquet, auto-preprocess, train with multiple algorithms (Random Forest, XGBoost, LightGBM, CatBoost, SVR, SVC, Logistic Regression)
 - **Hyperparameter Tuning**: Grid search with cross-validation
 - **Model Registry**: Version, tag, stage, download trained models
-- **Deployment**: One-click deployment with REST endpoint generation
-- **Monitoring**: Track latency, request count, system metrics
+- **Inference**: Single-record prediction via a simple request/response API
 - **Explainable AI**: SHAP-based prediction explanations
 - **Data Tools**: Profiling, cleaning, feature engineering, SQL querying
 - **AI Assistant**: Natural language queries about your data and models
 - **Team Collaboration**: Projects, teams, API keys, role-based access
 - **Security**: CSRF protection, rate limiting, XSS sanitization, SQL injection prevention, security headers (Helmet-equivalent)
-- **Notifications**: Real-time alerts for training completion, deployments, errors
+- **Notifications**: Real-time alerts for training completion, model registry changes, errors
 
 ## Tech Stack
 
@@ -81,7 +80,7 @@ automl-platform/
 
 80+ REST endpoints at `/api/v1/*`. Full docs at `/docs` (Swagger) and `/redoc` (ReDoc).
 
-Core groups: Auth, Datasets, Training, Experiments, Models, Deployments, Predictions, Projects, Teams, Webhooks, Search, Notifications, Activity, Analytics, Admin, Monitoring, Health.
+Core groups: Auth, Datasets, Training, Experiments, Models, Predictions, Projects, Teams, Webhooks, Search, Notifications, Activity, Analytics, Admin, Monitoring, Health.
 
 ## License
 

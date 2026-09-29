@@ -209,7 +209,7 @@ export default function ProjectsPage() {
         all.length > 0 ? (
           <EmptyState icon={<FolderKanban className="w-8 h-8" />} title="No projects match your filters" description="Try a different search or filter" />
         ) : (
-          <EmptyState icon={<FolderKanban className="w-8 h-8" />} title="No projects yet" description="Create a project to organize your datasets, models, and deployments" action={{ label: 'Create Project', onClick: () => setCreateOpen(true) }} />
+          <EmptyState icon={<FolderKanban className="w-8 h-8" />} title="No projects yet" description="Create a project to organize your datasets and models" action={{ label: 'Create Project', onClick: () => setCreateOpen(true) }} />
         )
       ) : view === 'grid' ? (
         <motion.div variants={staggerContainer} initial="hidden" animate="visible" className={styles.grid}>

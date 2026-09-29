@@ -597,9 +597,9 @@ def generate_ai_insights(eval_result):
             auc_quality = "outstanding" if roc_auc >= 0.95 else "good" if roc_auc >= 0.80 else "fair" if roc_auc >= 0.70 else "poor"
             lines.append(f"ROC AUC: **{roc_auc:.4f}** — {auc_quality} discrimination.")
         if acc is not None and acc >= 0.85 and f1 is not None and f1 >= 0.80:
-            lines.append(f"Recommendation: This model is suitable for deployment.")
+            lines.append(f"Recommendation: This model performs well and is ready to use.")
         elif acc is not None and acc >= 0.70:
-            lines.append(f"Recommendation: Consider hyperparameter tuning or more training data before deploying.")
+            lines.append(f"Recommendation: Consider hyperparameter tuning or more training data to improve this model.")
         else:
             lines.append(f"Recommendation: Model performance is below acceptable thresholds. Review features and data quality.")
     else:
@@ -619,7 +619,7 @@ def generate_ai_insights(eval_result):
         if mape is not None:
             lines.append(f"MAPE: **{mape:.2f}%**")
         if r2 is not None and r2 >= 0.75:
-            lines.append(f"Recommendation: This model is suitable for deployment.")
+            lines.append(f"Recommendation: This model performs well and is ready to use.")
         elif r2 is not None and r2 >= 0.50:
             lines.append(f"Recommendation: Consider feature engineering or model selection improvements.")
         else:

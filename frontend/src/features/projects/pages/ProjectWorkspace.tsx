@@ -4,8 +4,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, Copy, Pencil, Archive, Trash2, Target, TrendingUp, LineChart, Boxes,
   LayoutDashboard, Database, BarChart3, Sparkles, Terminal, BrainCircuit, GraduationCap,
-  SlidersHorizontal, Gauge, Lightbulb, Package, Rocket, Activity, Settings,
-  Clock, User, Globe, UserRound, Users, Table, GitCompare, Send, Zap,
+  SlidersHorizontal, Gauge, Lightbulb, Package, Settings,
+  Clock, User, Globe, UserRound, Users, Table, GitCompare, Zap,
 } from 'lucide-react';
 import { projectsService } from '../../../services/projects.service';
 import { useUIStore } from '../../../store/useUIStore';
@@ -72,17 +72,11 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    key: 'production',
-    label: 'Production',
-    path: 'production',
-    icon: Rocket,
-    items: [
-      { label: 'Deployment', path: 'production/deployment', icon: Rocket },
-      { label: 'Monitoring', path: 'production/monitoring', icon: Activity },
-      { label: 'Batch Prediction', path: 'production/batch', icon: Send },
-    ],
+    key: 'settings',
+    label: 'Settings',
+    path: 'settings',
+    icon: Settings,
   },
-  { key: 'settings', label: 'Settings', path: 'settings', icon: Settings },
 ];
 
 export default function ProjectWorkspace() {

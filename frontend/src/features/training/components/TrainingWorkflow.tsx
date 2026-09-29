@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
 import {
-  Target, Brain, Sliders, Activity, BarChart3, Rocket,
+  Target, Brain, Sliders, Activity, BarChart3, Play, Package,
   ChevronRight, Check, Loader2, AlertCircle,
 } from 'lucide-react';
 import { trainingService, TrainingProgress } from '../../../services/training.service';
@@ -13,7 +14,7 @@ interface TrainingWorkflowProps {
   datasets: { name: string; columns?: string[]; id?: string }[];
 }
 
-type Step = 'task' | 'algorithms' | 'hyperparams' | 'training' | 'metrics' | 'deploy';
+type Step = 'task' | 'algorithms' | 'hyperparams' | 'training' | 'metrics';
 
 const STEPS: { id: Step; label: string; icon: any }[] = [
   { id: 'task', label: 'Task', icon: Target },
@@ -21,7 +22,6 @@ const STEPS: { id: Step; label: string; icon: any }[] = [
   { id: 'hyperparams', label: 'Hyperparameters', icon: Sliders },
   { id: 'training', label: 'Training', icon: Activity },
   { id: 'metrics', label: 'Metrics', icon: BarChart3 },
-  { id: 'deploy', label: 'Deploy', icon: Rocket },
 ];
 
 const CLASSIFICATION_ALGOS = [
@@ -51,6 +51,7 @@ const REGRESSION_ALGOS = [
 ];
 
 export function TrainingWorkflow({ datasets }: TrainingWorkflowProps) {
+  const navigate = useNavigate();
   const [step, setStep] = useState<Step>('task');
   const [taskType, setTaskType] = useState<'classification' | 'regression'>('classification');
   const [selectedDataset, setSelectedDataset] = useState('');
@@ -60,7 +61,6 @@ export function TrainingWorkflow({ datasets }: TrainingWorkflowProps) {
   const [optimizeHpo, setOptimizeHpo] = useState(true);
   const [jobId, setJobId] = useState<string | null>(null);
   const [progress, setProgress] = useState<TrainingProgress | null>(null);
-  const [deployed, setDeployed] = useState(false);
 
   const selectedDs = useMemo(() => datasets.find((d) => d.name === selectedDataset), [datasets, selectedDataset]);
   const dsColumns = useMemo(() => (selectedDs as any)?.columns || [], [selectedDs]);
@@ -243,7 +243,7 @@ export function TrainingWorkflow({ datasets }: TrainingWorkflowProps) {
               <div className={styles.stepActions}>
                 <button className={styles.btnBack} onClick={() => setStep('algorithms')}>Back</button>
                 <button className={styles.btnPrimary} onClick={handleStartTraining}>
-                  <Rocket className={styles.btnIcon} /> Start Training ({selectedAlgos.length} models)
+                  <Play className={styles.btnIcon} /> Start Training ({selectedAlgos.length} models)
                 </button>
               </div>
             </motion.div>
@@ -304,47 +304,10 @@ export function TrainingWorkflow({ datasets }: TrainingWorkflowProps) {
 
               <div className={styles.stepActions}>
                 <button className={styles.btnBack} onClick={() => setStep('training')}>Back to Training</button>
-                <button className={styles.btnPrimary} onClick={() => setStep('deploy')}>
-                  <Rocket className={styles.btnIcon} /> Deploy Best Model
+                <button className={styles.btnPrimary} onClick={() => navigate('/app/models')}>
+                  <Package className={styles.btnIcon} /> Open Model Registry
                 </button>
               </div>
-            </motion.div>
-          )}
-
-          {step === 'deploy' && (
-            <motion.div key="deploy" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className={styles.stepPanel}>
-              <h3 className={styles.panelTitle}>Deploy Model</h3>
-              <p className={styles.panelDesc}>Deploy the best model to production.</p>
-
-              {progress?.best_model && (
-                <div className={styles.deployCard}>
-                  <div className={styles.deployInfo}>
-                    <div className={styles.deployLabel}>Model</div>
-                    <div className={styles.deployValue}>{progress.best_model.name}</div>
-                    <div className={styles.deployMetrics}>
-                      Accuracy: {progress.best_model.metrics?.accuracy != null ? (progress.best_model.metrics.accuracy * 100).toFixed(1) + '%' : '—'} ·
-                      CV: {progress.best_model.cv_score != null ? (progress.best_model.cv_score * 100).toFixed(1) + '%' : '—'}
-                    </div>
-                  </div>
-                  <button
-                    className={`${styles.deployBtn} ${deployed ? styles.deployBtnDone : ''}`}
-                    onClick={() => setDeployed(true)}
-                    disabled={deployed}
-                  >
-                    {deployed ? <><Check className={styles.btnIcon} /> Deployed</> : <><Rocket className={styles.btnIcon} /> Deploy to Production</>}
-                  </button>
-                </div>
-              )}
-
-              {deployed && (
-                <motion.div className={styles.deploySuccess} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
-                  <Check className={styles.deploySuccessIcon} />
-                  <div>
-                    <div className={styles.deploySuccessTitle}>Model Deployed!</div>
-                    <div className={styles.deploySuccessDesc}>Your model is now available for predictions via the API.</div>
-                  </div>
-                </motion.div>
-              )}
             </motion.div>
           )}
         </AnimatePresence>

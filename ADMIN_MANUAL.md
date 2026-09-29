@@ -6,7 +6,7 @@ Navigate to Admin (requires admin role). The panel has 6 tabs:
 
 ## 1. Overview
 System-wide statistics:
-- Total users, projects, datasets, experiments, models, deployments
+- Total users, projects, datasets, experiments, models
 - Active users this week
 - Storage usage breakdown
 - Recent audit log entries
@@ -46,7 +46,7 @@ Storage analytics:
 - Dataset size distribution
 - Cleanup recommendations
 
-## Monitoring
+## System Health & Metrics
 
 ### Health Check
 ```bash
@@ -79,7 +79,7 @@ Returns: automl_build_info, automl_cpu_percent, automl_memory_percent, automl_me
 curl http://localhost:8000/api/v1/monitoring/stats
 ```
 
-Returns: models trained, active deployments, today's inferences, average latency.
+Returns: total models, datasets, experiments and predictions for the current user, plus average training time and success rate.
 
 ## Logging
 

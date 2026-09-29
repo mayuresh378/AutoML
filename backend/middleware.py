@@ -102,15 +102,14 @@ CSRF_SKIP_PATHS = {"/api/v1/auth/login", "/api/v1/auth/register",
 
 # API paths that are exempt from CSRF (uses JWT Bearer token which is CSRF-safe)
 CSRF_SKIP_PREFIXES = {"/api/v1/datasets", "/api/v1/query", "/api/v1/cleaning",
-                      "/api/v1/feature-engineering", "/api/v1/models",
-                      "/api/v1/explain", "/api/v1/deployments", "/api/v1/projects",
-                      "/api/v1/marketplace",
-                      "/api/v1/monitoring", "/api/v1/admin", "/api/v1/profile",
-                      "/api/v1/notifications", "/api/v1/automations", "/api/v1/search",
-                      "/api/v1/ai", "/api/v1/training", "/api/v1/hpo", "/api/v1/engine",
-                      "/api/v1/predictions", "/api/v1/webhooks", "/api/v1/teams",
-                      "/api/v1/api-keys", "/api/v1/tuning", "/api/v1/auth",
-                       "/api/v1/batch-predictions"}
+                       "/api/v1/feature-engineering", "/api/v1/models",
+                       "/api/v1/explain", "/api/v1/projects",
+                       "/api/v1/marketplace",
+                       "/api/v1/monitoring", "/api/v1/admin", "/api/v1/profile",
+                       "/api/v1/notifications", "/api/v1/automations", "/api/v1/search",
+                       "/api/v1/ai", "/api/v1/training", "/api/v1/hpo", "/api/v1/engine",
+                       "/api/v1/predictions", "/api/v1/webhooks", "/api/v1/teams",
+                       "/api/v1/api-keys", "/api/v1/tuning", "/api/v1/auth"}
 
 CSRF_SKIP_METHODS = {"GET", "HEAD", "OPTIONS"}
 

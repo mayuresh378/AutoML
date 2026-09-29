@@ -8,7 +8,7 @@ const FEATURES = [
   {
     icon: 'M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5',
     title: 'Automated ML',
-    desc: 'End-to-end pipeline automation from data ingestion to model deployment with zero manual intervention.',
+    desc: 'End-to-end pipeline automation from data ingestion to model evaluation with zero manual intervention.',
   },
   {
     icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z',
@@ -18,7 +18,7 @@ const FEATURES = [
   {
     icon: 'M13 10V3L4 14h7v7l9-11h-7z',
     title: 'Real-time Inference',
-    desc: 'Deploy models as blazing-fast REST APIs with automatic scaling, monitoring, and version management.',
+    desc: 'Serve models through a simple inference API with version tracking and registry-backed promotion.',
   },
   {
     icon: 'M3 15v4c0 1.1.9 2 2 2h14a2 2 0 002-2v-4M12 3v12m0 0l-4-4m4 4l4-4',
@@ -124,13 +124,13 @@ export default function Landing() {
             speed={0.03}
             charMode="words"
           >
-            Build, deploy, and monitor machine learning at scale
+            Train, evaluate, and govern machine learning at scale
           </TextReveal>
 
           <ScrollReveal delay={0.6} direction="up" distance={20}>
             <p className={styles.heroDesc}>
               The unified platform for the complete ML lifecycle — from data preparation to
-              production monitoring. No infrastructure headaches. No vendor lock-in.
+              model evaluation and governance. No infrastructure headaches. No vendor lock-in.
             </p>
           </ScrollReveal>
 
@@ -274,7 +274,7 @@ export default function Landing() {
         <div className={styles.statGrid}>
           {[
             { value: '99.9%', label: 'Uptime SLA' },
-            { value: '10K+', label: 'Models Deployed' },
+            { value: '10K+', label: 'Models Trained' },
             { value: '500ms', label: 'Avg. Inference' },
             { value: '50+', label: 'Built-in Algorithms' },
           ].map((s, i) => (

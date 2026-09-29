@@ -50,7 +50,7 @@ export default function GlobalSearchModal({ isOpen, onClose }: Props) {
     (searchResults.registry_models || []).forEach((m: any) =>
       items.push({ title: m.name || '', category: 'MODELS', path: '/app/models', icon: Boxes }));
     (searchResults.predictions || []).forEach((p: any) =>
-      items.push({ title: p.model_name || '', category: 'PREDICTIONS', path: '/app/monitoring', icon: FileText }));
+      items.push({ title: p.model_name || '', category: 'PREDICTIONS', path: '/app/prediction', icon: FileText }));
   }
 
   const filtered = query.trim()

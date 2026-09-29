@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   AlertCircle, Loader2, BarChart3, Target, TrendingUp,
   GitBranch, Sliders, Lightbulb, Activity, PieChart, ChevronDown,
-  Rocket, FileCheck, ArrowUpDown, Table2, Brain,
+  FileCheck, ArrowUpDown, Table2, Brain,
 } from 'lucide-react';
 import {
   evaluationService,
@@ -456,10 +456,6 @@ export default function ModelEvaluationPage() {
                     <button className={styles.registerBtn}>
                       <FileCheck size={16} />
                       Register Model
-                    </button>
-                    <button className={styles.deployBtn}>
-                      <Rocket size={16} />
-                      Deploy
                     </button>
                   </div>
                 </div>

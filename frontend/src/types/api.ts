@@ -269,52 +269,8 @@ export interface Model {
   description?: string;
   owner?: string;
   owner_email?: string;
-  deployment_status?: string;
-  deployment?: { id: string; name: string; status: string; endpoint_url: string } | null;
   created_at: string;
   updated_at: string;
-}
-
-export interface Deployment {
-  id: string;
-  model_name?: string;
-  name?: string;
-  endpoint_name?: string;
-  endpoint_url: string;
-  status: 'creating' | 'running' | 'stopped' | 'failed' | 'active' | 'draining';
-  model_id: string;
-  version?: number;
-  user_id?: string;
-  environment?: string;
-  requests_total?: number;
-  requests_count?: number;
-  avg_latency_ms: number;
-  config?: Record<string, any>;
-  deployment_type?: string;
-  allow_anonymous?: boolean;
-  allowed_users?: string[];
-  allowed_ips?: string[];
-  rate_limit?: number | null;
-  api_key_required?: boolean;
-  docker_image?: string;
-  docker_port?: number;
-  docker_compose?: string;
-  fastapi_code?: string;
-  onnx_model_path?: string;
-  download_url?: string;
-  health_check_url?: string;
-  created_at: string;
-  updated_at?: string;
-}
-
-export interface DeploymentHistoryEntry {
-  id: string;
-  action: string;
-  old_status?: string;
-  new_status?: string;
-  details?: Record<string, any>;
-  actor?: string;
-  created_at: string;
 }
 
 export interface Project {
@@ -331,7 +287,6 @@ export interface Project {
   dataset_count?: number;
   experiment_count?: number;
   model_count?: number;
-  deployment_count?: number;
   created_at: string;
   updated_at?: string;
 }
@@ -419,43 +374,10 @@ export interface SearchResults {
   registry_models?: Array<Record<string, any>>;
 }
 
-export interface MonitoringMetrics {
-  cpu_percent: number;
-  memory_percent: number;
-  disk_percent: number;
-  gpu_utilization?: number;
-  requests_per_minute: number;
-  active_deployments: number;
-  cpu?: {
-    percent: number;
-    cores?: number;
-    load_avg?: number[];
-  };
-  memory?: {
-    total?: number;
-    available?: number;
-    used?: number;
-    percent: number;
-  };
-  disk?: {
-    total?: number;
-    used?: number;
-    free?: number;
-    percent: number;
-  };
-  network?: {
-    bytes_sent?: number;
-    bytes_recv?: number;
-  };
-  platform?: string;
-  python_version?: string;
-}
-
 export interface MonitoringStats {
   total_models: number;
   total_datasets: number;
   total_experiments: number;
-  total_deployments?: number;
   total_predictions: number;
   avg_training_time?: number;
   success_rate: number;

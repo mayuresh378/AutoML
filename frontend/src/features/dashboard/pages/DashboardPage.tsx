@@ -6,9 +6,7 @@ import TrainingActivity from '../components/TrainingActivity';
 import ActivityFeed from '../components/ActivityFeed';
 import BestModelSpotlight from '../components/BestModelSpotlight';
 import DatasetEcosystem from '../components/DatasetEcosystem';
-import ProductionDeployments from '../components/ProductionDeployments';
 import AiInsights from '../components/AiInsights';
-import SystemMonitoring from '../components/SystemMonitoring';
 
 import GlobalSearchModal from '../components/GlobalSearchModal';
 import NotificationsDrawer from '../components/NotificationsDrawer';
@@ -39,9 +37,7 @@ export default function DashboardPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-1 gap-6 min-w-0">
           <BestModelSpotlight />
           <DatasetEcosystem />
-          <ProductionDeployments />
           <AiInsights />
-          <SystemMonitoring />
         </div>
       </div>
 

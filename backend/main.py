@@ -32,7 +32,6 @@ from crud import (
     create_user, authenticate_user, get_user_by_id,
     list_experiments, create_experiment,
     list_models, get_model, create_model, update_model_status,
-    list_deployments, create_deployment, delete_deployment,
     list_webhooks, create_webhook, delete_webhook,
     list_api_keys, create_api_key, delete_api_key,
     list_teams, create_team,
@@ -50,7 +49,6 @@ from crud import (
     list_marketplace_items, install_marketplace_item,
     get_prediction_log, delete_prediction_log,
     get_experiment,
-    get_deployment, update_deployment,
     count_unread_notifications,
     get_audit_log,
     get_team, update_team, delete_team,
@@ -176,23 +174,6 @@ def _load_model_meta(name: str) -> dict:
         with open(meta_path) as f:
             return json.load(f)
     return {}
-
-
-def _deployment_model_path(dep) -> str:
-    name = None
-    if dep.config and dep.config.get("model_file"):
-        name = dep.config["model_file"]
-    elif dep.model is not None and dep.model.file_path and os.path.exists(dep.model.file_path):
-        return dep.model.file_path
-    elif dep.model is not None and dep.model.name:
-        name = dep.model.name
-    elif dep.model_id and not dep.model_id.startswith(("urn:", "uuid")):
-        name = dep.model_id
-    if not name:
-        return None
-    if not name.endswith(".pkl"):
-        name = f"{name}.pkl"
-    return os.path.join(MODELS_DIR, name)
 
 
 def _get_dataset_df(name: str) -> pd.DataFrame:
@@ -507,20 +488,6 @@ def require_model_access(db, name, current_user, owner_only=False):
     if owner_only and reg is not None and reg.user_id != uid:
         raise HTTPException(status_code=403, detail="Access denied")
     return reg
-
-
-def require_deployment_access(db, dep_id, current_user, owner_only=True):
-    uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
-    if uid is None:
-        raise HTTPException(status_code=401, detail="Authentication required")
-    dep = get_deployment(db, dep_id)
-    if not dep or dep.deleted_at is not None:
-        raise HTTPException(status_code=404, detail="Deployment not found")
-    if dep.user_id is not None and dep.user_id != uid:
-        raise HTTPException(status_code=403, detail="Access denied")
-    if owner_only and dep.user_id is not None and dep.user_id != uid:
-        raise HTTPException(status_code=403, detail="Access denied")
-    return dep
 
 
 def require_prediction_log_access(db, pred_id, current_user, owner_only=False):
@@ -1649,14 +1616,6 @@ def list_models_api(db: Session = Depends(get_db), offset: int = Query(0, ge=0),
     from models import ModelRegistry
     db_models = list_models(db, user_id=uid)
     all_registry = {m.name: m for m in db.query(ModelRegistry).all()}
-    active_deployments = {}
-    try:
-        deps = list_deployments(db, user_id=uid)
-        for d in deps:
-            if d.status in ("active", "running") and d.model_id:
-                active_deployments[d.model_id] = {"id": d.id, "name": d.name, "status": d.status, "endpoint_url": d.endpoint_url}
-    except Exception:
-        pass
     fs_models = []
     fs_sizes = {}
     for f in os.listdir(MODELS_DIR):
@@ -1669,14 +1628,11 @@ def list_models_api(db: Session = Depends(get_db), offset: int = Query(0, ge=0),
             fs_sizes[f] = size_kb
             if reg is None:
                 meta = _load_model_meta(f)
-                deploy_info = active_deployments.get(f)
                 fs_models.append({
                     "name": f, "size_kb": size_kb,
                     "task_type": meta.get("task_type"),
                     "best_score": meta.get("cv_score"),
                     "metrics": meta.get("metrics"),
-                    "deployment_status": "deployed" if deploy_info else "not_deployed",
-                    "deployment": deploy_info,
                     "created_at": datetime.fromtimestamp(os.path.getmtime(fpath)).isoformat(),
                 })
     registered = []
@@ -1685,7 +1641,6 @@ def list_models_api(db: Session = Depends(get_db), offset: int = Query(0, ge=0),
         fpath = os.path.join(MODELS_DIR, fs_name) if fs_name else None
         has_file = fpath is not None and os.path.exists(fpath)
         meta = _load_model_meta(fs_name) if has_file else {}
-        deploy_info = active_deployments.get(m.id)
         registered.append({
             "id": m.id, "name": fs_name if has_file else m.name, "version": m.version,
             "model_type": m.model_type, "task_type": m.task_type,
@@ -1694,8 +1649,6 @@ def list_models_api(db: Session = Depends(get_db), offset: int = Query(0, ge=0),
             "tags": m.tags, "description": m.description,
             "experiment_id": m.experiment_id,
             "dataset_name": m.experiment.dataset if m.experiment else None,
-            "deployment_status": "deployed" if deploy_info else "not_deployed",
-            "deployment": deploy_info,
             "owner": m.user.email if m.user else None,
             "owner_email": m.user.email if m.user else None,
             "created_at": m.created_at.isoformat() if m.created_at else None,
@@ -2530,371 +2483,6 @@ def engine_get_result(job_id: str):
     return data
 
 
-# ── Deployments ──────────────────────────────────────────────────────
-
-@app.get("/api/v1/deployments", tags=["Deployments"], summary="List deployments", description="List all model deployments.")
-def list_deployments_api(db: Session = Depends(get_db), offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=500), current_user: dict = Depends(get_optional_user)):
-    uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
-    if uid is None:
-        return paginated([], 0, offset, limit, key="deployments")
-    deps = list_deployments(db, user_id=uid)
-    items = [{
-        "id": d.id, "model_name": d.model.name if d.model else d.model_id, "endpoint_name": d.name,
-        "endpoint_url": d.endpoint_url, "status": d.status,
-        "environment": d.environment, "requests_count": d.requests_count,
-        "avg_latency_ms": d.avg_latency_ms, "deployment_type": d.deployment_type,
-        "created_at": d.created_at.isoformat() if d.created_at else None,
-    } for d in deps]
-    total = len(items)
-    items = items[offset:offset + limit]
-    return paginated(items, total, offset, limit, key="deployments")
-
-@app.post("/api/v1/deployments", tags=["Deployments"], summary="Create deployment", description="Deploy a trained model as a serving endpoint.")
-def create_deployment_api(
-    model_name: str = Form(...),
-    endpoint_name: str = Form(...),
-    project_id: str = Form(None),
-    db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
-):
-    fpath = os.path.join(MODELS_DIR, model_name)
-    if not os.path.exists(fpath):
-        raise HTTPException(status_code=404, detail=f"Model '{model_name}' not found")
-    require_model_access(db, model_name, current_user)
-    from models import ModelRegistry
-    reg = db.query(ModelRegistry).filter(ModelRegistry.name == model_name).first()
-    if reg is None:
-        reg = db.query(ModelRegistry).filter(ModelRegistry.name == model_name.replace(".pkl", "")).first()
-    dep = create_deployment(db, {
-        "name": endpoint_name,
-        "model_id": reg.id if reg else None,
-        "user_id": current_user.get("id"),
-        "project_id": project_id,
-        "endpoint_url": f"/api/v1/predictions?model={model_name}",
-        "status": "active",
-        "environment": "production",
-        "config": {"model_file": model_name},
-    })
-    log_audit(db, current_user.get("name", "User"), "deployment.created", endpoint_name, "deployment", dep.id)
-    try:
-        create_notification(db, {
-            "user_id": current_user.get("id"),
-            "title": "Deployment Successful",
-            "message": f"Model '{model_name}' deployed as '{endpoint_name}'",
-            "type": "success",
-            "category": "deployment",
-            "resource_type": "deployment",
-            "resource_id": dep.id,
-        })
-    except Exception:
-        pass
-    return {
-        "id": dep.id, "model_name": model_name, "endpoint_name": endpoint_name,
-        "endpoint_url": dep.endpoint_url, "status": dep.status,
-        "created_at": dep.created_at.isoformat() if dep.created_at else None,
-    }
-
-@app.delete("/api/v1/deployments/{dep_id}", tags=["Deployments"], summary="Delete deployment", description="Remove a deployment by ID.")
-def delete_deployment_api(dep_id: str, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
-    require_deployment_access(db, dep_id, current_user)
-    if not delete_deployment(db, dep_id):
-        raise HTTPException(status_code=404, detail=f"Deployment '{dep_id}' not found")
-    log_audit(db, current_user.get("name", "User"), "deployment.deleted", dep_id, "deployment")
-    return {"message": f"Removed deployment '{dep_id}'"}
-
-
-@app.get("/api/v1/deployments/{dep_id}", tags=["Deployments"], summary="Get deployment", description="Retrieve a specific deployment by ID.")
-def get_deployment_api(dep_id: str, current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-    dep = require_deployment_access(db, dep_id, current_user)
-    model_name = None
-    if dep.config and dep.config.get("model_file"):
-        model_name = dep.config["model_file"]
-    if not model_name:
-        model_name = dep.model.name if dep.model else dep.model_id
-    return {
-        "id": dep.id, "model_name": model_name, "endpoint_name": dep.name,
-        "endpoint_url": dep.endpoint_url, "status": dep.status,
-        "environment": dep.environment, "requests_count": dep.requests_count,
-        "avg_latency_ms": dep.avg_latency_ms,
-        "deployment_type": dep.deployment_type,
-        "allow_anonymous": dep.allow_anonymous,
-        "allowed_users": dep.allowed_users or [],
-        "allowed_ips": dep.allowed_ips or [],
-        "rate_limit": dep.rate_limit,
-        "api_key_required": dep.api_key_required,
-        "docker_image": dep.docker_image,
-        "docker_port": dep.docker_port,
-        "docker_compose": dep.docker_compose,
-        "fastapi_code": dep.fastapi_code,
-        "onnx_model_path": dep.onnx_model_path,
-        "download_url": dep.download_url,
-        "health_check_url": dep.health_check_url,
-        "created_at": dep.created_at.isoformat() if dep.created_at else None,
-        "updated_at": dep.updated_at.isoformat() if dep.updated_at else None,
-    }
-
-
-@app.put("/api/v1/deployments/{dep_id}", tags=["Deployments"], summary="Update deployment", description="Update deployment configuration.")
-def update_deployment_api(dep_id: str, min_replicas: int = Form(None), max_replicas: int = Form(None),
-                          db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
-    require_deployment_access(db, dep_id, current_user)
-    dep = update_deployment(db, dep_id, min_replicas=min_replicas, max_replicas=max_replicas)
-    if not dep:
-        raise HTTPException(status_code=404, detail="Deployment not found")
-    model_name = dep.config.get("model_file") if dep.config else None
-    model_name = model_name or (dep.model.name if dep.model else dep.model_id)
-    return {
-        "id": dep.id, "model_name": model_name, "endpoint_name": dep.name,
-        "endpoint_url": dep.endpoint_url, "status": dep.status,
-        "created_at": dep.created_at.isoformat() if dep.created_at else None,
-    }
-
-
-@app.get("/api/v1/deployments/{dep_id}/history", tags=["Deployments"], summary="Deployment history", description="Get deployment action history.")
-def deployment_history_api(dep_id: str, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
-    dep = require_deployment_access(db, dep_id, current_user)
-    from crud import list_deployment_history
-    entries = list_deployment_history(db, dep_id)
-    return {
-        "history": [{
-            "id": e.id, "action": e.action, "old_status": e.old_status,
-            "new_status": e.new_status, "details": e.details,
-            "actor": e.actor, "created_at": e.created_at.isoformat() if e.created_at else None,
-        } for e in entries]
-    }
-
-
-@app.put("/api/v1/deployments/{dep_id}/access", tags=["Deployments"], summary="Update access control", description="Update deployment access control settings.")
-def update_deployment_access_api(
-    dep_id: str,
-    allow_anonymous: bool = Form(None),
-    api_key_required: bool = Form(None),
-    rate_limit: int = Form(None),
-    allowed_users: str = Form(None),
-    allowed_ips: str = Form(None),
-    db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
-):
-    dep = require_deployment_access(db, dep_id, current_user)
-    updates = {}
-    if allow_anonymous is not None:
-        updates["allow_anonymous"] = allow_anonymous
-    if api_key_required is not None:
-        updates["api_key_required"] = api_key_required
-    if rate_limit is not None:
-        updates["rate_limit"] = rate_limit
-    if allowed_users is not None:
-        updates["allowed_users"] = json.loads(allowed_users) if allowed_users else []
-    if allowed_ips is not None:
-        updates["allowed_ips"] = json.loads(allowed_ips) if allowed_ips else []
-    dep = update_deployment(db, dep_id, **updates)
-    from crud import create_deployment_history
-    create_deployment_history(db, dep_id, "access_updated", details=updates,
-                              actor=current_user.get("name", "User"))
-    return {
-        "id": dep.id, "allow_anonymous": dep.allow_anonymous,
-        "api_key_required": dep.api_key_required, "rate_limit": dep.rate_limit,
-        "allowed_users": dep.allowed_users, "allowed_ips": dep.allowed_ips,
-    }
-
-
-@app.get("/api/v1/deployments/{dep_id}/api-spec", tags=["Deployments"], summary="REST API spec", description="Get the OpenAPI spec for this deployment endpoint.")
-def deployment_api_spec_api(dep_id: str, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
-    dep = get_deployment(db, dep_id)
-    if not dep:
-        raise HTTPException(status_code=404, detail="Deployment not found")
-    return {
-        "openapi": "3.0.3",
-        "info": {"title": f"{dep.name} API", "version": "1.0.0", "description": f"REST API for deployed model: {dep.name}"},
-        "paths": {
-            dep.endpoint_url or "/predict": {
-                "post": {
-                    "summary": f"Make prediction with {dep.name}",
-                    "requestBody": {
-                        "required": True,
-                        "content": {"application/json": {"schema": {"type": "object", "example": {"features": [0.5, 1.2, 3.0]}}}}
-                    },
-                    "responses": {"200": {"description": "Prediction result", "content": {"application/json": {"schema": {"type": "object", "properties": {"prediction": {"type": "string"}, "confidence": {"type": "number"}}}}}}},
-                }
-            }
-        },
-        "components": {"securitySchemes": {"bearerAuth": {"type": "http", "scheme": "bearer", "bearerFormat": "JWT"}}},
-    }
-
-
-@app.get("/api/v1/deployments/{dep_id}/fastapi", tags=["Deployments"], summary="FastAPI code", description="Generate FastAPI serving code for this deployment.")
-def deployment_fastapi_code_api(dep_id: str, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
-    dep = get_deployment(db, dep_id)
-    if not dep:
-        raise HTTPException(status_code=404, detail="Deployment not found")
-    model_filename = _deployment_model_path(dep)
-    model_filename = os.path.basename(model_filename) if model_filename else (dep.model_id or "model")
-    code = f'''from fastapi import FastAPI, HTTPException, Depends
-from pydantic import BaseModel
-import joblib, os, numpy as np
-
-app = FastAPI(title="{dep.name} Serving API", version="1.0.0")
-
-MODEL_PATH = os.getenv("MODEL_PATH", "./models/{model_filename}")
-model = None
-
-class PredictionRequest(BaseModel):
-    features: list[float]
-
-class PredictionResponse(BaseModel):
-    prediction: str
-    confidence: float
-    model: str
-
-@app.on_event("startup")
-def load_model():
-    global model
-    model = joblib.load(MODEL_PATH)
-
-@app.get("/health")
-def health():
-    return {{"status": "healthy", "model": "{model_filename}"}}
-
-@app.post("/predict", response_model=PredictionResponse)
-def predict(req: PredictionRequest):
-    if model is None:
-        raise HTTPException(status_code=503, detail="Model not loaded")
-    X = np.array(req.features).reshape(1, -1)
-    pred = model.predict(X)[0]
-    conf = max(model.predict_proba(X)[0]) if hasattr(model, "predict_proba") else 0.0
-    return PredictionResponse(prediction=str(pred), confidence=round(float(conf), 4), model="{model_filename}")
-'''
-    dep.fastapi_code = code
-    db.commit()
-    from crud import create_deployment_history
-    create_deployment_history(db, dep_id, "fastapi_generated", actor="system")
-    return {"code": code, "filename": f"{dep.name}_serving.py"}
-
-
-@app.get("/api/v1/deployments/{dep_id}/docker", tags=["Deployments"], summary="Docker compose", description="Generate docker-compose.yml for this deployment.")
-def deployment_docker_api(dep_id: str, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
-    dep = get_deployment(db, dep_id)
-    if not dep:
-        raise HTTPException(status_code=404, detail="Deployment not found")
-    model_filename = _deployment_model_path(dep)
-    model_filename = os.path.basename(model_filename) if model_filename else (dep.model_id or "model")
-    port = dep.docker_port or 8080
-    compose = f'''version: "3.8"
-services:
-  model-serving:
-    build: .
-    ports:
-      - "{port}:{port}"
-    environment:
-      - MODEL_PATH=/app/models/{model_filename}
-      - PORT={port}
-    volumes:
-      - ./models:/app/models
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:{port}/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    restart: unless-stopped
-'''
-    dockerfile = f'''FROM python:3.11-slim
-WORKDIR /app
-COPY requirements.txt .
-RUN pip install --no-cache-dir fastapi uvicorn numpy scikit-learn pickle-mixin
-COPY . .
-EXPOSE {port}
-CMD ["uvicorn", "{dep.name}_serving:app", "--host", "0.0.0.0", "--port", "{port}"]
-'''
-    dep.docker_compose = compose
-    dep.docker_port = port
-    dep.docker_image = f"automl/{dep.name}:latest"
-    db.commit()
-    from crud import create_deployment_history
-    create_deployment_history(db, dep_id, "docker_generated", actor="system")
-    return {"compose": compose, "dockerfile": dockerfile, "image": dep.docker_image, "port": port}
-
-
-@app.post("/api/v1/deployments/{dep_id}/export/onnx", tags=["Deployments"], summary="Export ONNX", description="Export deployed model to ONNX format.")
-def export_deployment_onnx_api(dep_id: str, db: Session = Depends(get_db), current_user: dict = Depends(get_optional_user)):
-    dep = get_deployment(db, dep_id)
-    if not dep:
-        raise HTTPException(status_code=404, detail="Deployment not found")
-    model_path = _deployment_model_path(dep)
-    if not model_path or not os.path.exists(model_path):
-        raise HTTPException(status_code=404, detail="Model file not found on disk")
-    onnx_dir = os.path.join(MODELS_DIR, "onnx")
-    os.makedirs(onnx_dir, exist_ok=True)
-    onnx_name = os.path.splitext(os.path.basename(model_path))[0] + ".onnx"
-    onnx_path = os.path.join(onnx_dir, onnx_name)
-    try:
-        import joblib
-        model = joblib.load(model_path)
-        try:
-            from skl2onnx import convert_sklearn
-            from skl2onnx.common.data_types import FloatTensorType
-            initial_type = [("float_input", FloatTensorType([None, 4]))]
-            onnx_model = convert_sklearn(model, initial_types=initial_type)
-            with open(onnx_path, "wb") as f:
-                f.write(onnx_model.SerializeToString())
-        except ImportError:
-            import struct
-            with open(onnx_path, "wb") as f:
-                f.write(b"ONNX" + struct.pack("<I", 1))
-                f.write(os.path.basename(model_path).encode())
-        dep.onnx_model_path = onnx_path
-        db.commit()
-        from crud import create_deployment_history
-        create_deployment_history(db, dep_id, "onnx_exported", details={"path": onnx_path},
-                                  actor=current_user.get("name", "User"))
-        return {"message": "Model exported to ONNX", "path": onnx_path, "filename": onnx_name}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Export failed: {str(e)}")
-
-
-@app.post("/api/v1/deployments/{dep_id}/export/pickle", tags=["Deployments"], summary="Export pickle", description="Export deployed model as pickle file for download.")
-def export_deployment_pickle_api(dep_id: str, db: Session = Depends(get_db), current_user: dict = Depends(get_optional_user)):
-    dep = get_deployment(db, dep_id)
-    if not dep:
-        raise HTTPException(status_code=404, detail="Deployment not found")
-    model_path = _deployment_model_path(dep)
-    if not model_path or not os.path.exists(model_path):
-        raise HTTPException(status_code=404, detail="Model file not found on disk")
-    file_size = os.path.getsize(model_path)
-    dep.download_url = f"/api/v1/deployments/{dep_id}/download"
-    db.commit()
-    from crud import create_deployment_history
-    create_deployment_history(db, dep_id, "pickle_exported", details={"size_bytes": file_size},
-                              actor=current_user.get("name", "User"))
-    return {"message": "Pickle model ready", "download_url": dep.download_url,
-            "filename": os.path.basename(model_path), "size_bytes": file_size}
-
-
-@app.get("/api/v1/deployments/{dep_id}/download", tags=["Deployments"], summary="Download model", description="Download the deployed model pickle file.")
-def download_deployment_model_api(dep_id: str, current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-    dep = get_deployment(db, dep_id)
-    if not dep:
-        raise HTTPException(status_code=404, detail="Deployment not found")
-    model_path = _deployment_model_path(dep)
-    if not model_path or not os.path.exists(model_path):
-        raise HTTPException(status_code=404, detail="Model file not found on disk")
-    from crud import create_deployment_history
-    create_deployment_history(db, dep_id, "model_downloaded", actor="user")
-    return FileResponse(model_path, filename=os.path.basename(model_path), media_type="application/octet-stream")
-
-
-@app.put("/api/v1/deployments/{dep_id}/status", tags=["Deployments"], summary="Update deployment status", description="Start, stop, or restart a deployment.")
-def update_deployment_status_api(
-    dep_id: str, status: str = Form(...),
-    db: Session = Depends(get_db), current_user: dict = Depends(get_current_user),
-):
-    dep = require_deployment_access(db, dep_id, current_user)
-    old_status = dep.status
-    dep = update_deployment(db, dep_id, status=status)
-    from crud import create_deployment_history
-    create_deployment_history(db, dep_id, f"status_{status}", old_status=old_status,
-                              new_status=status, actor=current_user.get("name", "User"))
-    return {"id": dep.id, "status": dep.status, "old_status": old_status}
-
 @app.post("/api/v1/explain", tags=["Predictions"], summary="Explain prediction", description="Generate feature importance and SHAP-based explanations for a prediction.")
 def explain_endpoint(
     model_name: str = Form(...),
@@ -2961,48 +2549,6 @@ def predict(model_name: str = Form(...), payload: str = Form(...), db: Session =
             pass
         result["latency_ms"] = elapsed
         return result
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-@app.post("/api/v1/batch-predictions", tags=["Predictions"], summary="Batch predict", description="Run predictions on an entire dataset file in batch.")
-def batch_predict(
-    model_name: str = Form(...),
-    file_name: str = Form(...),
-    db: Session = Depends(get_db),
-    current_user: dict = Depends(get_optional_user),
-):
-    try:
-        import time
-        import csv
-        t0 = time.time()
-        uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
-        require_model_access(db, model_name, current_user)
-        require_dataset_access(db, file_name, current_user)
-        df = _get_dataset_df(file_name)
-        predictions = []
-        for _, row in df.iterrows():
-            result = make_prediction(model_name, row.to_dict())
-            predictions.append({
-                **row.to_dict(),
-                "prediction": result.get("prediction"),
-                "confidence": result.get("confidence"),
-            })
-        elapsed = round((time.time() - t0) * 1000, 1)
-        log_audit(db, current_user.get("name", "User"), "batch_prediction.made", model_name, "prediction")
-        try:
-            create_prediction_log(db, {
-                "model_name": model_name,
-                "input_preview": f"batch {file_name} ({len(predictions)} rows)",
-                "prediction": str(predictions[0].get("prediction", "")) if predictions else "",
-                "batch_size": len(predictions),
-                "latency_ms": elapsed,
-                "user_id": uid,
-            })
-        except Exception:
-            pass
-        return {"predictions": predictions, "count": len(predictions), "latency_ms": elapsed}
     except HTTPException:
         raise
     except Exception as e:
@@ -3184,200 +2730,16 @@ def delete_api_key_api(key_id: str, current_user: dict = Depends(get_current_use
 def monitoring_metrics(current_user: dict = Depends(get_current_user)):
     return ok(collect_system_metrics())
 
-@app.get("/api/v1/monitoring/dashboard", tags=["Monitoring"], summary="Full monitoring dashboard", description="Return all monitoring data: predictions, latency, CPU, RAM, traffic, drift, alerts, logs, error rate.")
-def monitoring_dashboard(db: Session = Depends(get_db), current_user: dict = Depends(get_optional_user)):
-    import psutil
-    from datetime import timedelta
-
-    uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
-    system = collect_system_metrics()
-    cpu = system["cpu"]["percent"]
-    ram = system["memory"]["percent"]
-    disk = system["disk"]["percent"]
-
-    # Prediction metrics from logs (scoped to the authenticated user)
-    pred_q = db.query(PredictionLog)
-    if uid:
-        pred_q = pred_q.filter(PredictionLog.user_id == uid)
-    else:
-        pred_q = pred_q.filter(PredictionLog.user_id == "__anonymous__")
-    pred_q = pred_q.order_by(PredictionLog.created_at.desc()).limit(500)
-    all_preds = pred_q.all()
-    now = datetime.now(timezone.utc)
-
-    total_predictions = len(all_preds)
-    recent_preds = [p for p in all_preds if p.created_at and (now - p.created_at.replace(tzinfo=timezone.utc)).total_seconds() < 86400]
-    recent_1h = [p for p in all_preds if p.created_at and (now - p.created_at.replace(tzinfo=timezone.utc)).total_seconds() < 3600]
-    recent_7d = [p for p in all_preds if p.created_at and (now - p.created_at.replace(tzinfo=timezone.utc)).total_seconds() < 604800]
-
-    prediction_count = total_predictions
-    predictions_today = len(recent_preds)
-    predictions_1h = len(recent_1h)
-
-    # Latency
-    latencies = [p.latency_ms for p in all_preds if p.latency_ms is not None]
-    avg_latency = round(sum(latencies) / max(len(latencies), 1), 1)
-    p50_latency = round(sorted(latencies)[len(latencies) // 2], 1) if latencies else 0
-    p95_latency = round(sorted(latencies)[int(len(latencies) * 0.95)], 1) if latencies else 0
-    p99_latency = round(sorted(latencies)[int(len(latencies) * 0.99)], 1) if latencies else 0
-
-    # Traffic (requests per hour over last 24h)
-    traffic_buckets = {}
-    for h in range(24):
-        bucket_time = now - timedelta(hours=h)
-        key = bucket_time.strftime("%H:00")
-        traffic_buckets[key] = 0
-    for p in all_preds:
-        if p.created_at:
-            age_h = (now - p.created_at.replace(tzinfo=timezone.utc)).total_seconds() / 3600
-            if age_h < 24:
-                key = p.created_at.strftime("%H:00")
-                traffic_buckets[key] = traffic_buckets.get(key, 0) + 1
-    traffic_data = [{"hour": k, "count": v} for k, v in sorted(traffic_buckets.items())]
-    requests_per_minute = round(predictions_1h / 60, 1) if recent_1h else 0
-
-    # Error rate
-    total_with_latency = len([p for p in all_preds if p.latency_ms is not None])
-    error_preds = [p for p in all_preds if p.confidence is not None and p.confidence < 0.3]
-    error_rate = round(len(error_preds) / max(total_with_latency, 1) * 100, 2)
-    success_rate = round(100 - error_rate, 2)
-
-    # Latency histogram (buckets)
-    latency_buckets = {"0-50": 0, "50-100": 0, "100-200": 0, "200-500": 0, "500+": 0}
-    for l in latencies:
-        if l < 50: latency_buckets["0-50"] += 1
-        elif l < 100: latency_buckets["50-100"] += 1
-        elif l < 200: latency_buckets["100-200"] += 1
-        elif l < 500: latency_buckets["200-500"] += 1
-        else: latency_buckets["500+"] += 1
-    latency_histogram = [{"bucket": k, "count": v} for k, v in latency_buckets.items()]
-
-    # Model Drift (based on confidence trends from actual predictions)
-    recent_conf = [p.confidence for p in recent_preds[:50] if p.confidence is not None]
-    old_conf = [p.confidence for p in all_preds[50:100] if p.confidence is not None]
-    recent_avg_conf = sum(recent_conf) / max(len(recent_conf), 1)
-    old_avg_conf = sum(old_conf) / max(len(old_conf), 1)
-    model_drift = round(abs(recent_avg_conf - old_avg_conf) * 100, 2)
-    model_drift_status = "healthy" if model_drift < 5 else ("warning" if model_drift < 15 else "critical")
-
-    # Data Drift (derived deterministically from prediction activity — no random values)
-    data_drift_score = round(model_drift, 2)
-    data_drift_status = "healthy" if data_drift_score < 2 else ("warning" if data_drift_score < 3 else "critical")
-
-    # Drift timeline (deterministic from actual latency/confidence, not random)
-    drift_timeline = []
-    conf_series = [p.confidence for p in all_preds if p.confidence is not None]
-    conf_series.reverse()
-    for i in range(24):
-        t = now - timedelta(hours=23 - i)
-        if conf_series:
-            seg = conf_series[i * len(conf_series) // 24:(i + 1) * len(conf_series) // 24]
-            seg_avg = sum(seg) / max(len(seg), 1) if seg else 0
-            drift_score = round(abs(seg_avg - (sum(conf_series) / max(len(conf_series), 1))) * 100, 2)
-        else:
-            drift_score = 0
-        drift_timeline.append({
-            "time": t.strftime("%H:00"),
-            "model_drift": drift_score,
-            "data_drift": drift_score,
-        })
-
-    # Alerts
-    alerts = []
-    if cpu > 80:
-        alerts.append({"severity": "critical", "title": "High CPU Usage", "message": f"CPU at {cpu:.1f}%", "time": "now"})
-    if ram > 85:
-        alerts.append({"severity": "critical", "title": "High Memory Usage", "message": f"RAM at {ram:.1f}%", "time": "now"})
-    if disk > 90:
-        alerts.append({"severity": "warning", "title": "Disk Space Low", "message": f"Disk at {disk:.1f}%", "time": "now"})
-    if error_rate > 10:
-        alerts.append({"severity": "critical", "title": "High Error Rate", "message": f"Error rate {error_rate}%", "time": "now"})
-    if model_drift > 10:
-        alerts.append({"severity": "warning", "title": "Model Drift Detected", "message": f"Drift score: {model_drift}%", "time": "now"})
-    if data_drift_score > 3:
-        alerts.append({"severity": "warning", "title": "Data Drift Detected", "message": f"Drift score: {data_drift_score}", "time": "now"})
-    if avg_latency > 200:
-        alerts.append({"severity": "warning", "title": "High Latency", "message": f"Avg: {avg_latency}ms", "time": "now"})
-    if not alerts:
-        alerts.append({"severity": "success", "title": "All Systems Normal", "message": "No issues detected", "time": "now"})
-
-    # Logs (recent predictions)
-    logs = []
-    for p in all_preds[:20]:
-        logs.append({
-            "model": p.model_name,
-            "prediction": p.prediction,
-            "confidence": p.confidence,
-            "latency_ms": p.latency_ms,
-            "time": p.created_at.isoformat() if p.created_at else None,
-        })
-
-    # Latency sparkline (last 20 predictions, reversed to chronological)
-    recent_latencies = [p.latency_ms for p in all_preds[:20] if p.latency_ms is not None]
-    recent_latencies.reverse()
-    latency_sparkline = [{"i": i, "latency": l} for i, l in enumerate(recent_latencies)]
-
-    # Confidence distribution
-    conf_buckets = {"0-20%": 0, "20-40%": 0, "40-60%": 0, "60-80%": 0, "80-100%": 0}
-    for p in all_preds:
-        if p.confidence is not None:
-            pct = p.confidence * 100
-            if pct < 20: conf_buckets["0-20%"] += 1
-            elif pct < 40: conf_buckets["20-40%"] += 1
-            elif pct < 60: conf_buckets["40-60%"] += 1
-            elif pct < 80: conf_buckets["60-80%"] += 1
-            else: conf_buckets["80-100%"] += 1
-
-    return {
-        "predictions": {
-            "total": prediction_count,
-            "today": predictions_today,
-            "last_hour": predictions_1h,
-            "requests_per_minute": requests_per_minute,
-        },
-        "latency": {
-            "avg": avg_latency,
-            "p50": p50_latency,
-            "p95": p95_latency,
-            "p99": p99_latency,
-            "histogram": latency_histogram,
-            "sparkline": latency_sparkline,
-        },
-        "cpu": cpu,
-        "cpu_cores": system["cpu"]["cores"],
-        "load_avg": system["cpu"].get("load_avg_1m", 0),
-        "ram": ram,
-        "ram_total_gb": round(system["memory"]["total_bytes"] / (1024**3), 1),
-        "ram_used_gb": round(system["memory"]["used_bytes"] / (1024**3), 1),
-        "disk": disk,
-        "disk_free_gb": round(system["disk"]["free_bytes"] / (1024**3), 1),
-        "traffic": {
-            "per_hour": traffic_data,
-            "requests_per_minute": requests_per_minute,
-        },
-        "model_drift": {"score": model_drift, "status": model_drift_status},
-        "data_drift": {"score": data_drift_score, "status": data_drift_status},
-        "drift_timeline": drift_timeline,
-        "alerts": alerts,
-        "logs": logs,
-        "error_rate": error_rate,
-        "success_rate": success_rate,
-        "confidence_distribution": [{"bucket": k, "count": v} for k, v in conf_buckets.items()],
-    }
-
 @app.get("/api/v1/monitoring/stats", tags=["Monitoring"], summary="Live stats", description="Return live aggregate statistics for models and experiments.")
 def live_stats(db: Session = Depends(get_db), current_user: dict = Depends(get_optional_user)):
     uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
     if uid is None:
         return {
-            "modelsTrained": 0, "activeDeployments": 0, "inferenceRequestsToday": 0,
-            "avgLatencyMs": 0, "total_models": 0, "total_datasets": 0, "total_experiments": 0,
+            "total_models": 0, "total_datasets": 0, "total_experiments": 0,
             "total_predictions": 0, "avg_training_time": 0, "success_rate": 0,
         }
     exps = list_experiments(db, user_id=uid)
     models = [f for f in os.listdir(MODELS_DIR) if f.endswith(".pkl")]
-    today_prefix = datetime.now().strftime("%Y-%m-%d")
-    today_exps = [e for e in exps if e.run_at and e.run_at.strftime("%Y-%m-%d") == today_prefix]
     success_exps = [e for e in exps if e.status == "success"]
     from crud import list_dataset_records
     datasets = list_dataset_records(db, user_id=uid)
@@ -3392,10 +2754,6 @@ def live_stats(db: Session = Depends(get_db), current_user: dict = Depends(get_o
         pass
     avg_train_time = round(sum((e.training_time or 0) for e in exps) / max(len(exps), 1), 1)
     return {
-        "modelsTrained": len(exps),
-        "activeDeployments": len(models),
-        "inferenceRequestsToday": sum(1 for e in today_exps),
-        "avgLatencyMs": round(avg_train_time * 1000, 1),
         "total_models": len(models),
         "total_datasets": len(datasets),
         "total_experiments": len(exps),
@@ -3403,21 +2761,6 @@ def live_stats(db: Session = Depends(get_db), current_user: dict = Depends(get_o
         "avg_training_time": avg_train_time,
         "success_rate": round(len(success_exps) / max(len(exps), 1), 2),
     }
-
-
-@app.get("/api/v1/monitoring/metrics/export", tags=["Monitoring"], summary="Export metrics", description="Export system metrics as CSV or JSON.")
-def export_metrics(format: str = Query("json", enum=["json", "csv"])):
-    metrics = collect_system_metrics()
-    if format == "csv":
-        lines = ["metric,value"]
-        lines.append(f"cpu_percent,{metrics['cpu']['percent']}")
-        lines.append(f"memory_percent,{metrics['memory']['percent']}")
-        lines.append(f"memory_available_bytes,{metrics['memory']['available_bytes']}")
-        lines.append(f"disk_percent,{metrics['disk']['percent']}")
-        lines.append(f"disk_free_bytes,{metrics['disk']['free_bytes']}")
-        return Response(content="\n".join(lines), media_type="text/csv",
-                        headers={"Content-Disposition": "attachment; filename=metrics.csv"})
-    return metrics
 
 
 @app.get("/metrics", tags=["Monitoring"],
@@ -3464,7 +2807,6 @@ def list_projects_api(db: Session = Depends(get_db), offset: int = Query(0, ge=0
     datasets = list_dataset_records(db)
     exps = list_experiments(db)
     models = list_models(db)
-    deploys = list_deployments(db)
     ds_by_project = {}
     for d in datasets:
         pid = d.project_id or "none"
@@ -3477,10 +2819,6 @@ def list_projects_api(db: Session = Depends(get_db), offset: int = Query(0, ge=0
     for m in models:
         pid = getattr(m, "project_id", None) or "none"
         model_by_project.setdefault(pid, []).append(m)
-    deploy_by_project = {}
-    for d in deploys:
-        pid = getattr(d, "project_id", None) or "none"
-        deploy_by_project.setdefault(pid, []).append(d)
     items = [{
         "id": p.id, "name": p.name, "description": p.description,
         "status": p.status, "notes": p.notes, "model_ids": [m.id for m in p.model_registry],
@@ -3490,7 +2828,6 @@ def list_projects_api(db: Session = Depends(get_db), offset: int = Query(0, ge=0
         "dataset_count": len(ds_by_project.get(p.id, [])),
         "experiment_count": len(exp_by_project.get(p.id, [])),
         "model_count": len(model_by_project.get(p.id, [])),
-        "deployment_count": len(deploy_by_project.get(p.id, [])),
         "created_at": p.created_at.isoformat() if p.created_at else None,
         "updated_at": p.updated_at.isoformat() if p.updated_at else None,
     } for p in projects]
@@ -3553,7 +2890,6 @@ def get_project_api(project_id: str, current_user: dict = Depends(get_current_us
     datasets = list_dataset_records(db, project_id=project_id)
     exps = list_experiments(db, project_id=project_id)
     models = list_models(db, project_id=project_id)
-    deploys = list_deployments(db, project_id=project_id)
     return {
         "id": p.id, "name": p.name, "description": p.description,
         "status": p.status, "notes": p.notes, "model_ids": [m.id for m in p.model_registry],
@@ -3563,9 +2899,8 @@ def get_project_api(project_id: str, current_user: dict = Depends(get_current_us
         "datasets": [{"name": d.filename, "rows": d.rows, "columns": d.columns, "size_kb": d.file_size_kb} for d in datasets],
         "experiments": [{"id": e.id, "name": e.name, "model": e.model, "dataset": e.dataset, "cv_score": e.cv_score, "status": e.status, "created_at": e.created_at.isoformat() if e.created_at else None} for e in exps],
         "models": [{"id": m.id, "name": m.name, "model_type": m.model_type, "cv_score": m.cv_score, "status": m.status, "created_at": m.created_at.isoformat() if m.created_at else None} for m in models],
-        "deployments": [{"id": d.id, "name": d.name, "status": d.status, "environment": d.environment, "endpoint_url": d.endpoint_url, "created_at": d.created_at.isoformat() if d.created_at else None} for d in deploys],
         "dataset_count": len(datasets), "experiment_count": len(exps),
-        "model_count": len(models), "deployment_count": len(deploys),
+        "model_count": len(models),
         "created_at": p.created_at.isoformat() if p.created_at else None,
         "updated_at": p.updated_at.isoformat() if p.updated_at else None,
     }

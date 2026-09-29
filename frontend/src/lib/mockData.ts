@@ -26,8 +26,8 @@ export const trainingQueue: TrainingJob[] = [
 export const activityFeed: ActivityItem[] = [
   { id: 'a1', actor: 'You', action: 'uploaded', target: 'customer_churn.csv', time: '4 min ago' },
   { id: 'a2', actor: 'AutoML Engine', action: 'finished training', target: 'iris-baseline', time: '1h ago' },
-  { id: 'a3', actor: 'You', action: 'deployed', target: 'fraud-detect-v2', time: '3h ago' },
-  { id: 'a4', actor: 'AutoML Engine', action: 'flagged a schema drift in', target: 'housing_prices.csv', time: '5h ago' },
+  { id: 'a3', actor: 'You', action: 'registered', target: 'fraud-detect-v2', time: '3h ago' },
+  { id: 'a4', actor: 'AutoML Engine', action: 'flagged a schema change in', target: 'housing_prices.csv', time: '5h ago' },
   { id: 'a5', actor: 'You', action: 'created project', target: 'Q3 Churn Model', time: '1d ago' },
 ];
 
@@ -40,7 +40,6 @@ export const systemMetrics = {
 
 export const liveStats = {
   modelsTrained: 128,
-  activeDeployments: 6,
   inferenceRequestsToday: 18420,
   avgLatencyMs: 42,
 };

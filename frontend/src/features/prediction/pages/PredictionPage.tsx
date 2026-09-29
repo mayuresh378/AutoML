@@ -51,7 +51,7 @@ export default function PredictionPage() {
 
   return (
     <PageContainer maxWidth="lg">
-      <PageHeader title="Inference API" description="Run predictions against deployed models" />
+      <PageHeader title="Inference API" description="Run predictions against your registered models" />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
@@ -60,7 +60,7 @@ export default function PredictionPage() {
             {isLoading ? (
               <LoadingSpinner />
             ) : !models || models.length === 0 ? (
-              <EmptyState icon={<Brain className="w-8 h-8" />} title="No models available" description="Train and deploy a model first" />
+              <EmptyState icon={<Brain className="w-8 h-8" />} title="No models available" description="Train a model first" />
             ) : (
               <>
                 <Select

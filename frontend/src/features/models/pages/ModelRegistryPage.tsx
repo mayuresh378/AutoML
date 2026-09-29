@@ -22,8 +22,6 @@ const statusColors: Record<string, { bg: string; text: string; border: string }>
   training: { bg: 'rgba(245,158,11,0.08)', text: '#f59e0b', border: 'rgba(245,158,11,0.2)' },
   ready: { bg: 'rgba(34,197,94,0.08)', text: '#22c55e', border: 'rgba(34,197,94,0.2)' },
   failed: { bg: 'rgba(239,68,68,0.08)', text: '#ef4444', border: 'rgba(239,68,68,0.2)' },
-  deployed: { bg: 'rgba(34,197,94,0.08)', text: '#22c55e', border: 'rgba(34,197,94,0.2)' },
-  not_deployed: { bg: 'rgba(107,114,128,0.08)', text: '#6b7280', border: 'rgba(107,114,128,0.2)' },
 };
 
 const algorithmGradients: Record<string, string> = {
@@ -228,9 +226,6 @@ export default function ModelRegistryPage() {
                   </div>
                   <div className={styles.cardHeader}>
                     <StatusBadge status={model.status} />
-                    {model.deployment_status === 'deployed' && (
-                      <span className={styles.deployBadge}>Deployed</span>
-                    )}
                   </div>
                 </div>
 

@@ -469,27 +469,6 @@
   box-shadow: var(--shadow-md);
 }
 
-.deployBtn {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  height: 40px;
-  padding: 0 var(--space-5);
-  border-radius: var(--radius-lg);
-  background: var(--color-secondary);
-  color: var(--color-text-inverse);
-  font-size: var(--text-body-sm);
-  font-weight: 500;
-  border: none;
-  cursor: pointer;
-  transition: background var(--transition-fast), box-shadow var(--transition-fast);
-}
-
-.deployBtn:hover {
-  background: var(--color-secondary-hover);
-  box-shadow: var(--shadow-md);
-}
-
 /* ── Empty State ── */
 .emptyState {
   display: flex;

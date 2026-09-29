@@ -2,7 +2,6 @@ export { authService } from './auth.service';
 export { datasetsService } from './datasets.service';
 export { trainingService } from './training.service';
 export { modelsService } from './models.service';
-export { deploymentsService } from './deployments.service';
 export { predictionsService } from './predictions.service';
 export { projectsService } from './projects.service';
 export { webhooksService } from './webhooks.service';

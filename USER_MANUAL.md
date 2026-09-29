@@ -11,7 +11,7 @@
 
 ### Dashboard Overview
 The Dashboard shows:
-- Total experiments, models, deployments, datasets
+- Total experiments, models, datasets
 - Recent activity timeline
 - Storage usage
 - Quick-action buttons for common tasks
@@ -76,19 +76,16 @@ Select multiple models to compare:
 3. Force plot for individual predictions
 4. Summary plot across the dataset
 
-## Deployments
+## Inference
 
-### Deploy a Model
-1. Go to Deployment page
+### Making Predictions
+1. Go to the Inference API page
 2. Select a model from the registry
-3. Choose environment (Staging / Production)
-4. Configure endpoint settings
-5. Deploy - an API endpoint is generated
+3. Enter input features for a single record
+4. Submit - the prediction and confidence are returned
 
-### Inference
-- Single prediction: POST input features, get prediction + confidence
-- Batch prediction: Upload CSV, download predictions
-- Prediction history: View past inference requests
+### Prediction History
+- View past inference requests
 
 ## Automations
 
@@ -102,7 +99,7 @@ Set up trigger-based automations:
 
 ### Global Search
 Search across all resources:
-- Experiments, Models, Datasets, Projects, Deployments
+- Experiments, Models, Datasets, Projects
 - Results grouped by category
 - Click to navigate directly
 

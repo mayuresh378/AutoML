@@ -47,14 +47,6 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    label: 'Production',
-    items: [
-      { label: 'Deployment', path: '/app/deployments', icon: 'Rocket' },
-      { label: 'Batch Prediction', path: '/app/prediction', icon: 'Send' },
-      { label: 'Monitoring', path: '/app/monitoring', icon: 'Activity' },
-    ],
-  },
-  {
     label: 'AI',
     items: [{ label: 'AI Copilot', path: '/app/ai', icon: 'Bot' }],
   },
@@ -105,14 +97,6 @@ function buildWorkspaceNav(projectId: string): NavGroup[] {
         { label: 'Evaluation', path: `${base}/models/evaluation`, icon: 'BarChart3' },
         { label: 'Explain AI', path: `${base}/models/explain`, icon: 'Sparkles' },
         { label: 'Model Comparison', path: `${base}/models/comparison`, icon: 'GridCompare' },
-      ],
-    },
-    {
-      label: 'Production',
-      items: [
-        { label: 'Deployment', path: `${base}/production/deployment`, icon: 'Rocket' },
-        { label: 'Monitoring', path: `${base}/production/monitoring`, icon: 'Activity' },
-        { label: 'Batch Prediction', path: `${base}/production/batch`, icon: 'Send' },
       ],
     },
     {

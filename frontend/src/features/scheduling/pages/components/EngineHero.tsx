@@ -19,7 +19,7 @@ export function EngineHero({ isRunning, canRun, onRun, algorithmCount, mode = 'a
         </div>
         <h1 className={styles.title}>Build, train &amp; compare ML models</h1>
         <p className={styles.subtitle}>
-          Automatically preprocess your data, train multiple models, compare results and deploy the best one.
+          Automatically preprocess your data, train multiple models and compare results side by side.
         </p>
       </div>
       <div className={styles.right}>

@@ -34,11 +34,6 @@ export const projectSchema = z.object({
   status: z.enum(['active', 'archived', 'completed']).optional(),
 });
 
-export const deploymentSchema = z.object({
-  model_name: z.string().min(1, 'Model is required'),
-  endpoint_name: z.string().min(1, 'Endpoint name is required').regex(/^[a-z0-9-]+$/, 'Only lowercase letters, numbers, and hyphens'),
-});
-
 export const webhookSchema = z.object({
   name: z.string().min(1, 'Webhook name is required'),
   url: urlSchema,

@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
-  Database, Package, Rocket, Gauge, Activity, CheckCircle2,
+  Database, Package, Gauge, CheckCircle2,
   Upload, BrainCircuit, Terminal, Settings, ExternalLink, Target, TrendingUp,
   LineChart, Boxes, GitBranch, GraduationCap, Sparkles,
 } from 'lucide-react';
@@ -28,7 +28,6 @@ const PIPELINE: { key: string; label: string; icon: React.ReactNode; done: (p: P
   { key: 'features', label: 'Features', icon: <GitBranch className="w-4 h-4" />, done: (p) => (p.experiment_count || 0) > 0 },
   { key: 'train', label: 'Train', icon: <GraduationCap className="w-4 h-4" />, done: (p) => (p.experiment_count || 0) > 0 },
   { key: 'evaluate', label: 'Evaluate', icon: <Gauge className="w-4 h-4" />, done: (p) => (p.model_count || 0) > 0 },
-  { key: 'deploy', label: 'Deploy', icon: <Rocket className="w-4 h-4" />, done: (p) => (p.deployment_count || 0) > 0 },
 ];
 
 export default function ProjectOverview() {
@@ -56,9 +55,6 @@ export default function ProjectOverview() {
     if (project.model_count) {
       items.push({ title: 'Models registered', detail: `${project.model_count} model${project.model_count === 1 ? '' : 's'} in the registry`, time: project.updated_at || project.created_at });
     }
-    if (project.deployment_count) {
-      items.push({ title: 'Deployments active', detail: `${project.deployment_count} endpoint${project.deployment_count === 1 ? '' : 's'} live`, time: project.updated_at || project.created_at });
-    }
     items.push({ title: 'Last updated', detail: project.updated_at ? timeAgo(project.updated_at) : '—', time: project.updated_at || project.created_at });
     return items;
   }, [project]);
@@ -84,9 +80,7 @@ export default function ProjectOverview() {
   const quickActions = [
     { icon: <Upload className="w-4 h-4" />, title: 'Upload Dataset', desc: 'Add data to this project', onClick: () => navigate(`${base}/data/datasets`) },
     { icon: <BrainCircuit className="w-4 h-4" />, title: 'Run AutoML', desc: 'Let the engine find a model', onClick: () => navigate(`${base}/ml/automl`) },
-    { icon: <Rocket className="w-4 h-4" />, title: 'Deploy Model', desc: 'Ship a model to production', onClick: () => navigate(`${base}/production/deployment`) },
     { icon: <Terminal className="w-4 h-4" />, title: 'SQL Studio', desc: 'Query your data', onClick: () => navigate(`${base}/data/sql`) },
-    { icon: <Activity className="w-4 h-4" />, title: 'Monitoring', desc: 'Check endpoint health', onClick: () => navigate(`${base}/production/monitoring`) },
   ];
 
   return (
@@ -108,19 +102,9 @@ export default function ProjectOverview() {
           <span className={styles.statSub}>in the model registry</span>
         </div>
         <div className={styles.statCard}>
-          <div className={styles.statTop}><span className={styles.statLabel}>Deployments</span><div className={styles.statIcon}><Rocket className="w-4 h-4" /></div></div>
-          <span className={styles.statValue}>{p.deployment_count || 0}</span>
-          <span className={styles.statSub}>production endpoints</span>
-        </div>
-        <div className={styles.statCard}>
           <div className={styles.statTop}><span className={styles.statLabel}>Best Accuracy</span><div className={styles.statIcon}><Gauge className="w-4 h-4" /></div></div>
           <span className={styles.statValue}>{p.model_count ? '—' : '—'}</span>
           <span className={styles.statSub}>{p.model_count ? 'evaluate models to track' : 'no models trained yet'}</span>
-        </div>
-        <div className={styles.statCard}>
-          <div className={styles.statTop}><span className={styles.statLabel}>Prediction Requests</span><div className={styles.statIcon}><Activity className="w-4 h-4" /></div></div>
-          <span className={styles.statValue}>{p.deployment_count ? '—' : '0'}</span>
-          <span className={styles.statSub}>{p.deployment_count ? 'check monitoring tab' : 'no live endpoints'}</span>
         </div>
       </div>
 

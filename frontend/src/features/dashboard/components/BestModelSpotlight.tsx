@@ -1,7 +1,6 @@
 import { useMemo } from 'react';
-import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { Trophy, Rocket, Clock, ShieldCheck, Box } from 'lucide-react';
+import { Trophy, Clock, ShieldCheck, Box } from 'lucide-react';
 import SectionCard, { SectionRefresh } from './SectionCard';
 import { useModels } from '../../../hooks/useApi';
 import { getErrorMessage } from '../../../services/http';
@@ -85,7 +84,6 @@ export default function BestModelSpotlight() {
           <p className="text-xs text-zinc-400 mt-0.5">
             {best.algorithm || best.model_type || 'AutoML'}
             {best.version ? ` · v${best.version}` : ''}
-            {best.deployment_status ? ` · ${best.deployment_status}` : ''}
           </p>
 
           <div className="grid grid-cols-3 gap-3 p-3 rounded-lg bg-zinc-950/60 border border-zinc-800/80 mt-3">
@@ -110,7 +108,7 @@ export default function BestModelSpotlight() {
               <Clock className="w-3 h-3 text-zinc-500" />
               {best.updated_at
                 ? `Updated ${new Date(best.updated_at).toLocaleDateString()}`
-                : 'Ready for deployment'}
+                : 'Ready for inference'}
             </span>
             <div className="flex items-center gap-2">
               <button
@@ -119,15 +117,6 @@ export default function BestModelSpotlight() {
               >
                 View Model
               </button>
-              <motion.button
-                whileHover={{ y: -1 }}
-                whileTap={{ scale: 0.97 }}
-                onClick={() => navigate('/app/deployments')}
-                className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-indigo-600 text-white hover:bg-indigo-500 transition-colors shadow-sm flex items-center gap-1 cursor-pointer"
-              >
-                <Rocket className="w-3 h-3" />
-                <span>Deploy</span>
-              </motion.button>
             </div>
           </div>
         </div>

@@ -70,7 +70,7 @@ sequenceDiagram
     Frontend-->>User: Display prediction result
 ```
 
-## 4. Deployment Flow
+## 4. Model Registry Promotion Flow
 
 ```mermaid
 sequenceDiagram
@@ -79,16 +79,16 @@ sequenceDiagram
     participant API as FastAPI
     participant DB as Database
 
-    User->>Frontend: Select model + environment
-    Frontend->>API: POST /api/v1/deployments
-    API->>DB: INSERT deployment
-    API->>DB: INSERT notification
-    API-->>Frontend: 201 { id, endpoint_url, status }
-    Frontend-->>User: Show deployment details
+    User->>Frontend: Select model in registry
+    Frontend->>API: PUT /api/v1/models/{name}/promote
+    API->>DB: UPDATE model_registry SET status
+    API->>DB: INSERT audit_log
+    API-->>Frontend: 200 { name, status }
+    Frontend-->>User: Show updated model stage
 
-    Note over User,DB: Inference via deployment
-    User->>API: POST {endpoint_url}
-    API->>API: Load deployed model
+    Note over User,DB: Inference uses the registry
+    User->>API: POST /api/v1/predictions
+    API->>API: Load model from registry
     API-->>User: Prediction result
 ```
 

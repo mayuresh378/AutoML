@@ -137,10 +137,6 @@ def answer_question(question: str) -> str:
     if re.search(r"(clean|cleaning|missing|null|impute)", q):
         return _answer_cleaning(q, datasets)
 
-    # ── Deploy ──
-    if re.search(r"(deploy|production|serve|api.*endpoint|docker)", q):
-        return _answer_deploy(experiments)
-
     # ── Greeting / help ──
     if re.search(r"(hello|hi|hey|what can you do|help|capabilities|menu)", q):
         return _answer_help()
@@ -415,7 +411,7 @@ def _answer_experiment_summary(q, experiments, datasets):
             # Best model recommendation
             best = scored[0] if scored else None
             if best:
-                lines.append(f"\n  **Recommendation:** Deploy **{best.get('model', 'N/A')}** or retrain with different hyperparameters.")
+                lines.append(f"\n  **Recommendation:** Register **{best.get('model', 'N/A')}** in the Model Registry or retrain with different hyperparameters.")
             lines.append("")
 
     if failed:
@@ -589,30 +585,6 @@ def _answer_cleaning(q, datasets):
     return "\n".join(lines)
 
 
-# ─────────────────── Deploy ───────────────────
-
-def _answer_deploy(experiments):
-    successful = [e for e in experiments if e.get("status") == "success"]
-    lines = ["**Model Deployment Guide**\n"]
-    if successful:
-        best = max(successful, key=lambda e: e.get("cv_score", 0))
-        lines.append(f"Your best model: **{best.get('model', 'N/A')}** (score: {best.get('cv_score', 'N/A')})\n")
-
-    lines.append("**Steps to Deploy:**\n")
-    lines.append("1. Go to the **Models** page")
-    lines.append("2. Find your model and click **Deploy**")
-    lines.append("3. Choose environment (staging / production)")
-    lines.append("4. The model will be exposed as a REST API endpoint\n")
-
-    lines.append("**API Usage:**\n```python\nimport requests\n\nresponse = requests.post(\n    'http://your-server:8000/api/v1/predict',\n    files={'model_name': 'your_model.pkl'},\n    data={'payload': '{\"feature1\": 1.5, \"feature2\": \"value\"}'}\n)\nprint(response.json())\n```\n")
-
-    lines.append("**Best Practices:**")
-    lines.append("- Start with **staging** environment for testing")
-    lines.append("- Monitor prediction latency and accuracy in **Monitoring** page")
-    lines.append("- Set up retraining schedule for data drift")
-    return "\n".join(lines)
-
-
 # ─────────────────── Help ───────────────────
 
 def _answer_help():
@@ -630,7 +602,7 @@ I can help you with every step of your ML workflow:
 | **Feature Selection** | "Which features should I remove?", "Find correlated columns" |
 | **Experiment Summary** | "Summarize my experiments", "Compare my model results" |
 | **Data Cleaning** | "How should I clean my data?", "Handle missing values" |
-| **Deployment** | "How do I deploy a model?" |
+| **Model Registry** | "How do I register a model?", "Which model should I promote?" |
 
 *Tip: Mention a specific dataset name for more targeted advice!*"""
 

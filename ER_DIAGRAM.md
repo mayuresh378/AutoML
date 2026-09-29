@@ -2,7 +2,7 @@
 
 ## Overview
 
-18 tables across 7 domains: Users & Auth, Projects, ML Pipeline, Data, Operations, Monitoring, Marketplace.
+16 tables across 7 domains: Users & Auth, Projects, ML Pipeline, Data, Operations, Monitoring, Marketplace.
 
 ## Mermaid ER Diagram
 
@@ -15,7 +15,6 @@ erDiagram
     User ||--o{ Project : "owns"
     User ||--o{ Experiment : "runs"
     User ||--o{ ModelRegistry : "registers"
-    User ||--o{ Deployment : "deploys"
     User ||--o{ Dataset : "uploads"
     User ||--o{ PredictionLog : "makes"
     User ||--o{ Notification : "receives"
@@ -26,12 +25,9 @@ erDiagram
 
     Project ||--o{ Experiment : "contains"
     Project ||--o{ ModelRegistry : "contains"
-    Project ||--o{ Deployment : "contains"
     Project ||--o{ Dataset : "contains"
 
     Experiment ||--o{ ModelRegistry : "produces"
-
-    ModelRegistry ||--o{ Deployment : "serves"
 ```
 
 ## Table Descriptions
@@ -46,7 +42,6 @@ erDiagram
 | projects | Projects | ML project containers |
 | experiments | ML Pipeline | Training run records |
 | model_registry | ML Pipeline | Trained model artifacts |
-| deployments | ML Pipeline | Deployed model endpoints |
 | datasets | Data | Uploaded dataset metadata |
 | prediction_logs | Data | Inference request history |
 | notifications | Operations | User notification messages |
@@ -60,5 +55,4 @@ erDiagram
 - User -> Projects (1:N): A user can own multiple projects
 - Project -> Experiments (1:N): A project contains many experiment runs
 - Experiment -> ModelRegistry (1:N): An experiment can produce multiple registered models
-- ModelRegistry -> Deployment (1:N): A registered model can have multiple deployments
 - User <-> Team (M:N): Through team_members junction table

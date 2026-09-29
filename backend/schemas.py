@@ -60,18 +60,6 @@ class ModelRegistryResponse(BaseModel):
     created_at: datetime
 
 
-class DeploymentResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: str
-    name: str
-    endpoint_url: Optional[str] = None
-    status: str
-    environment: str
-    requests_count: int
-    created_at: datetime
-
-
 class WebhookCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
     url: str = Field(..., max_length=500)

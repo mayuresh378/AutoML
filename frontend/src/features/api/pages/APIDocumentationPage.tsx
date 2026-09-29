@@ -55,12 +55,6 @@ const endpoints = [
     auth: true,
   },
   {
-    method: 'GET',
-    path: '/api/v1/deployments',
-    desc: 'List all deployments',
-    auth: true,
-  },
-  {
     method: 'POST',
     path: '/api/v1/predictions',
     desc: 'Run a prediction',
@@ -148,7 +142,7 @@ export default function APIDocumentationPage() {
           <Card>
             <CardHeader><CardTitle>Running Predictions</CardTitle></CardHeader>
             <CardContent className="space-y-4">
-              <p className="text-sm text-zinc-400">Run a prediction against a deployed model:</p>
+              <p className="text-sm text-zinc-400">Run a prediction against a registered model:</p>
               <CodeBlock code={predictCode} id="predict" />
             </CardContent>
           </Card>

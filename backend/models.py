@@ -43,7 +43,6 @@ class User(Base):
     audit_logs = relationship("AuditLog", back_populates="user")
     experiments = relationship("Experiment", back_populates="user")
     model_registry = relationship("ModelRegistry", back_populates="user")
-    deployments = relationship("Deployment", back_populates="user")
     datasets = relationship("Dataset", back_populates="user")
     prediction_logs = relationship("PredictionLog", back_populates="user")
     notifications = relationship("Notification", back_populates="user")
@@ -102,7 +101,6 @@ class Project(Base):
     user = relationship("User", back_populates="projects")
     experiments = relationship("Experiment", back_populates="project")
     model_registry = relationship("ModelRegistry", back_populates="project")
-    deployments = relationship("Deployment", back_populates="project")
     datasets = relationship("Dataset", back_populates="project")
 
 
@@ -184,45 +182,6 @@ class ModelRegistry(Base):
     user = relationship("User", back_populates="model_registry")
     project_id = Column(String, ForeignKey("projects.id"), nullable=True, index=True)
     project = relationship("Project", back_populates="model_registry")
-    deployments = relationship("Deployment", back_populates="model")
-
-
-class Deployment(Base):
-    __tablename__ = "deployments"
-
-    id = Column(String, primary_key=True, default=_uuid)
-    name = Column(String, nullable=False)
-    endpoint_url = Column(String, nullable=True)
-    status = Column(String, default="active", index=True)
-    environment = Column(String, default="production")
-    requests_count = Column(Integer, default=0)
-    avg_latency_ms = Column(Float, nullable=True)
-    config = Column(JSON, nullable=True)
-    deleted_at = Column(DateTime, nullable=True, index=True)
-    created_at = Column(DateTime, default=_now, index=True)
-    updated_at = Column(DateTime, default=_now, onupdate=_now)
-
-    deployment_type = Column(String, default="rest_api")
-    allow_anonymous = Column(Boolean, default=False)
-    allowed_users = Column(JSON, nullable=True)
-    allowed_ips = Column(JSON, nullable=True)
-    rate_limit = Column(Integer, nullable=True)
-    api_key_required = Column(Boolean, default=True)
-    docker_image = Column(String, nullable=True)
-    docker_port = Column(Integer, default=8080)
-    docker_compose = Column(Text, nullable=True)
-    fastapi_code = Column(Text, nullable=True)
-    onnx_model_path = Column(String, nullable=True)
-    download_url = Column(String, nullable=True)
-    health_check_url = Column(String, nullable=True)
-
-    model_id = Column(String, ForeignKey("model_registry.id"), nullable=True, index=True)
-    model = relationship("ModelRegistry", back_populates="deployments")
-    user_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
-    user = relationship("User", back_populates="deployments")
-    project_id = Column(String, ForeignKey("projects.id"), nullable=True, index=True)
-    project = relationship("Project", back_populates="deployments")
-    history = relationship("DeploymentHistory", back_populates="deployment", order_by="desc(DeploymentHistory.created_at)")
 
 
 class Dataset(Base):
@@ -453,18 +412,3 @@ class ActivityLog(Base):
 
     user_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
     user = relationship("User", back_populates="activity_logs")
-
-
-class DeploymentHistory(Base):
-    __tablename__ = "deployment_history"
-
-    id = Column(String, primary_key=True, default=_uuid)
-    deployment_id = Column(String, ForeignKey("deployments.id"), nullable=False, index=True)
-    action = Column(String, nullable=False)
-    old_status = Column(String, nullable=True)
-    new_status = Column(String, nullable=True)
-    details = Column(JSON, nullable=True)
-    actor = Column(String, nullable=True)
-    created_at = Column(DateTime, default=_now, index=True)
-
-    deployment = relationship("Deployment", back_populates="history")

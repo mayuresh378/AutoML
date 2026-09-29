@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, Copy, Archive, Trash2, Pencil, Target, TrendingUp, LineChart, Boxes,
   LayoutDashboard, Database, BarChart3, Sparkles, Terminal, BrainCircuit, GraduationCap,
-  SlidersHorizontal, Gauge, Lightbulb, Package, Rocket, Activity, Settings,
+  SlidersHorizontal, Gauge, Lightbulb, Package, Settings,
   Clock, User, Globe, Upload, GitBranch, CheckCircle2, ExternalLink, PlayCircle,
   UserRound, Users,
 } from 'lucide-react';
@@ -27,7 +27,7 @@ import styles from './ProjectDetailPage.module.css';
 
 type TabKey = 'overview' | 'datasets' | 'profiling' | 'cleaning' | 'features' | 'sql'
   | 'automl' | 'training' | 'hpo' | 'evaluation' | 'explain'
-  | 'registry' | 'deployment' | 'monitoring' | 'settings';
+  | 'registry' | 'settings';
 
 interface TabDef {
   key: TabKey;
@@ -40,7 +40,7 @@ interface TabDef {
 const TABS: TabDef[] = [
   { key: 'overview', label: 'Overview', icon: <LayoutDashboard className="w-4 h-4" /> },
   { key: 'datasets', label: 'Datasets', icon: <Database className="w-4 h-4" />, route: '/app/datasets', blurb: 'Upload, preview, and manage the datasets linked to this project.' },
-  { key: 'profiling', label: 'Data Profiling', icon: <BarChart3 className="w-4 h-4" />, route: '/app/profiling', blurb: 'Run automated data profiling to understand distributions, quality, and drift.' },
+  { key: 'profiling', label: 'Data Profiling', icon: <BarChart3 className="w-4 h-4" />, route: '/app/profiling', blurb: 'Run automated data profiling to understand distributions and quality issues.' },
   { key: 'cleaning', label: 'Cleaning', icon: <Sparkles className="w-4 h-4" />, route: '/app/cleaning', blurb: 'Clean and transform your data with auto-clean operations and pipelines.' },
   { key: 'features', label: 'Feature Engineering', icon: <GitBranch className="w-4 h-4" />, route: '/app/feature-engineering', blurb: 'Design, generate, and validate features for this project.' },
   { key: 'sql', label: 'SQL Studio', icon: <Terminal className="w-4 h-4" />, route: '/app/sql', blurb: 'Query your data warehouse and datasets with the built-in SQL editor.' },
@@ -50,8 +50,6 @@ const TABS: TabDef[] = [
   { key: 'evaluation', label: 'Evaluation', icon: <Gauge className="w-4 h-4" />, route: '/app/evaluation', blurb: 'Evaluate model performance against test sets and baselines.' },
   { key: 'explain', label: 'Explain AI', icon: <Lightbulb className="w-4 h-4" />, route: '/app/explain', blurb: 'Generate explanations and feature attributions for your models.' },
   { key: 'registry', label: 'Model Registry', icon: <Package className="w-4 h-4" />, route: '/app/models', blurb: 'Version, stage, approve, and promote models across environments.' },
-  { key: 'deployment', label: 'Deployment', icon: <Rocket className="w-4 h-4" />, route: '/app/deployments', blurb: 'Deploy models as real-time endpoints or batch inference jobs.' },
-  { key: 'monitoring', label: 'Monitoring', icon: <Activity className="w-4 h-4" />, route: '/app/monitoring', blurb: 'Monitor production endpoints for drift, latency, and errors.' },
   { key: 'settings', label: 'Settings', icon: <Settings className="w-4 h-4" /> },
 ];
 
@@ -68,7 +66,6 @@ const PIPELINE: { key: string; label: string; icon: React.ReactNode; done: (p: P
   { key: 'features', label: 'Features', icon: <GitBranch className="w-4 h-4" />, done: (p) => (p.experiment_count || 0) > 0 },
   { key: 'train', label: 'Train', icon: <GraduationCap className="w-4 h-4" />, done: (p) => (p.experiment_count || 0) > 0 },
   { key: 'evaluate', label: 'Evaluate', icon: <Gauge className="w-4 h-4" />, done: (p) => (p.model_count || 0) > 0 },
-  { key: 'deploy', label: 'Deploy', icon: <Rocket className="w-4 h-4" />, done: (p) => (p.deployment_count || 0) > 0 },
 ];
 
 export default function ProjectDetailPage() {
@@ -164,9 +161,6 @@ export default function ProjectDetailPage() {
     if (project.model_count) {
       items.push({ title: 'Models registered', detail: `${project.model_count} model${project.model_count === 1 ? '' : 's'} in the registry`, time: project.updated_at || project.created_at });
     }
-    if (project.deployment_count) {
-      items.push({ title: 'Deployments active', detail: `${project.deployment_count} endpoint${project.deployment_count === 1 ? '' : 's'} live`, time: project.updated_at || project.created_at });
-    }
     items.push({ title: 'Last updated', detail: project.updated_at ? timeAgo(project.updated_at) : '—', time: project.updated_at || project.created_at });
     return items;
   }, [project]);
@@ -202,9 +196,7 @@ export default function ProjectDetailPage() {
   const quickActions = [
     { icon: <Upload className="w-4 h-4" />, title: 'Upload Dataset', desc: 'Add data to this project', onClick: () => navigate('/app/datasets') },
     { icon: <BrainCircuit className="w-4 h-4" />, title: 'Run AutoML', desc: 'Let the engine find a model', onClick: () => navigate('/app/engine') },
-    { icon: <Rocket className="w-4 h-4" />, title: 'Deploy Model', desc: 'Ship a model to production', onClick: () => navigate('/app/deployments') },
     { icon: <Terminal className="w-4 h-4" />, title: 'SQL Studio', desc: 'Query your data', onClick: () => navigate('/app/sql') },
-    { icon: <Activity className="w-4 h-4" />, title: 'Monitoring', desc: 'Check endpoint health', onClick: () => navigate('/app/monitoring') },
   ];
 
   const activeTab = TABS.find((t) => t.key === tab)!;
@@ -279,19 +271,9 @@ export default function ProjectDetailPage() {
               <span className={styles.statSub}>in the model registry</span>
             </div>
             <div className={styles.statCard}>
-              <div className={styles.statTop}><span className={styles.statLabel}>Deployments</span><div className={styles.statIcon}><Rocket className="w-4 h-4" /></div></div>
-              <span className={styles.statValue}>{p.deployment_count || 0}</span>
-              <span className={styles.statSub}>production endpoints</span>
-            </div>
-            <div className={styles.statCard}>
               <div className={styles.statTop}><span className={styles.statLabel}>Best Accuracy</span><div className={styles.statIcon}><Gauge className="w-4 h-4" /></div></div>
               <span className={styles.statValue}>{p.model_count ? '—' : '—'}</span>
               <span className={styles.statSub}>{p.model_count ? 'evaluate models to track' : 'no models trained yet'}</span>
-            </div>
-            <div className={styles.statCard}>
-              <div className={styles.statTop}><span className={styles.statLabel}>Prediction Requests</span><div className={styles.statIcon}><Activity className="w-4 h-4" /></div></div>
-              <span className={styles.statValue}>{p.deployment_count ? '—' : '0'}</span>
-              <span className={styles.statSub}>{p.deployment_count ? 'check monitoring tab' : 'no live endpoints'}</span>
             </div>
           </div>
 

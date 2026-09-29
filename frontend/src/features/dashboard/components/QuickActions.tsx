@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { Upload, Play, Rocket } from 'lucide-react';
+import { Upload, Play } from 'lucide-react';
 
 const ACTION_CLASSES = [
   'hover:border-cyan-500/30 hover:bg-cyan-500/[0.06]',
@@ -28,14 +28,6 @@ export default function QuickActions() {
       color: 'text-emerald-400',
       bg: 'bg-emerald-500/10 border-emerald-500/20',
       onClick: () => navigate('/app/training'),
-    },
-    {
-      label: 'Deploy Model',
-      description: 'Ship a model to production',
-      icon: Rocket,
-      color: 'text-amber-400',
-      bg: 'bg-amber-500/10 border-amber-500/20',
-      onClick: () => navigate('/app/deployments'),
     },
   ];
 

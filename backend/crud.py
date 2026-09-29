@@ -9,7 +9,7 @@ from sqlalchemy import desc
 from jose import jwt
 
 from models import (User, Team, TeamMember, ApiKey, Experiment, ModelRegistry,
-                    Deployment, PredictionLog, Webhook, AuditLog,
+                    PredictionLog, Webhook, AuditLog,
                     Project, MarketplaceItem, Dataset, DatasetShare, Notification, ActivityLog,
                     DatasetCleanStep, CleaningHistory, SavedQuery, QueryHistory)
 
@@ -183,50 +183,6 @@ def update_model_meta(db: Session, name: str, status: str = None, tags: list = N
     return model
 
 
-# ─── Deployments ──────────────────────────────────────────────────────
-
-def list_deployments(db: Session, limit: int = 100, offset: int = 0, project_id: str = None, user_id: str = None) -> list:
-    q = db.query(Deployment).options(
-        selectinload(Deployment.model),
-        selectinload(Deployment.user),
-        selectinload(Deployment.project),
-    ).order_by(desc(Deployment.created_at))
-    if project_id:
-        q = q.filter(Deployment.project_id == project_id)
-    if user_id:
-        q = q.filter((Deployment.user_id == user_id) | (Deployment.user_id == None))
-    return q.offset(offset).limit(limit).all()
-
-
-def create_deployment(db: Session, data: dict) -> Deployment:
-    dep = Deployment(id=_uid(), created_at=_now(), **data)
-    try:
-        db.add(dep)
-        db.commit()
-        db.refresh(dep)
-    except Exception:
-        db.rollback()
-        raise
-    log_audit(db, data.get("user_id", "system"), "deployment.created",
-              dep.name, "deployment", dep.id)
-    return dep
-
-
-def delete_deployment(db: Session, dep_id: str) -> bool:
-    dep = db.query(Deployment).filter(Deployment.id == dep_id).first()
-    if dep:
-        name = dep.name
-        try:
-            db.delete(dep)
-            db.commit()
-        except Exception:
-            db.rollback()
-            raise
-        log_audit(db, "system", "deployment.deleted", name, "deployment", dep_id)
-        return True
-    return False
-
-
 # ─── Webhooks ─────────────────────────────────────────────────────────
 
 def list_webhooks(db: Session, limit: int = 100, user_id: str = None) -> list:
@@ -343,7 +299,6 @@ def get_project(db: Session, project_id: str) -> Optional[Project]:
     return db.query(Project).options(
         selectinload(Project.experiments),
         selectinload(Project.model_registry),
-        selectinload(Project.deployments),
         selectinload(Project.datasets),
     ).filter(Project.id == project_id).first()
 
@@ -568,7 +523,6 @@ def global_search(db: Session, query: str, dataset_dir: str, user_id: str = None
     ).options(
         selectinload(Project.experiments),
         selectinload(Project.model_registry),
-        selectinload(Project.deployments),
         selectinload(Project.datasets),
     )
     if user_id:
@@ -691,45 +645,6 @@ def get_experiment(db: Session, exp_id: str) -> Optional[Experiment]:
         selectinload(Experiment.project),
         selectinload(Experiment.model_registry),
     ).filter(Experiment.id == exp_id).first()
-
-
-def get_deployment(db: Session, dep_id: str) -> Optional[Deployment]:
-    return db.query(Deployment).filter(Deployment.id == dep_id).first()
-
-
-def update_deployment(db: Session, dep_id: str, **kwargs) -> Optional[Deployment]:
-    dep = get_deployment(db, dep_id)
-    if not dep:
-        return None
-    for k, v in kwargs.items():
-        if v is not None and hasattr(dep, k):
-            setattr(dep, k, v)
-    dep.updated_at = _now()
-    db.commit()
-    db.refresh(dep)
-    log_audit(db, "system", "deployment.updated", dep.name, "deployment", dep.id)
-    return dep
-
-
-def create_deployment_history(db: Session, deployment_id: str, action: str,
-                               old_status: str = None, new_status: str = None,
-                               details: dict = None, actor: str = None):
-    from models import DeploymentHistory
-    entry = DeploymentHistory(
-        id=_uid(), deployment_id=deployment_id, action=action,
-        old_status=old_status, new_status=new_status,
-        details=details, actor=actor, created_at=_now(),
-    )
-    db.add(entry)
-    db.commit()
-    return entry
-
-
-def list_deployment_history(db: Session, deployment_id: str, limit: int = 50):
-    from models import DeploymentHistory
-    return db.query(DeploymentHistory).filter(
-        DeploymentHistory.deployment_id == deployment_id
-    ).order_by(desc(DeploymentHistory.created_at)).limit(limit).all()
 
 
 def count_unread_notifications(db: Session, user_id: str = None) -> int:

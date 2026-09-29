@@ -1135,7 +1135,7 @@ REPORT_SECTIONS = [
     ("Reproducibility", "reproducibility"),
     ("Resource & Runtime Profile", "resources"),
     ("Champion Model Card", "model_card"),
-    ("Deployment Readiness", "deployment"),
+    ("Model Readiness", "readiness"),
     ("Recommendations & Next Steps", "recommendations"),
     ("Appendix: Full Parameter Grids", "appendix"),
 ]
@@ -1304,8 +1304,8 @@ def build_report(profile, results, task, best, tgt, mode, elapsed, outer_info, n
             "training_time": best.get("training_time"), "optimized": best.get("baseline_improved"),
         }
 
-    # 25 Deployment readiness
-    sections["deployment"] = {"ready": bool(best), "champion": best["name"] if best else None,
+    # 25 Model readiness
+    sections["readiness"] = {"ready": bool(best), "champion": best["name"] if best else None,
                               "artifacts": [{"model": r["name"], "path": r.get("model_path")} for r in successful if r.get("model_path")],
                               "persisted": bool(best)}
 
@@ -1319,7 +1319,7 @@ def build_report(profile, results, task, best, tgt, mode, elapsed, outer_info, n
     if profile.get("high_cardinality"):
         recs.append(f"High-cardinality columns {profile.get('high_cardinality')[0]} were one-hot-encoded; consider target encoding if cardinality is very high.")
     if not recs:
-        recs.append("No critical data issues detected; the pipeline is ready for deployment.")
+        recs.append("No critical data issues detected; the pipeline is ready to use.")
     sections["recommendations"] = recs
 
     # 27 Appendix

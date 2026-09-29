@@ -1,14 +1,13 @@
 import { useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { Database, Cpu, Server, TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { Database, Cpu, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import AnimatedNumber from '../../../components/motion/AnimatedNumber';
 import { MetricSkeleton } from '../../../components/Skeleton';
 import { ErrorState } from '../../../components/ui/ErrorState';
 import {
   useDatasets,
   useModels,
-  useDeployments,
   useAnalytics,
 } from '../../../hooks/useApi';
 import { getErrorMessage } from '../../../services/http';
@@ -62,22 +61,19 @@ export default function MetricCards() {
   const navigate = useNavigate();
   const datasets = useDatasets();
   const models = useModels();
-  const deployments = useDeployments();
   const analytics = useAnalytics();
 
   const isLoading =
-    datasets.isLoading || models.isLoading || deployments.isLoading;
-  const hasError = datasets.isError || models.isError || deployments.isError;
+    datasets.isLoading || models.isLoading;
+  const hasError = datasets.isError || models.isError;
   const refetch = () => {
     datasets.refetch();
     models.refetch();
-    deployments.refetch();
   };
 
   const cards = useMemo<MetricCardDef[]>(() => {
     const dsList = datasets.data ?? [];
     const modelList = models.data ?? [];
-    const depList = deployments.data ?? [];
     const analyticsData = analytics.data;
 
     const now = new Date();
@@ -89,11 +85,6 @@ export default function MetricCards() {
     const readyModels = modelList.filter(
       (m) => m.status === 'ready' || m.status === 'production' || m.status === 'registered',
     );
-
-    const depActive = depList.filter(
-      (d) => d.status === 'running' || d.status === 'active',
-    ).length;
-    const depFailed = depList.filter((d) => d.status === 'failed').length;
 
     let dsTrend: number | null = null;
     if (analyticsData && Array.isArray(analyticsData.dataset_growth) && analyticsData.dataset_growth.length) {
@@ -108,10 +99,6 @@ export default function MetricCards() {
       const previous = dsList.filter((d) => d.created_at && new Date(d.created_at) >= daysAgo(14) && new Date(d.created_at) < daysAgo(7)).length;
       dsTrend = computeDelta(recent, previous);
     }
-
-    const depRecent = depList.filter((d) => d.created_at && new Date(d.created_at) >= daysAgo(7)).length;
-    const depPrevious = depList.filter((d) => d.created_at && new Date(d.created_at) >= daysAgo(14) && new Date(d.created_at) < daysAgo(7)).length;
-    const depTrend = computeDelta(depRecent, depPrevious);
 
     const bestModel = [...readyModels].sort(
       (a, b) => (b.cv_score ?? b.metrics?.accuracy ?? 0) - (a.cv_score ?? a.metrics?.accuracy ?? 0),
@@ -151,22 +138,8 @@ export default function MetricCards() {
           ? [{ label: 'best score', value: bestScore, color: 'text-emerald-400 font-semibold' }]
           : [{ label: 'ready', value: String(readyModels.length), color: 'text-emerald-400' }],
       },
-      {
-        key: 'deployments',
-        label: 'Deployments',
-        value: depList.length,
-        icon: Server,
-        colorText: 'text-amber-400',
-        colorBg: 'bg-amber-500/10 border-amber-500/20',
-        path: '/app/deployments',
-        trend: depTrend,
-        breakdown: [
-          { label: 'active', value: String(depActive), color: 'text-emerald-400' },
-          { label: 'failed', value: String(depFailed), color: 'text-rose-400' },
-        ],
-      },
     ];
-  }, [datasets.data, models.data, deployments.data, analytics.data]);
+  }, [datasets.data, models.data, analytics.data]);
 
   if (isLoading) {
     return (
@@ -181,7 +154,7 @@ export default function MetricCards() {
       <div className="rounded-xl border border-white/10 bg-white/[0.03]">
         <ErrorState
           title="Unable to load this section"
-          message={getErrorMessage(datasets.error || models.error || deployments.error, 'Failed to load dashboard metrics.')}
+          message={getErrorMessage(datasets.error || models.error, 'Failed to load dashboard metrics.')}
           onRetry={refetch}
           className="py-8"
         />

@@ -511,51 +511,11 @@ Returns the model file as `application/octet-stream` attachment.
 
 ---
 
-## Deployments
-
-| Method | Endpoint | Description | Auth |
-|--------|----------|-------------|------|
-| GET | `/api/v1/deployments` | List all deployments (paginated) | Optional |
-| POST | `/api/v1/deployments` | Create a new deployment | Optional |
-| DELETE | `/api/v1/deployments/{dep_id}` | Delete a deployment | Optional |
-
-### GET `/api/v1/deployments`
-
-**Response item fields:** `id`, `model_name`, `endpoint_name`, `endpoint_url`, `status`, `environment`, `requests_count`, `avg_latency_ms`, `created_at`
-
-### POST `/api/v1/deployments`
-
-Deploy a trained model as a serving endpoint.
-
-**Request body** (`multipart/form-data`):
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `model_name` | string | yes | Model filename (e.g. `titanic_RandomForest.pkl`) |
-| `endpoint_name` | string | yes | Custom endpoint name |
-| `project_id` | string | no | Associate with a project |
-
-**Response** `201 Created`:
-
-```json
-{
-  "id": "uuid",
-  "model_name": "titanic_RandomForest.pkl",
-  "endpoint_name": "titanic-production",
-  "endpoint_url": "/api/v1/predictions?model=titanic_RandomForest.pkl",
-  "status": "active",
-  "created_at": "2026-07-14T12:00:00"
-}
-```
-
----
-
 ## Predictions
 
 | Method | Endpoint | Description | Auth |
 |--------|----------|-------------|------|
 | POST | `/api/v1/predictions` | Single prediction | Optional |
-| POST | `/api/v1/batch-predictions` | Batch predictions on dataset file | Optional |
 | POST | `/api/v1/explain` | Explain prediction (SHAP/feature importance) | Optional |
 | GET | `/api/v1/predictions/history` | Prediction history (paginated) | Optional |
 
@@ -577,30 +537,6 @@ Run a single prediction using a trained model.
   "prediction": 1,
   "confidence": 0.87,
   "latency_ms": 12.3
-}
-```
-
-### POST `/api/v1/batch-predictions`
-
-Run predictions on every row of a dataset file.
-
-**Request body** (`multipart/form-data`):
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `model_name` | string | yes | Model filename |
-| `file_name` | string | yes | Dataset filename |
-
-**Response** `200 OK`:
-
-```json
-{
-  "predictions": [
-    {"PassengerId": 1, "Pclass": 3, "prediction": 0, "confidence": 0.92},
-    {"PassengerId": 2, "Pclass": 1, "prediction": 1, "confidence": 0.78}
-  ],
-  "count": 891,
-  "latency_ms": 12450.0
 }
 ```
 
@@ -704,7 +640,7 @@ Returns a fixed list of starter project templates.
 
 ### GET `/api/v1/projects/{project_id}`
 
-Returns the project with all associated datasets, experiments, models, and deployments.
+Returns the project with all associated datasets, experiments, and models.
 
 **Response** `200 OK`:
 
@@ -719,11 +655,9 @@ Returns the project with all associated datasets, experiments, models, and deplo
   "datasets": [{"name": "churn.csv", "rows": 5000, "columns": [...], "size_kb": 200}],
   "experiments": [{"id": "uuid", "name": "churn-RandomForest", "model": "RandomForest", "cv_score": 0.87}],
   "models": [{"id": "uuid", "name": "churn_RandomForest", "model_type": "RandomForest", "cv_score": 0.87, "status": "staging"}],
-  "deployments": [],
   "dataset_count": 1,
   "experiment_count": 1,
   "model_count": 1,
-  "deployment_count": 0,
   "created_at": "2026-07-14T12:00:00",
   "updated_at": "2026-07-14T12:30:00"
 }
@@ -804,7 +738,7 @@ Returns aggregate dashboard analytics (training counts, model performance trends
 **Response item fields:** `id`, `title`, `message`, `type`, `category`, `resource_type`, `resource_id`, `read`, `created_at`
 
 **Notification types:** `success`, `error`, `info`, `warning`  
-**Categories:** `upload`, `training`, `deployment`, `system`
+**Categories:** `upload`, `training`, `model`, `system`
 
 ---
 
@@ -824,7 +758,7 @@ Returns aggregate dashboard analytics (training counts, model performance trends
 {
   "name": "Slack Notifications",
   "url": "https://hooks.slack.com/services/...",
-  "events": ["training.completed", "deployment.created"]
+  "events": ["training.completed", "model.registered"]
 }
 ```
 
@@ -925,7 +859,7 @@ Returns aggregate dashboard analytics (training counts, model performance trends
 
 ---
 
-## Monitoring & Health
+## Health & System Metrics
 
 | Method | Endpoint | Description | Auth |
 |--------|----------|-------------|------|
@@ -975,10 +909,12 @@ Returns detailed system metrics including CPU, memory, disk, and network informa
 
 ```json
 {
-  "modelsTrained": 24,
-  "activeDeployments": 5,
-  "inferenceRequestsToday": 12,
-  "avgLatencyMs": 1250.0
+  "total_models": 24,
+  "total_datasets": 5,
+  "total_experiments": 12,
+  "total_predictions": 87,
+  "avg_training_time": 1.2,
+  "success_rate": 0.95
 }
 ```
 
@@ -1152,12 +1088,11 @@ The following tags are used to group endpoints in the auto-generated OpenAPI doc
 | Experiments | Training experiment records |
 | Training | Model training, HPO tuning, AutoML engine |
 | Models | Model registry, download, metadata |
-| Deployments | Model deployment management |
-| Predictions | Single & batch predictions, explanation |
+| Predictions | Single predictions, explanation |
 | Webhooks | Webhook integration management |
 | Teams | Team management |
 | API Keys | API key management |
-| Monitoring | System monitoring metrics & stats |
+| Monitoring | System health & resource metrics |
 | Projects | Project management |
 | Marketplace | Model & template marketplace |
 | Activity | Activity timeline & audit logs |

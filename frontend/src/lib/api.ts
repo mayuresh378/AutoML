@@ -9,7 +9,6 @@ import { authService } from '../services/auth.service';
 import { datasetsService } from '../services/datasets.service';
 import { trainingService } from '../services/training.service';
 import { modelsService } from '../services/models.service';
-import { deploymentsService } from '../services/deployments.service';
 import { predictionsService } from '../services/predictions.service';
 import { monitoringService } from '../services/monitoring.service';
 import { activityService } from '../services/activity.service';
@@ -44,7 +43,6 @@ export const api = {
   datasets: datasetsService,
   training: trainingService,
   models: modelsService,
-  deployments: deploymentsService,
   predictions: predictionsService,
   monitoring: monitoringService,
   activity: activityService,

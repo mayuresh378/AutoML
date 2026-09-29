@@ -37,7 +37,7 @@ const sections: { id: Section; label: string; icon: React.ReactNode; badge?: str
 
 const notificationEvents = [
   { id: 'training', name: 'Training Complete', desc: 'When a training job finishes' },
-  { id: 'deployment', name: 'Deployment Status', desc: 'When a deployment changes state' },
+  { id: 'model', name: 'Model Registry', desc: 'When a model stage or status changes' },
   { id: 'experiment', name: 'Experiment Results', desc: 'When an experiment completes' },
   { id: 'alerts', name: 'System Alerts', desc: 'When system resources are critical' },
 ];
@@ -249,7 +249,7 @@ function NotificationsSection() {
   });
   const [events, setEvents] = useState<Record<string, { email: boolean; slack: boolean; inApp: boolean }>>({
     training: { email: true, slack: true, inApp: true },
-    deployment: { email: true, slack: false, inApp: true },
+    model: { email: true, slack: false, inApp: true },
     experiment: { email: false, slack: true, inApp: true },
     alerts: { email: true, slack: true, inApp: true },
   });
