@@ -608,12 +608,12 @@ function DataQualityCard({
   const outSev = outPct >= 8 ? 'high' : outPct >= 3 ? 'medium' : 'low';
 
   return (
-    <section aria-label="Data quality" className="rounded-xl border border-white/[0.08] bg-card p-5">
-      <div className="flex items-center justify-between mb-4">
+    <section aria-label="Data quality" className="rounded-xl border border-white/[0.08] bg-card px-5 py-5">
+      <div className="flex items-center justify-between gap-2 mb-5">
         <h3 className="text-sm font-semibold text-zinc-100">Data Quality</h3>
         {qs && (
-          <span className={cn('rounded-md bg-white/[0.04] px-2 py-0.5 text-xs font-mono font-semibold', gradeTextCls(qs.grade))}>
-            {qs.grade}
+          <span className={cn('inline-flex items-center rounded-lg border border-white/[0.06] bg-white/[0.04] px-2.5 py-1 text-xs font-mono font-semibold tracking-wide', gradeTextCls(qs.grade))}>
+            Grade {qs.grade}
           </span>
         )}
       </div>
@@ -626,31 +626,36 @@ function DataQualityCard({
           </button>
         </div>
       ) : loading || !analysis ? (
-        <div className="space-y-3 animate-pulse">
-          <div className="flex justify-center py-2"><div className="w-28 h-28 rounded-full bg-white/[0.06]" /></div>
-          {[0, 1, 2, 3].map((i) => <div key={i} className="h-4 rounded bg-white/[0.06]" style={{ width: `${90 - i * 12}%` }} />)}
+        <div className="space-y-5 animate-pulse">
+          <div className="flex justify-center py-2"><div className="w-36 h-36 rounded-full bg-white/[0.06]" /></div>
+          <div className="pt-4 border-t border-white/[0.06] grid grid-cols-2 gap-2.5">
+            {[0, 1, 2, 3].map((i) => <div key={i} className="h-16 rounded-lg bg-white/[0.05]" />)}
+          </div>
         </div>
       ) : qs ? (
         <>
-          <div className="flex items-center gap-5">
+          <div className="flex flex-col items-center">
             <QualityGauge
               score={qs.total}
               grade={qs.grade}
-              size={128}
-              stroke={11}
+              size={150}
+              stroke={12}
               centerNode={
-                <div className="flex flex-col items-center">
-                  <span className="text-3xl font-bold tracking-tight" style={{ color: gradeColor(qs.grade) }}>{Math.round(qs.total)}</span>
-                  <span className="text-[9px] uppercase tracking-widest text-zinc-500 mt-1">Score</span>
-                  <span className="text-xs font-semibold mt-0.5" style={{ color: gradeColor(qs.grade) }}>{qs.grade}</span>
+                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                  <span className="text-4xl font-bold tracking-tight leading-none" style={{ color: gradeColor(qs.grade) }}>{Math.round(qs.total)}</span>
+                  <span className="mt-2 text-[10px] uppercase tracking-widest text-zinc-500">Score</span>
                 </div>
               }
             />
-            <div className="flex-1 min-w-0 space-y-2.5">
-              <MetricRow sev={analysis.missing?.severity} label="Missing" value={`${fmt.int(analysis.missing?.total_missing)} · ${fmt.pct(analysis.missing?.missing_pct)}`} />
-              <MetricRow sev={analysis.duplicates?.severity} label="Duplicates" value={`${fmt.int(analysis.duplicates?.count)} · ${fmt.pct(analysis.duplicates?.pct)}`} />
-              <MetricRow sev={outSev} label="Outliers" value={`${fmt.int(analysis.outliers?.total_outliers)} · ${fmt.pct(outPct)} avg`} />
-              <MetricRow
+            <span className="mt-2 text-xs font-semibold uppercase tracking-wider" style={{ color: gradeColor(qs.grade) }}>Grade {qs.grade}</span>
+          </div>
+
+          <div className="mt-6 pt-4 border-t border-white/[0.06]">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <MetricTile sev={analysis.missing?.severity} label="Missing" value={fmt.int(analysis.missing?.total_missing)} sub={`${fmt.pct(analysis.missing?.missing_pct)} of cells`} />
+              <MetricTile sev={analysis.duplicates?.severity} label="Duplicates" value={fmt.int(analysis.duplicates?.count)} sub={`${fmt.pct(analysis.duplicates?.pct)} of rows`} />
+              <MetricTile sev={outSev} label="Outliers" value={fmt.int(analysis.outliers?.total_outliers)} sub={`${fmt.pct(outPct)} avg per column`} />
+              <MetricTile
                 sev={analysis.class_imbalance?.detected ? analysis.class_imbalance.severity : undefined}
                 label="Class balance"
                 value={analysis.class_imbalance?.detected ? severityLabel(analysis.class_imbalance.severity || '') : 'Balanced'}
@@ -658,25 +663,27 @@ function DataQualityCard({
             </div>
           </div>
 
-          <div className="mt-5 pt-4 border-t border-white/[0.06] space-y-2.5">
-            {Object.entries(qs.components || {}).map(([k, v]) => (
-              <div key={k} className="flex items-center gap-2.5 text-xs">
-                <span className="w-28 truncate text-zinc-500 capitalize">{k.replace(/_/g, ' ')}</span>
-                <div className="flex-1 h-1 rounded-full bg-white/[0.06] overflow-hidden">
-                  <div
-                    className={cn('h-full rounded-full', v >= 90 ? 'bg-emerald-400' : v >= 75 ? 'bg-teal-400' : v >= 65 ? 'bg-amber-400' : 'bg-red-400')}
-                    style={{ width: `${Math.min(100, Math.max(0, v))}%` }}
-                  />
+          {Object.keys(qs.components || {}).length > 0 && (
+            <div className="mt-6 pt-4 border-t border-white/[0.06] space-y-3.5">
+              {Object.entries(qs.components).map(([k, v]) => (
+                <div key={k} className="flex items-center gap-3">
+                  <span className="w-24 shrink-0 truncate text-xs text-zinc-500 capitalize">{k.replace(/_/g, ' ')}</span>
+                  <div className="flex-1 h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
+                    <div
+                      className={cn('h-full rounded-full', v >= 90 ? 'bg-emerald-400' : v >= 75 ? 'bg-teal-400' : v >= 65 ? 'bg-amber-400' : 'bg-red-400')}
+                      style={{ width: `${Math.min(100, Math.max(0, v))}%` }}
+                    />
+                  </div>
+                  <span className="w-9 shrink-0 text-right font-mono text-xs text-zinc-400 tabular-nums">{Math.round(v)}</span>
                 </div>
-                <span className="font-mono text-zinc-400 w-9 text-right">{Math.round(v)}</span>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
 
           {analysis.class_imbalance?.detected && (
-            <div className="mt-4 rounded-lg border border-amber-500/20 bg-amber-500/[0.06] px-3 py-2 text-xs text-amber-300 flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 shrink-0" />
-              <span className="min-w-0">Class imbalance on “{analysis.class_imbalance.target}”</span>
+            <div className="mt-5 rounded-lg border border-amber-500/20 bg-amber-500/[0.06] px-3.5 py-2.5 text-xs text-amber-300 leading-snug flex items-start gap-2.5">
+              <AlertTriangle className="w-4 h-4 mt-px shrink-0" />
+              <span className="min-w-0 flex-1 break-words">Class imbalance on “{analysis.class_imbalance.target}”</span>
             </div>
           )}
         </>
@@ -685,15 +692,16 @@ function DataQualityCard({
   );
 }
 
-function MetricRow({ sev, label, value }: { sev?: string; label: string; value: string }) {
+function MetricTile({ sev, label, value, sub }: { sev?: string; label: string; value: string; sub?: string }) {
   const hex = severityHex(sev || 'low');
   return (
-    <div className="flex items-center justify-between gap-2 text-[13px]">
-      <span className="inline-flex items-center gap-1.5 text-zinc-400 min-w-0">
+    <div className="min-w-0 rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2.5">
+      <span className="flex items-center gap-1.5 min-w-0 text-xs text-zinc-500">
         <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: hex }} />
         <span className="truncate">{label}</span>
       </span>
-      <span className="font-mono text-zinc-300 shrink-0">{value}</span>
+      <div className="mt-1.5 truncate font-mono text-sm font-semibold text-zinc-100 tabular-nums">{value}</div>
+      {sub && <div className="mt-0.5 truncate text-[11px] text-zinc-500">{sub}</div>}
     </div>
   );
 }
