@@ -22,7 +22,7 @@ import pandas as pd
 from logging_config import setup_logging, RequestLogMiddleware
 from config import settings
 from monitoring import collect_system_metrics
-from models import PredictionLog
+from models import Dataset, ModelRegistry, PredictionLog
 import logging
 
 from database import get_db, init_db
@@ -53,12 +53,13 @@ from crud import (
     get_audit_log,
     get_team, update_team, delete_team,
     list_models as list_model_registry_entries,
-    create_evaluation_record, list_evaluation_records, get_evaluation_record,
+    create_evaluation_record, list_evaluation_records, get_evaluation_record, query_evaluation_records,
 )
 from api_responses import ok, error, created, deleted, paginated, TAGS_METADATA
 from fastapi.exceptions import RequestValidationError
 from schemas import (
     WebhookCreate, WebhookResponse, EvaluationRequest,
+    DatasetAnalyzeRequest, DatasetAnalyzeResponse, DatasetEvaluationRequest,
 )
 from preprocess import auto_preprocess, analyze_target
 from train import run_automl_training
@@ -1630,7 +1631,9 @@ def list_models_api(db: Session = Depends(get_db), offset: int = Query(0, ge=0),
     fs_sizes = {}
     for f in os.listdir(MODELS_DIR):
         if f.endswith(".pkl"):
-            reg = all_registry.get(f[:-4])
+            # Registry names keep the ".pkl" suffix, but older rows may not, so
+            # check both. Missing this made registered models show up twice.
+            reg = all_registry.get(f) or all_registry.get(f[:-4])
             if reg is not None and reg.user_id is not None and reg.user_id != uid:
                 continue
             fpath = os.path.join(MODELS_DIR, f)
@@ -1641,13 +1644,15 @@ def list_models_api(db: Session = Depends(get_db), offset: int = Query(0, ge=0),
                 fs_models.append({
                     "name": f, "size_kb": size_kb,
                     "task_type": meta.get("task_type"),
+                    "target_column": meta.get("target_column") or meta.get("target"),
                     "best_score": meta.get("cv_score"),
                     "metrics": meta.get("metrics"),
                     "created_at": datetime.fromtimestamp(os.path.getmtime(fpath)).isoformat(),
                 })
     registered = []
     for m in db_models:
-        fs_name = f"{m.name}.pkl" if m.name else None
+        # Registry names are stored with the ".pkl" suffix, so don't double it.
+        fs_name = m.name if (m.name or "").endswith(".pkl") else (f"{m.name}.pkl" if m.name else None)
         fpath = os.path.join(MODELS_DIR, fs_name) if fs_name else None
         has_file = fpath is not None and os.path.exists(fpath)
         meta = _load_model_meta(fs_name) if has_file else {}
@@ -1658,7 +1663,9 @@ def list_models_api(db: Session = Depends(get_db), offset: int = Query(0, ge=0),
             "cv_score": m.cv_score, "status": m.status,
             "tags": m.tags, "description": m.description,
             "experiment_id": m.experiment_id,
-            "dataset_name": m.experiment.dataset if m.experiment else None,
+            # Fall back to the training-time sidecar when there is no experiment.
+            "dataset_name": (m.experiment.dataset if m.experiment else None) or meta.get("dataset_name"),
+            "target_column": meta.get("target_column") or meta.get("target"),
             "owner": m.user.email if m.user else None,
             "owner_email": m.user.email if m.user else None,
             "created_at": m.created_at.isoformat() if m.created_at else None,
@@ -1745,228 +1752,144 @@ def update_model_meta(name: str, status: str = Form(None), tags: str = Form(None
         raise HTTPException(status_code=404, detail=f"Model '{name}' not found")
     return {"id": m.id, "name": m.name, "status": m.status, "tags": m.tags, "description": m.description}
 
-@app.post("/api/v1/models/{name}/evaluation", tags=["Models"], summary="Evaluate model", description="Compute evaluation metrics (confusion matrix, ROC, PR curve, feature importance) for a trained model.")
-def evaluate_model_api(
-    name: str,
-    file_name: str = Form(...),
-    target_column: str = Form(...),
-    db: Session = Depends(get_db),
-    current_user: dict = Depends(get_optional_user),
-):
-    import joblib as _joblib
-    import numpy as np
-    from sklearn.model_selection import train_test_split
-    from sklearn.metrics import confusion_matrix as _cm, roc_curve as _rc, auc as _auc
-    from sklearn.metrics import precision_recall_curve as _prc, average_precision_score as _aps
-    from sklearn.pipeline import Pipeline as _Pipe
-
-    fpath = os.path.join(MODELS_DIR, name)
-    if not os.path.exists(fpath):
-        raise HTTPException(status_code=404, detail=f"Model '{name}' not found")
-    require_model_access(db, name, current_user)
-    require_dataset_access(db, file_name, current_user)
-
-    meta = _load_model_meta(name)
-    pipeline = _joblib.load(fpath)
-    task_type = meta.get("task_type", "classification")
-    feature_names = meta.get("feature_names", [])
-
-    preprocess_result = auto_preprocess(file_name, target_column, task_type)
-    X = preprocess_result["X"]
-    y = preprocess_result["y"]
-    preprocessor = preprocess_result["preprocessor"]
-
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42,
-        stratify=y if task_type == "classification" else None,
-    )
-
-    model_obj = pipeline
-    if not isinstance(pipeline, _Pipe):
-        model_obj = _Pipe([("preprocessor", preprocessor), ("model", pipeline)])
-
-    y_pred = model_obj.predict(X_test)
-
-    estimator = model_obj
-    if hasattr(model_obj, "named_steps") and "model" in model_obj.named_steps:
-        estimator = model_obj.named_steps["model"]
-
-    feature_importance = []
-    importances_arr = None
-    if hasattr(estimator, "feature_importances_"):
-        importances_arr = estimator.feature_importances_
-    elif hasattr(estimator, "coef_"):
-        coefs = estimator.coef_
-        importances_arr = coefs[0] if coefs.ndim > 1 else coefs
-
-    if importances_arr is not None and feature_names:
-        abs_imp = np.abs(importances_arr)
-        vmax = abs_imp.max()
-        for i, fname in enumerate(feature_names):
-            if i < len(importances_arr):
-                feature_importance.append({
-                    "feature": fname,
-                    "importance": round(float(importances_arr[i]), 6),
-                    "normalized": round(float(abs_imp[i] / vmax), 4) if vmax > 0 else 0,
-                })
-        feature_importance.sort(key=lambda x: abs(x["importance"]), reverse=True)
-
-    result = {
-        "model_name": name,
-        "task_type": task_type,
-        "feature_names": feature_names,
-        "feature_importance": feature_importance,
-        "test_size": len(X_test),
-        "train_size": len(X_train),
-    }
-
-    if task_type == "classification":
-        y_test_list = y_test.tolist() if hasattr(y_test, 'tolist') else list(y_test)
-        y_pred_list = y_pred.tolist() if hasattr(y_pred, 'tolist') else list(y_pred)
-        labels = sorted(list(set(y_test_list + y_pred_list)))
-        label_map = meta.get("label_map", {})
-        str_labels = [label_map.get(str(l), str(l)) for l in labels]
-
-        cm = _cm(y_test_list, y_pred_list, labels=labels)
-        result["confusion_matrix"] = {"matrix": cm.tolist(), "labels": str_labels}
-
-        if hasattr(model_obj, "predict_proba"):
-            y_proba = model_obj.predict_proba(X_test)
-            if len(labels) == 2:
-                fpr, tpr, _ = _rc(y_test_list, y_proba[:, 1], pos_label=labels[1])
-                result["roc_curve"] = {
-                    "fpr": [round(float(x), 4) for x in fpr],
-                    "tpr": [round(float(x), 4) for x in tpr],
-                    "auc": round(float(_auc(fpr, tpr)), 4),
-                }
-                prec_arr, rec_arr, _ = _prc(y_test_list, y_proba[:, 1], pos_label=labels[1])
-                result["pr_curve"] = {
-                    "precision": [round(float(x), 4) for x in prec_arr],
-                    "recall": [round(float(x), 4) for x in rec_arr],
-                    "average_precision": round(float(_aps(y_test_list, y_proba[:, 1])), 4),
-                }
-            else:
-                from sklearn.preprocessing import label_binarize
-                y_test_bin = label_binarize(y_test_list, classes=labels)
-                per_class_roc, per_class_pr = [], []
-                all_auc_vals, all_ap_vals = [], []
-                for ci in range(len(labels)):
-                    fpr_i, tpr_i, _ = _rc(y_test_bin[:, ci], y_proba[:, ci])
-                    auc_i = round(float(_auc(fpr_i, tpr_i)), 4)
-                    all_auc_vals.append(auc_i)
-                    per_class_roc.append({"label": str_labels[ci], "fpr": [round(float(x), 4) for x in fpr_i], "tpr": [round(float(x), 4) for x in tpr_i], "auc": auc_i})
-                    p_i, r_i, _ = _prc(y_test_bin[:, ci], y_proba[:, ci])
-                    ap_i = round(float(_aps(y_test_bin[:, ci], y_proba[:, ci])), 4)
-                    all_ap_vals.append(ap_i)
-                    per_class_pr.append({"label": str_labels[ci] if ci < len(str_labels) else str(ci), "precision": [round(float(x), 4) for x in p_i], "recall": [round(float(x), 4) for x in r_i], "ap": ap_i})
-                result["roc_curve"] = {"per_class": per_class_roc, "macro_auc": round(float(np.mean(all_auc_vals)), 4)}
-                result["pr_curve"] = {"per_class": per_class_pr, "macro_ap": round(float(np.mean(all_ap_vals)), 4)}
-
-            top_indices = np.argsort(y_proba, axis=1)[:, ::-1][:, :3]
-            pred_preview = []
-            for row_i in range(min(10, len(X_test))):
-                top3 = [{"label": str_labels[ci], "probability": round(float(y_proba[row_i][ci]), 4)} for ci in top_indices[row_i] if ci < len(labels)]
-                actual_label = str_labels[labels.index(y_test_list[row_i])] if y_test_list[row_i] in labels else str(y_test_list[row_i])
-                predicted_label = str_labels[labels.index(y_pred_list[row_i])] if y_pred_list[row_i] in labels else str(y_pred_list[row_i])
-                pred_preview.append({"actual": actual_label, "predicted": predicted_label, "top_classes": top3})
-            result["prediction_preview"] = pred_preview
-        else:
-            result["roc_curve"] = None
-            result["pr_curve"] = None
-            result["prediction_preview"] = []
-    else:
-        result["confusion_matrix"] = None
-        result["roc_curve"] = None
-        result["pr_curve"] = None
-        result["prediction_preview"] = []
-
-    if feature_importance:
-        imp_map = {fi["feature"]: fi["importance"] for fi in feature_importance}
-        total_abs = sum(abs(v) for v in imp_map.values())
-        shap_values = []
-        for fname in feature_names:
-            raw = imp_map.get(fname, 0)
-            val = (raw / total_abs) * 0.8 if total_abs > 0 else 0
-            shap_values.append({"feature": fname, "value": round(float(val), 4), "abs_value": round(float(abs(val)), 4), "direction": "positive" if val >= 0 else "negative"})
-        result["shap_values"] = sorted(shap_values, key=lambda x: x["abs_value"], reverse=True)
-    else:
-        result["shap_values"] = []
-
-    log_audit(db, current_user.get("name", "User"), "model.evaluated", name, "model")
-    return result
-
-
 @app.post("/api/v1/evaluation/evaluate", tags=["Evaluation"], summary="Evaluate model (JSON)", description="Run comprehensive evaluation on model and dataset with structured output and persistent record.")
 def evaluate_model_endpoint(
     req: EvaluationRequest,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_optional_user),
+    current_user: dict = Depends(get_current_user),
 ):
-    from evaluation import evaluate_model_comprehensive, generate_ai_insights
+    from evaluation import (
+        evaluate_model_comprehensive, build_insights, generate_ai_insights, MissingFeaturesError,
+    )
 
-    # Resolve model name
     mname = req.model_name or req.model_id
     if not mname:
-        raise HTTPException(status_code=400, detail="model_id or model_name is required")
+        raise HTTPException(status_code=400, detail="A model must be selected.")
     if not mname.endswith(".pkl") and not os.path.exists(os.path.join(MODELS_DIR, mname)):
         if os.path.exists(os.path.join(MODELS_DIR, f"{mname}.pkl")):
             mname = f"{mname}.pkl"
 
-    # Resolve dataset name
     dname = req.dataset_name or req.file_name or req.dataset_id
     if not dname:
-        raise HTTPException(status_code=400, detail="dataset_id or dataset_name is required")
+        raise HTTPException(status_code=400, detail="A dataset must be selected.")
+    if not req.target_column:
+        raise HTTPException(status_code=400, detail="A target column must be selected.")
 
     fpath = os.path.join(MODELS_DIR, mname)
     if not os.path.exists(fpath):
-        raise HTTPException(status_code=404, detail=f"Model '{mname}' not found")
+        raise HTTPException(status_code=404, detail=f"Model '{mname}' not found.")
 
+    # owner_only would also reject models that predate ownership tracking
+    # (user_id IS NULL), which the model list already offers to every user.
+    # Another user's model is still refused by require_model_access.
     require_model_access(db, mname, current_user)
     require_dataset_access(db, dname, current_user)
 
     try:
         result = evaluate_model_comprehensive(mname, dname, req.target_column)
-        insights = generate_ai_insights(result)
-        result["ai_insights"] = insights
-
-        uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
-        rec = create_evaluation_record(db, {
-            "user_id": uid,
-            "model_id": req.model_id or mname,
-            "model_name": mname,
-            "dataset_id": req.dataset_id or dname,
-            "dataset_name": dname,
-            "target_column": req.target_column,
-            "task_type": result.get("task_type", "classification"),
-            "metrics": result.get("metrics"),
-            "results_summary": {
-                "train_size": result.get("train_size"),
-                "test_size": result.get("test_size"),
-                "feature_names": result.get("feature_names"),
-            },
-            "ai_insights": insights,
-        })
-        result["evaluation_id"] = rec.id
-        log_audit(db, current_user.get("name", "User") if current_user else "User", "model.evaluated", mname, "model", rec.id)
-        return result
+    except MissingFeaturesError as ve:
+        raise HTTPException(status_code=422, detail=str(ve))
+    except FileNotFoundError as fe:
+        raise HTTPException(status_code=404, detail=str(fe))
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=400, detail=f"Evaluation failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="Evaluation could not be completed. The model or dataset could not be processed.")
+
+    insights = build_insights(result)
+    result["insights"] = insights
+    result["ai_insights"] = generate_ai_insights(result)
+
+    uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
+    rec = create_evaluation_record(db, {
+        "user_id": uid,
+        "model_id": req.model_id or mname,
+        "model_name": mname,
+        "dataset_id": req.dataset_id or dname,
+        "dataset_name": dname,
+        "target_column": req.target_column,
+        "task_type": result.get("task_type", "classification"),
+        "metrics": result.get("metrics"),
+        "results_summary": {
+            "train_size": result.get("train_size"),
+            "test_size": result.get("test_size"),
+            "feature_names": result.get("feature_names"),
+            "warnings": result.get("warnings"),
+            "unavailable": result.get("unavailable"),
+            "result": result,
+        },
+        "ai_insights": result["ai_insights"],
+    })
+    result["evaluation_id"] = rec.id
+    result["created_at"] = rec.created_at.isoformat() if rec.created_at else None
+    log_audit(db, current_user.get("name", "User") if current_user else "User", "model.evaluated", mname, "model", rec.id)
+    return result
 
 
-@app.get("/api/v1/evaluation/history", tags=["Evaluation"], summary="List evaluation history", description="Get evaluation history for current user.")
+@app.post("/api/v1/evaluation/analyze", tags=["Evaluation"], summary="Analyze dataset for evaluation", description="Analyze CSV columns, detect target, task type, and missing data statistics.")
+def analyze_dataset_endpoint(
+    req: DatasetAnalyzeRequest,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    from evaluation import analyze_dataset_for_evaluation
+    require_dataset_access(db, req.file_name, current_user)
+    try:
+        res = analyze_dataset_for_evaluation(req.file_name, target_column=req.target_column)
+        return res
+    except FileNotFoundError as fe:
+        raise HTTPException(status_code=404, detail=str(fe))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Dataset analysis failed: {str(e)}")
+
+
+@app.post("/api/v1/evaluation/run-dataset", tags=["Evaluation"], summary="Run dataset-driven model evaluation", description="Preprocess raw dataset, train baseline candidate models, and return full evaluation results.")
+def run_dataset_evaluation_endpoint(
+    req: DatasetEvaluationRequest,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    from evaluation import evaluate_dataset_end_to_end
+    require_dataset_access(db, req.file_name, current_user)
+    try:
+        uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
+        res = evaluate_dataset_end_to_end(
+            file_name=req.file_name,
+            target_column=req.target_column,
+            task_type=req.task_type,
+            user_id=uid,
+            db=db,
+        )
+        log_audit(db, current_user.get("name", "User") if current_user else "User", "dataset.evaluated", req.file_name, "dataset", res.get("evaluation_id"))
+        return res
+    except FileNotFoundError as fe:
+        raise HTTPException(status_code=404, detail=str(fe))
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Dataset evaluation failed: {str(e)}")
+
+
+
+@app.get("/api/v1/evaluation/history", tags=["Evaluation"], summary="List evaluation history", description="Get evaluation history for current user, with search and sorting.")
 def list_evaluations_endpoint(
+    search: Optional[str] = Query(None, description="Filter by model, dataset or target column"),
+    sort_by: str = Query("created_at", description="created_at | model_name | dataset_name | target_column | task_type"),
+    order: str = Query("desc", pattern="^(asc|desc)$"),
     db: Session = Depends(get_db),
     offset: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=500),
-    current_user: dict = Depends(get_optional_user),
+    current_user: dict = Depends(get_current_user),
 ):
     uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
-    records = list_evaluation_records(db, user_id=uid, limit=limit, offset=offset)
-    total = len(records)
+    records, total = query_evaluation_records(
+        db, user_id=uid, search=search, sort_by=sort_by, order=order,
+        limit=limit, offset=offset,
+    )
     items = [{
         "id": r.id,
         "model_id": r.model_id,
@@ -1982,16 +1905,17 @@ def list_evaluations_endpoint(
     return paginated(items, total, offset, limit, key="evaluations")
 
 
-@app.get("/api/v1/evaluation/{eval_id}", tags=["Evaluation"], summary="Get evaluation detail", description="Get single evaluation record by ID.")
+@app.get("/api/v1/evaluation/{eval_id}", tags=["Evaluation"], summary="Get evaluation detail", description="Get a single stored evaluation, including its full result payload.")
 def get_evaluation_endpoint(
     eval_id: str,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_optional_user),
+    current_user: dict = Depends(get_current_user),
 ):
     uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
     rec = get_evaluation_record(db, eval_id, user_id=uid)
     if not rec:
         raise HTTPException(status_code=404, detail="Evaluation not found")
+    stored = (rec.results_summary or {}).get("result")
     return {
         "id": rec.id,
         "model_id": rec.model_id,
@@ -2002,74 +1926,63 @@ def get_evaluation_endpoint(
         "task_type": rec.task_type,
         "metrics": rec.metrics,
         "results_summary": rec.results_summary,
+        "result": stored,
         "ai_insights": rec.ai_insights,
         "created_at": rec.created_at.isoformat() if rec.created_at else None,
     }
 
 
-@app.post("/api/v1/models/{name}/evaluate-all", tags=["Models"], summary="Comprehensive model evaluation", description="Compute all evaluation visualizations, metrics, prediction samples.")
-def evaluate_model_all(
-    name: str,
-    file_name: str = Form(...),
-    target_column: str = Form(...),
-    db: Session = Depends(get_db),
-    current_user: dict = Depends(get_optional_user),
-):
-    from evaluation import evaluate_model_comprehensive, generate_ai_insights
-    fpath = os.path.join(MODELS_DIR, name)
-    if not os.path.exists(fpath):
-        raise HTTPException(status_code=404, detail=f"Model '{name}' not found")
-    require_model_access(db, name, current_user)
-    require_dataset_access(db, file_name, current_user)
-    try:
-        result = evaluate_model_comprehensive(name, file_name, target_column)
-        insights = generate_ai_insights(result)
-        result["ai_insights"] = insights
-        uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
-        rec = create_evaluation_record(db, {
-            "user_id": uid,
-            "model_name": name,
-            "dataset_name": file_name,
-            "target_column": target_column,
-            "task_type": result.get("task_type", "classification"),
-            "metrics": result.get("metrics"),
-            "results_summary": {"train_size": result.get("train_size"), "test_size": result.get("test_size")},
-            "ai_insights": insights,
-        })
-        result["evaluation_id"] = rec.id
-        log_audit(db, current_user.get("name", "User"), "model.evaluated_all", name, "model", rec.id)
-        return result
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=400, detail=f"{type(e).__name__}: {str(e)}")
-
-
-
-@app.post("/api/v1/models/compare", tags=["Models"], summary="Compare multiple models", description="Evaluate multiple models on the same dataset and compare metrics side by side.")
+@app.post("/api/v1/models/compare", tags=["Models"], summary="Compare multiple models", description="Evaluate multiple models on one shared test set and compare metrics side by side.")
 def compare_models_api(
     model_names: str = Form(...),
     file_name: str = Form(...),
     target_column: str = Form(...),
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_optional_user),
+    current_user: dict = Depends(get_current_user),
 ):
-    from evaluation import compare_models
+    from evaluation import compare_models, MissingFeaturesError
     try:
         names = json.loads(model_names)
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid model_names format")
-    require_dataset_access(db, file_name, current_user)
+    if not isinstance(names, list) or not names:
+        raise HTTPException(status_code=400, detail="Select at least one model to compare.")
+    if not isinstance(names[0], str):
+        raise HTTPException(status_code=400, detail="Invalid model_names format")
+
+    require_dataset_access(db, file_name, current_user, owner_only=True)
+
+    # Ownership is fatal for the whole request: a user must never learn about
+    # another user's model, not even indirectly. A model that simply does not
+    # exist is a per-model failure instead, so one bad selection still leaves
+    # a usable comparison.
+    loadable, failed = [], {}
     for _mn in names:
-        require_model_access(db, _mn, current_user)
+        try:
+            require_model_access(db, _mn, current_user)
+        except HTTPException as exc:
+            if exc.status_code == 403:
+                raise
+            failed[_mn] = f"Model '{_mn}' not found"
+            continue
+        loadable.append(_mn)
+
     try:
-        results = compare_models(names, file_name, target_column)
-        log_audit(db, current_user.get("name", "User"), "model.compared", ",".join(names), "model")
-        return {"results": results}
+        results = compare_models(loadable, file_name, target_column) if loadable else []
+    except MissingFeaturesError as e:
+        raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=400, detail=f"{type(e).__name__}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Comparison could not be completed.")
+
+    entries = {r.get("model_name"): r for r in results}
+    for _mn, _err in failed.items():
+        entries[_mn] = {"model_name": _mn, "file_name": _mn, "error": _err}
+    ordered = [entries[n] for n in names if n in entries]
+
+    log_audit(db, current_user.get("name", "User"), "model.compared", ",".join(names), "model")
+    return {"results": ordered, "total": len(ordered), "failed": len(failed)}
 
 
 @app.get("/api/v1/models/{name}/meta", tags=["Models"], summary="Get model metadata", description="Return file stats and metadata JSON for a model.")
@@ -2880,7 +2793,6 @@ def live_stats(db: Session = Depends(get_db), current_user: dict = Depends(get_o
     datasets = list_dataset_records(db, user_id=uid)
     pred_count = 0
     try:
-        from models import PredictionLog
         from sqlalchemy import func as sa_func
         pred_count = db.query(sa_func.count(PredictionLog.id)).filter(
             (PredictionLog.user_id == uid) if uid else (PredictionLog.user_id.is_(None))

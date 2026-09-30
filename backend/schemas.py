@@ -114,7 +114,37 @@ class EvaluationRequest(BaseModel):
     model_id: Optional[str] = None
     model_name: Optional[str] = None
     dataset_id: Optional[str] = None
-    dataset_name: Optional[str] = str
+    dataset_name: Optional[str] = None
     file_name: Optional[str] = None
-    target_column: str
+    target_column: Optional[str] = None
+    task_type: Optional[str] = None
+
+
+class DatasetAnalyzeRequest(BaseModel):
+    file_name: str
+    target_column: Optional[str] = None
+
+
+class DatasetAnalyzeResponse(BaseModel):
+    file_name: str
+    rows: int
+    columns: list[str]
+    missing_count: int
+    duplicate_count: int
+    dtypes: dict[str, str]
+    suggested_target: str
+    target_confidence: str
+    detected_task_type: str
+    potential_id_columns: list[str]
+    numeric_columns: list[str]
+    categorical_columns: list[str]
+    preview_data: list[dict[str, Any]]
+
+
+class DatasetEvaluationRequest(BaseModel):
+    file_name: str
+    dataset_name: Optional[str] = None
+    target_column: Optional[str] = None
+    task_type: Optional[str] = None
+
 

@@ -7,7 +7,7 @@ import type { ResidualPlotData } from '../services/evaluation.service';
 import styles from './ResidualPlot.module.css';
 
 interface Props {
-  data: ResidualPlotData;
+  data: ResidualPlotData | null;
 }
 
 export const ResidualPlot = memo(function ResidualPlot({ data }: Props) {

@@ -1,0 +1,50 @@
+============================= test session starts =============================
+platform win32 -- Python 3.14.2, pytest-9.1.1, pluggy-1.6.0
+rootdir: C:\Users\mayuresh\Downloads\automl-platform-main\automl-platform-main\backend
+configfile: pytest.ini
+plugins: anyio-4.12.1
+collected 29 items
+
+tests\test_evaluation.py .............................                   [100%]
+
+============================== warnings summary ===============================
+tests/test_evaluation.py::test_unsupported_metric_is_explained_not_crashed
+  C:\Users\mayuresh\AppData\Local\Programs\Python\Python314\Lib\site-packages\sklearn\model_selection\_validation.py:489: FitFailedWarning: 
+  6 fits failed out of a total of 15.
+  The score on these train-test partitions for these parameters will be set to nan.
+  If these failures are not expected, you can try to debug them by setting error_score='raise'.
+  
+  Below are more details about the failures:
+  --------------------------------------------------------------------------------
+  6 fits failed with the following error:
+  Traceback (most recent call last):
+    File "C:\Users\mayuresh\AppData\Local\Programs\Python\Python314\Lib\site-packages\sklearn\model_selection\_validation.py", line 856, in _fit_and_score
+      estimator.fit(X_train, y_train, **fit_params)
+      ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    File "C:\Users\mayuresh\AppData\Local\Programs\Python\Python314\Lib\site-packages\sklearn\base.py", line 1403, in wrapper
+      return fit_method(estimator, *args, **kwargs)
+    File "C:\Users\mayuresh\AppData\Local\Programs\Python\Python314\Lib\site-packages\sklearn\pipeline.py", line 649, in fit
+      self._final_estimator.fit(Xt, y, **last_step_params["fit"])
+      ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    File "C:\Users\mayuresh\AppData\Local\Programs\Python\Python314\Lib\site-packages\sklearn\base.py", line 1403, in wrapper
+      return fit_method(estimator, *args, **kwargs)
+    File "C:\Users\mayuresh\AppData\Local\Programs\Python\Python314\Lib\site-packages\sklearn\svm\_classes.py", line 330, in fit
+      self.coef_, self.intercept_, n_iter_ = _fit_liblinear(
+                                             ~~~~~~~~~~~~~~^
+          X,
+          ^^
+      ...<13 lines>...
+          sample_weight=sample_weight,
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      )
+      ^
+    File "C:\Users\mayuresh\AppData\Local\Programs\Python\Python314\Lib\site-packages\sklearn\svm\_base.py", line 1235, in _fit_liblinear
+      raise ValueError(
+      ...<3 lines>...
+      )
+  ValueError: This solver needs samples of at least 2 classes in the data, but the data contains only one class: np.int64(0)
+  
+    warnings.warn(some_fits_failed_message, FitFailedWarning)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+======================= 29 passed, 1 warning in 58.63s ========================

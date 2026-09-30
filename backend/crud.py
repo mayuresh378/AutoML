@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 import bcrypt
 from sqlalchemy.orm import Session, selectinload, joinedload
-from sqlalchemy import desc
+from sqlalchemy import desc, func
 from jose import jwt
 
 from models import (User, Team, TeamMember, ApiKey, Experiment, ModelRegistry,
@@ -877,6 +877,53 @@ def list_evaluation_records(db: Session, user_id: str = None, limit: int = 50, o
     if user_id is not None:
         q = q.filter(EvaluationRecord.user_id == user_id)
     return q.order_by(desc(EvaluationRecord.created_at)).offset(offset).limit(limit).all()
+
+
+# Columns a client is allowed to sort evaluation history by.
+EVALUATION_SORT_COLUMNS = {
+    "created_at": EvaluationRecord.created_at,
+    "model_name": EvaluationRecord.model_name,
+    "dataset_name": EvaluationRecord.dataset_name,
+    "target_column": EvaluationRecord.target_column,
+    "task_type": EvaluationRecord.task_type,
+}
+
+
+def query_evaluation_records(
+    db: Session,
+    user_id: str = None,
+    search: str = None,
+    sort_by: str = "created_at",
+    order: str = "desc",
+    limit: int = 50,
+    offset: int = 0,
+) -> tuple:
+    """Searchable, sortable, correctly counted page of evaluation history.
+
+    Returns ``(records, total)`` where ``total`` counts the whole filtered set
+    instead of just the current page, so pagination stays honest.
+    """
+    q = db.query(EvaluationRecord)
+    if user_id is not None:
+        q = q.filter(EvaluationRecord.user_id == user_id)
+
+    if search and search.strip():
+        pattern = f"%{search.strip().lower()}%"
+        q = q.filter(
+            func.lower(func.coalesce(EvaluationRecord.model_name, "")).like(pattern)
+            | func.lower(func.coalesce(EvaluationRecord.dataset_name, "")).like(pattern)
+            | func.lower(func.coalesce(EvaluationRecord.target_column, "")).like(pattern)
+        )
+
+    total = q.count()
+
+    column = EVALUATION_SORT_COLUMNS.get(sort_by, EvaluationRecord.created_at)
+    if order == "asc":
+        q = q.order_by(func.coalesce(column, "0").asc())
+    else:
+        q = q.order_by(func.coalesce(column, "").desc())
+
+    return q.offset(offset).limit(limit).all(), total
 
 
 def get_evaluation_record(db: Session, eval_id: str, user_id: str = None) -> Optional[EvaluationRecord]:

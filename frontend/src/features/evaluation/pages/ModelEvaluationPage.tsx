@@ -1,567 +1,423 @@
-import { useState, useMemo } from 'react';
-import { useQuery, useMutation } from '@tanstack/react-query';
-import { motion, AnimatePresence } from 'framer-motion';
-import {
-  AlertCircle, Loader2, BarChart3, Target, TrendingUp,
-  GitBranch, Sliders, Lightbulb, Activity, PieChart, ChevronDown,
-  FileCheck, ArrowUpDown, Table2, Brain,
-} from 'lucide-react';
-import {
-  evaluationService,
-  type ComprehensiveEvaluation,
-  type ModelComparisonResult,
-  type EvaluationMetrics,
-} from '../services/evaluation.service';
-import { http } from '../../../services/http';
-import type { Model, Dataset } from '../../../types/api';
-import { ConfusionMatrix } from '../../explain/components/ConfusionMatrix';
-import { RocCurve } from '../../explain/components/RocCurve';
-import { PrecisionRecallCurve } from '../../explain/components/PrecisionRecallCurve';
-import { FeatureImportanceChart } from '../../explain/components/FeatureImportanceChart';
+import { useCallback, useMemo, useState } from 'react';
+import { motion } from 'framer-motion';
+import { ClipboardCheck, AlertCircle, Layers, Table2, BarChart3, RefreshCw } from 'lucide-react';
+import { useModels, useDatasets } from '../../../hooks/useApi';
+import { getErrorMessage } from '../../../services/http';
+import { Button } from '../../../components/ui/Button';
+import { EmptyState } from '../../../components/ui/EmptyState';
+import { ErrorState } from '../../../components/ui/ErrorState';
+import { EvaluationSetupPanel, type DatasetSelection } from '../components/EvaluationSetupPanel';
+import { MetricGrid } from '../components/MetricGrid';
+import { InsightsPanel } from '../components/InsightsPanel';
+import { ConfusionMatrixChart } from '../components/ConfusionMatrixChart';
+import { RocCurveChart } from '../components/RocCurveChart';
+import { PrCurveChart } from '../components/PrCurveChart';
+import { FeatureImportanceChart } from '../components/FeatureImportanceChart';
 import { LearningCurve } from '../components/LearningCurve';
 import { ValidationCurve } from '../components/ValidationCurve';
 import { ResidualPlot } from '../components/ResidualPlot';
 import { PredictionDistribution } from '../components/PredictionDistribution';
+import { PredictionSamplesTable } from '../components/PredictionSamplesTable';
+import { PreprocessingSummaryCard } from '../components/PreprocessingSummaryCard';
+import { ModelComparisonTable } from '../components/ModelComparisonTable';
+import { EvaluationHistoryPanel } from '../components/EvaluationHistoryPanel';
+import { ComparisonPanel } from '../components/ComparisonPanel';
+import {
+  useCompareModels,
+  useEvaluationDetail,
+  useEvaluationHistory,
+  useRunDatasetEvaluation,
+} from '../hooks/useEvaluation';
+import type { ComprehensiveEvaluation, TaskType } from '../services/evaluation.service';
 import styles from './ModelEvaluationPage.module.css';
 
-type TabId = 'confusion' | 'roc' | 'pr' | 'learning' | 'validation' | 'importance' | 'residual' | 'distribution';
+const EMPTY_SELECTION: DatasetSelection = { fileName: '', targetColumn: '', taskType: 'classification' };
+const HISTORY_PAGE = 10;
 
-const CHART_TABS: { id: TabId; label: string; icon: typeof Target }[] = [
-  { id: 'confusion', label: 'Confusion Matrix', icon: Target },
-  { id: 'roc', label: 'ROC Curve', icon: TrendingUp },
-  { id: 'pr', label: 'PR Curve', icon: GitBranch },
-  { id: 'learning', label: 'Learning Curve', icon: BarChart3 },
-  { id: 'validation', label: 'Validation Curve', icon: Sliders },
-  { id: 'importance', label: 'Feature Importance', icon: Lightbulb },
-  { id: 'residual', label: 'Residual Plot', icon: Activity },
-  { id: 'distribution', label: 'Prediction Dist.', icon: PieChart },
+type TabId = 'overview' | 'curves' | 'diagnostics' | 'predictions' | 'compare';
+
+const TABS: { id: TabId; label: string; icon: typeof Layers }[] = [
+  { id: 'overview', label: 'Overview', icon: Layers },
+  { id: 'curves', label: 'Curves', icon: BarChart3 },
+  { id: 'diagnostics', label: 'Diagnostics', icon: ClipboardCheck },
+  { id: 'predictions', label: 'Predictions', icon: Table2 },
+  { id: 'compare', label: 'Compare', icon: BarChart3 },
 ];
 
-type PageView = 'evaluate' | 'compare';
+export function ModelEvaluationPage() {
+  const modelsQuery = useModels();
+  const datasetsQuery = useDatasets();
 
-function fmtMetric(val: number | null | undefined, isPercent = true): string {
-  if (val === null || val === undefined) return '—';
-  if (isPercent) return `${(val * 100).toFixed(1)}%`;
-  return val.toFixed(4);
-}
+  const [selection, setSelection] = useState<DatasetSelection>(EMPTY_SELECTION);
+  const [compareSelection, setCompareSelection] = useState<string[]>([]);
+  const [tab, setTab] = useState<TabId>('overview');
+  const [viewingHistoryId, setViewingHistoryId] = useState<string | null>(null);
 
-function metricColor(val: number | null | undefined, threshold = 0.85): string {
-  if (val === null || val === undefined) return '';
-  if (val >= threshold) return styles.metricValueGood;
-  if (val >= threshold - 0.15) return '';
-  return styles.metricValueWarn;
-}
-
-function renderInsights(text: string): React.ReactNode {
-  const lines = text.split('\n');
-  return lines.map((line, i) => {
-    if (line.startsWith('**') && line.endsWith('**')) {
-      return <h4 key={i} style={{ margin: '12px 0 4px', fontSize: 'var(--text-body-lg)' }}>{line.replace(/\*\*/g, '')}</h4>;
-    }
-    if (!line.trim()) return <br key={i} />;
-    const parts = line.split(/(\*\*[^*]+\*\*)/g);
-    return (
-      <p key={i} style={{ margin: '4px 0' }}>
-        {parts.map((part, j) =>
-          part.startsWith('**') && part.endsWith('**')
-            ? <strong key={j}>{part.replace(/\*\*/g, '')}</strong>
-            : part
-        )}
-      </p>
-    );
+  // History list state
+  const [historySearch, setHistorySearch] = useState('');
+  const [historySort, setHistorySort] = useState<{ sort_by: string; order: 'asc' | 'desc' }>({
+    sort_by: 'created_at',
+    order: 'desc',
   });
-}
+  const [historyOffset, setHistoryOffset] = useState(0);
 
-export default function ModelEvaluationPage() {
-  const [view, setView] = useState<PageView>('evaluate');
-  const [modelName, setModelName] = useState('');
-  const [fileName, setFileName] = useState('');
-  const [targetColumn, setTargetColumn] = useState('');
-  const [result, setResult] = useState<ComprehensiveEvaluation | null>(null);
-  const [activeTab, setActiveTab] = useState<TabId>('confusion');
-  const [compareSelected, setCompareSelected] = useState<Set<string>>(new Set());
-  const [compareResults, setCompareResults] = useState<ModelComparisonResult[]>([]);
-  const [compareSortKey, setCompareSortKey] = useState<string>('');
-  const [compareSortAsc, setCompareSortAsc] = useState(false);
+  const runDatasetEvaluation = useRunDatasetEvaluation();
+  const compareMutation = useCompareModels();
 
-  const modelsQuery = useQuery({
-    queryKey: ['models'],
-    queryFn: () => http.get<{ models: Model[] }>('/models'),
-    select: (data) => data.models ?? [],
-    staleTime: 30_000,
+  const historyQuery = useEvaluationHistory({
+    search: historySearch || undefined,
+    sort_by: historySort.sort_by as 'created_at',
+    order: historySort.order,
+    offset: historyOffset,
+    limit: HISTORY_PAGE,
   });
 
-  const datasetsQuery = useQuery({
-    queryKey: ['datasets'],
-    queryFn: () => http.get<{ datasets: Dataset[] }>('/datasets'),
-    select: (data) => data.datasets ?? [],
-    staleTime: 30_000,
-  });
+  const historyDetail = useEvaluationDetail(viewingHistoryId);
 
-  const selectedDataset = useMemo(
-    () => datasetsQuery.data?.find((d) => d.name === fileName || d.id === fileName),
-    [datasetsQuery.data, fileName],
-  );
+  const models = useMemo(() => modelsQuery.data ?? [], [modelsQuery.data]);
+  const datasets = useMemo(() => datasetsQuery.data ?? [], [datasetsQuery.data]);
 
-  const columns = useMemo(() => {
-    if (selectedDataset?.columns) return selectedDataset.columns;
-    if (selectedDataset?.name) {
-      const name = selectedDataset.name.toLowerCase();
-      if (name.includes('iris')) return ['sepal_length', 'sepal_width', 'petal_length', 'petal_width', 'species'];
-    }
-    return [];
-  }, [selectedDataset]);
+  const liveResult = runDatasetEvaluation.data;
+  const storedResult = historyDetail.data?.result ?? null;
+  const result: ComprehensiveEvaluation | null = (viewingHistoryId ? storedResult : liveResult) ?? null;
 
-  const models = modelsQuery.data ?? [];
-  const datasets = datasetsQuery.data ?? [];
+  const taskType = (result?.task_type ?? selection.taskType ?? 'classification') as TaskType;
 
-  const handleDatasetChange = (newFileName: string) => {
-    setFileName(newFileName);
-    const ds = datasets.find((d) => d.name === newFileName || d.id === newFileName);
-    if (ds?.columns && ds.columns.length > 0) {
-      const lastCol = ds.columns[ds.columns.length - 1];
-      const targetCandidate = ds.columns.find((c) => ['target', 'label', 'species', 'class', 'outcome', 'price'].includes(c.toLowerCase())) || lastCol;
-      setTargetColumn(targetCandidate);
-    } else if (newFileName.toLowerCase().includes('iris')) {
-      setTargetColumn('species');
-    } else {
-      setTargetColumn('');
-    }
-  };
+  const blockers = useMemo(() => {
+    const out: string[] = [];
+    if (!selection.fileName) out.push('Upload or select a dataset to evaluate.');
+    if (!selection.targetColumn) out.push('Select or confirm the target column to predict.');
+    return out;
+  }, [selection]);
 
-  const evaluateMutation = useMutation({
-    mutationFn: () => evaluationService.evaluate({
-      model_name: modelName,
-      dataset_name: fileName,
-      file_name: fileName,
-      target_column: targetColumn,
-    }),
-    onSuccess: (data) => {
-      setResult(data);
-      setView('evaluate');
-      if (data.task_type === 'regression' && ['confusion', 'roc', 'pr'].includes(activeTab)) {
-        setActiveTab('importance');
-      } else if (data.task_type === 'classification' && activeTab === 'residual') {
-        setActiveTab('confusion');
-      }
-    },
-  });
-
-  const compareMutation = useMutation({
-    mutationFn: () => {
-      const names = Array.from(compareSelected);
-      return evaluationService.compare(names, fileName, targetColumn);
-    },
-    onSuccess: (data) => { setCompareResults(data.results || []); },
-  });
-
-  const handleEvaluate = () => {
-    if (!modelName.trim() || !fileName.trim() || !targetColumn.trim()) return;
-    evaluateMutation.mutate();
-  };
-
-  const handleCompare = () => {
-    if (compareSelected.size < 2 || !fileName.trim() || !targetColumn.trim()) return;
-    compareMutation.mutate();
-  };
-
-
-  function toggleCompareSelect(name: string) {
-    setCompareSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(name)) next.delete(name);
-      else next.add(name);
-      return next;
+  const handleRunEvaluation = useCallback(() => {
+    setViewingHistoryId(null);
+    setTab('overview');
+    runDatasetEvaluation.mutate({
+      file_name: selection.fileName,
+      target_column: selection.targetColumn,
+      task_type: selection.taskType,
     });
-  }
+  }, [runDatasetEvaluation, selection]);
 
-  const sortedCompare = useMemo(() => {
-    if (!compareResults.length) return compareResults;
-    if (!compareSortKey) return compareResults;
-    return [...compareResults].sort((a, b) => {
-      const aVal = compareSortKey === 'model_name'
-        ? a.model_name
-        : compareSortKey === 'training_time'
-          ? (a.training_time ?? Infinity)
-          : (a.metrics as any)?.[compareSortKey] ?? (compareSortKey === 'r2' ? (a.metrics as any)?.r2 : -Infinity);
-      const bVal = compareSortKey === 'model_name'
-        ? b.model_name
-        : compareSortKey === 'training_time'
-          ? (b.training_time ?? Infinity)
-          : (b.metrics as any)?.[compareSortKey] ?? (compareSortKey === 'r2' ? (b.metrics as any)?.r2 : -Infinity);
-      if (typeof aVal === 'string') return compareSortAsc ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
-      return compareSortAsc ? (aVal as number) - (bVal as number) : (bVal as number) - (aVal as number);
+  const handleCompare = useCallback(() => {
+    compareMutation.mutate({
+      modelNames: compareSelection,
+      datasetName: selection.fileName,
+      targetColumn: selection.targetColumn,
     });
-  }, [compareResults, compareSortKey, compareSortAsc]);
+    setTab('compare');
+  }, [compareMutation, compareSelection, selection.fileName, selection.targetColumn]);
 
-  function findBestVal(results: ModelComparisonResult[], key: string): any {
-    const valid = results.filter((r) => r.metrics && !r.error);
-    if (!valid.length) return null;
-    const isLowerBetter = ['log_loss', 'mae', 'mse', 'rmse', 'mape', 'training_time'].includes(key);
-    let best = valid[0];
-    for (const r of valid) {
-      const bv = key === 'training_time' ? (best.training_time ?? Infinity) : (best.metrics as any)?.[key] ?? (isLowerBetter ? Infinity : -Infinity);
-      const rv = key === 'training_time' ? (r.training_time ?? Infinity) : (r.metrics as any)?.[key] ?? (isLowerBetter ? Infinity : -Infinity);
-      if (isLowerBetter ? rv < bv : rv > bv) best = r;
-    }
-    return key === 'training_time' ? best.training_time : (best.metrics as any)?.[key];
-  }
+  const handleSearchChange = useCallback((value: string) => {
+    setHistorySearch(value);
+    setHistoryOffset(0);
+  }, []);
 
-  function handleSortCompare(key: string) {
-    if (compareSortKey === key) setCompareSortAsc(!compareSortAsc);
-    else { setCompareSortKey(key); setCompareSortAsc(false); }
-  }
+  const handleSortChange = useCallback((sort_by: string, order: 'asc' | 'desc') => {
+    setHistorySort({ sort_by, order });
+    setHistoryOffset(0);
+  }, []);
 
-  const metrics = result?.metrics;
+  const resourceError = modelsQuery.isError || datasetsQuery.isError;
+  const errorMessage =
+    (modelsQuery.error && getErrorMessage(modelsQuery.error, 'Models could not be loaded.')) ||
+    (datasetsQuery.error && getErrorMessage(datasetsQuery.error, 'Datasets could not be loaded.')) ||
+    '';
 
-  const comparisonMetricKeys = ['accuracy', 'precision', 'recall', 'f1', 'roc_auc', 'mcc', 'cohen_kappa', 'log_loss', 'mae', 'mse', 'rmse', 'r2', 'mape', 'training_time'];
-  const comparisonMetricLabels: Record<string, string> = {
-    accuracy: 'Accuracy', precision: 'Precision', recall: 'Recall', f1: 'F1 Score',
-    roc_auc: 'ROC AUC', mcc: 'MCC', cohen_kappa: "Cohen's Kappa", log_loss: 'Log Loss',
-    mae: 'MAE', mse: 'MSE', rmse: 'RMSE', r2: 'R²', mape: 'MAPE', training_time: 'Training Time',
-  };
+  const runError = runDatasetEvaluation.isError
+    ? getErrorMessage(runDatasetEvaluation.error, 'Evaluation could not be completed.')
+    : null;
+  const compareError = compareMutation.isError
+    ? getErrorMessage(compareMutation.error, 'The comparison could not be completed.')
+    : null;
+
+  const unavailable = result?.unavailable ?? [];
+  const basis = result
+    ? `${result.train_size.toLocaleString()} train / ${result.test_size.toLocaleString()} test rows`
+    : undefined;
+
+  const isInitialLoad = modelsQuery.isLoading || datasetsQuery.isLoading;
 
   return (
     <div className={styles.page}>
-      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, ease: 'easeOut' }}>
-        <div className={styles.header}>
-          <h1 className={styles.title}>Model Evaluation</h1>
-          <p className={styles.subtitle}>Comprehensive evaluation with metrics, charts, predictions, and model comparison</p>
+      <header className={styles.pageHeader}>
+        <div>
+          <h1 className={styles.pageTitle}>Model Evaluation</h1>
+          <p className={styles.pageSubtitle}>
+            Upload a dataset and automatically analyze, preprocess, train, and evaluate baseline machine learning models.
+          </p>
         </div>
+      </header>
 
-        <div className={styles.inputCard}>
-          <div className={styles.inputRow}>
-            <div className={styles.inputGroup}>
-              <label className={styles.label}>Model</label>
-              <div className={styles.selectWrapper}>
-                <select className={styles.select} value={modelName} onChange={(e) => setModelName(e.target.value)}>
-                  <option value="">{modelsQuery.isLoading ? 'Loading...' : 'Select model'}</option>
-                  {models.map((m) => (
-                    <option key={m.name} value={m.name}>{m.name} ({m.task_type || 'unknown'})</option>
-                  ))}
-                </select>
-                <ChevronDown size={16} className={styles.selectIcon} />
-              </div>
+      {isInitialLoad ? (
+        <div className={styles.loadingBlock}>
+          <div className={styles.skeletonRow} />
+          <div className={styles.skeletonGrid}>
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i} className={styles.skeletonTile} />
+            ))}
+          </div>
+        </div>
+      ) : resourceError ? (
+        <ErrorState
+          title="Evaluation is unavailable"
+          message={errorMessage}
+          onRetry={() => {
+            modelsQuery.refetch();
+            datasetsQuery.refetch();
+          }}
+        />
+      ) : (
+        <EvaluationSetupPanel
+          datasets={datasets}
+          models={models}
+          selection={selection}
+          onChange={setSelection}
+          onRunEvaluation={handleRunEvaluation}
+          isRunning={runDatasetEvaluation.isPending}
+          blockers={blockers}
+          hasResult={Boolean(result)}
+        />
+      )}
+
+      {runError && (
+        <div className={styles.errorBanner} role="alert">
+          <AlertCircle className={styles.errorIcon} />
+          <div className={styles.errorBody}>
+            <p className={styles.errorTitle}>{runError}</p>
+            <p className={styles.errorDetail}>
+              Metrics are calculated directly from real model predictions without placeholder data.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {runDatasetEvaluation.isPending && (
+        <div className={styles.loadingBlock} aria-busy="true" aria-label="Evaluating dataset">
+          <div className={styles.loadingProgressContainer}>
+            <RefreshCw className={styles.spinningIcon} />
+            <div className={styles.loadingTextGroup}>
+              <h3 className={styles.loadingTitle}>Running AutoML Model Evaluation...</h3>
+              <p className={styles.loadingSubtitle}>
+                Preprocessing raw features, splitting train/test sets (80/20), training candidate baseline models, and computing real evaluation metrics.
+              </p>
             </div>
-            <div className={styles.inputGroup}>
-              <label className={styles.label}>Dataset</label>
-              <div className={styles.selectWrapper}>
-                <select className={styles.select} value={fileName} onChange={(e) => handleDatasetChange(e.target.value)}>
-                  <option value="">{datasetsQuery.isLoading ? 'Loading...' : 'Select dataset'}</option>
-                  {datasets.map((d) => (
-                    <option key={d.name || d.id} value={d.name}>{d.name} ({d.rows?.toLocaleString()} rows)</option>
-                  ))}
-                </select>
-                <ChevronDown size={16} className={styles.selectIcon} />
-              </div>
-            </div>
-            <div className={styles.inputGroup}>
-              <label className={styles.label}>Target Column</label>
-              <div className={styles.selectWrapper}>
-                <select className={styles.select} value={targetColumn} onChange={(e) => setTargetColumn(e.target.value)} disabled={!fileName}>
-                  <option value="">{!fileName ? 'Select dataset first' : 'Select target'}</option>
-                  {columns.map((col) => <option key={col} value={col}>{col}</option>)}
-                </select>
-                <ChevronDown size={16} className={styles.selectIcon} />
-              </div>
-            </div>
-            <button className={styles.evalBtn} onClick={handleEvaluate} disabled={evaluateMutation.isPending || !modelName || !fileName || !targetColumn}>
-              {evaluateMutation.isPending ? <Loader2 size={16} className={styles.spin} /> : <BarChart3 size={16} />}
-              Evaluate
-            </button>
+          </div>
+        </div>
+      )}
+
+      {!runDatasetEvaluation.isPending && !resourceError && (
+        <nav className={styles.tabs} role="tablist" aria-label="Evaluation views">
+          {TABS.map(({ id, label, icon: Icon }) => (
             <button
-              className={styles.evalBtn}
-              style={{ background: 'var(--color-secondary)' }}
-              onClick={handleCompare}
-              disabled={compareMutation.isPending || compareSelected.size < 2 || !fileName || !targetColumn}
+              key={id}
+              role="tab"
+              type="button"
+              aria-selected={tab === id}
+              className={styles.tab}
+              data-active={tab === id}
+              onClick={() => setTab(id)}
             >
-              {compareMutation.isPending ? <Loader2 size={16} className={styles.spin} /> : <Table2 size={16} />}
-              Compare ({compareSelected.size})
+              <Icon className={styles.tabIcon} />
+              {label}
             </button>
+          ))}
+        </nav>
+      )}
+
+      {result && !runDatasetEvaluation.isPending && tab !== 'compare' && (
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          className={styles.results}
+        >
+          <div className={styles.resultHeader}>
+            <div className={styles.resultTitleGroup}>
+              <h2 className={styles.resultTitle}>{result.model_name}</h2>
+              <p className={styles.resultMeta}>
+                Dataset: <strong>{result.dataset_name}</strong> · Target: <code>{result.target_column}</code> · Task: {result.task_type} · {basis}
+              </p>
+            </div>
+            {viewingHistoryId && (
+              <Button variant="secondary" size="sm" onClick={() => setViewingHistoryId(null)}>
+                Back to live run
+              </Button>
+            )}
           </div>
-          {evaluateMutation.isError && (
-            <div className={styles.errorBanner}>
-              <AlertCircle size={16} />
-              <span>{(evaluateMutation.error as Error)?.message || 'Evaluation failed'}</span>
-            </div>
-          )}
-          {compareMutation.isError && (
-            <div className={styles.errorBanner}>
-              <AlertCircle size={16} />
-              <span>{(compareMutation.error as Error)?.message || 'Comparison failed'}</span>
-            </div>
-          )}
-          {models.length > 0 && (
-            <div style={{ marginTop: 'var(--space-3)', display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 'var(--text-caption)', color: 'var(--color-text-tertiary)', alignSelf: 'center' }}>Compare:</span>
-              {models.map((m) => (
-                <button
-                  key={m.name}
-                  onClick={() => toggleCompareSelect(m.name)}
-                  style={{
-                    padding: '2px 8px', borderRadius: 'var(--radius-md)', border: '1px solid',
-                    borderColor: compareSelected.has(m.name) ? 'var(--color-secondary)' : 'var(--color-border)',
-                    background: compareSelected.has(m.name) ? 'rgba(79,70,229,0.08)' : 'var(--color-surface)',
-                    color: compareSelected.has(m.name) ? 'var(--color-secondary)' : 'var(--color-text-secondary)',
-                    fontSize: 'var(--text-caption)', cursor: 'pointer', fontFamily: 'var(--font-mono)',
-                  }}
-                >
-                  {m.name}
-                </button>
+
+          {result.warnings?.length > 0 && (
+            <ul className={styles.warningList}>
+              {result.warnings.map((w) => (
+                <li key={w}>{w}</li>
               ))}
+            </ul>
+          )}
+
+          {tab === 'overview' && (
+            <div className={styles.stack}>
+              {/* Preprocessing Summary Card */}
+              <PreprocessingSummaryCard
+                steps={result.preprocessing_summary}
+                trainSize={result.train_size}
+                testSize={result.test_size}
+                inputFeatures={result.input_feature_names || result.feature_names}
+              />
+
+              {/* Candidate Model Comparison Table */}
+              {result.model_comparison && result.model_comparison.length > 0 && (
+                <ModelComparisonTable
+                  models={result.model_comparison}
+                  bestModelName={result.best_model_name || result.model_name}
+                  taskType={taskType}
+                />
+              )}
+
+              {/* Primary Performance Metrics Grid */}
+              <MetricGrid
+                metrics={result.metrics}
+                taskType={taskType}
+                unavailable={unavailable}
+              />
+
+              {/* AI Insights & Observations */}
+              <InsightsPanel insights={result.insights ?? []} basis={basis} />
+
+              {/* Visualizations */}
+              {taskType === 'classification' ? (
+                <>
+                  <ConfusionMatrixChart data={result.confusion_matrix} reason={reasonFor(unavailable, 'confusion')} />
+                  <RocCurveChart data={result.roc_curve} reason={reasonFor(unavailable, 'ROC')} />
+                </>
+              ) : (
+                <ResidualPlot data={result.residual_plot} />
+              )}
             </div>
           )}
+
+          {tab === 'curves' && (
+            <div className={styles.stack}>
+              <div className={styles.grid2}>
+                <LearningCurve data={result.learning_curve} />
+                <ValidationCurve data={result.validation_curve} />
+              </div>
+              {taskType === 'classification' && (
+                <div className={styles.grid2}>
+                  <RocCurveChart data={result.roc_curve} reason={reasonFor(unavailable, 'ROC')} />
+                  <PrCurveChart data={result.pr_curve} reason={reasonFor(unavailable, 'precision-recall')} />
+                </div>
+              )}
+              <PredictionDistribution data={result.prediction_distribution} />
+            </div>
+          )}
+
+          {tab === 'diagnostics' && (
+            <div className={styles.stack}>
+              <FeatureImportanceChart data={result.feature_importance ?? []} />
+              {unavailable.length > 0 && (
+                <section className={styles.unavailableCard}>
+                  <h3 className={styles.unavailableTitle}>Not available for this run</h3>
+                  <ul className={styles.unavailableList}>
+                    {unavailable.map((u) => (
+                      <li key={u}>{u}</li>
+                    ))}
+                  </ul>
+                </section>
+              )}
+            </div>
+          )}
+
+          {tab === 'predictions' && (
+            <div className={styles.stack}>
+              <PredictionSamplesTable
+                data={result.prediction_samples ?? []}
+                taskType={taskType}
+                totalRows={result.test_size}
+              />
+            </div>
+          )}
+        </motion.div>
+      )}
+
+      {!result && !runDatasetEvaluation.isPending && !resourceError && tab !== 'compare' && (
+        <EmptyState
+          title="No evaluation to show yet"
+          description="Upload or choose a dataset above, then click 'Evaluate Model'. The system will automatically analyze your data, train baseline models, and compute evaluation metrics."
+        />
+      )}
+
+      {tab === 'compare' && (
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          className={styles.results}
+        >
+          <div className={styles.resultHeader}>
+            <p className={styles.resultMeta}>
+              {compareMutation.data
+                ? `${compareMutation.data.results.length} model${compareMutation.data.results.length === 1 ? '' : 's'} on ${
+                    selection.fileName || 'the selected dataset'
+                  } · target ${selection.targetColumn || '—'}`
+                : 'Evaluate several models on one shared test set so the scores are directly comparable.'}
+            </p>
+          </div>
+
+          <ComparisonPanel
+            results={compareMutation.data?.results ?? []}
+            isLoading={compareMutation.isPending}
+            isError={compareMutation.isError}
+            errorMessage={compareError ?? undefined}
+            onRetry={handleCompare}
+          />
+
+          {!compareMutation.data && !compareMutation.isPending && !compareMutation.isError && (
+            <EmptyState
+              title="No comparison run yet"
+              description="Select two or more models of the same task in the setup panel, then run the comparison."
+            />
+          )}
+        </motion.div>
+      )}
+
+      {!isInitialLoad && !resourceError && (
+        <EvaluationHistoryPanel
+          items={historyQuery.data?.evaluations ?? []}
+          total={historyQuery.data?.total ?? 0}
+          offset={historyOffset}
+          isLoading={historyQuery.isLoading}
+          isFetching={historyQuery.isFetching}
+          isError={historyQuery.isError}
+          search={historySearch}
+          sortBy={historySort.sort_by}
+          order={historySort.order}
+          activeId={viewingHistoryId ?? undefined}
+          onPageChange={setHistoryOffset}
+          onSearchChange={handleSearchChange}
+          onSortChange={handleSortChange}
+          onSelect={setViewingHistoryId}
+          onRetry={() => historyQuery.refetch()}
+        />
+      )}
+
+      {historyDetail.isLoading && viewingHistoryId && (
+        <div className={styles.loadingBlock}>
+          <div className={styles.skeletonRow} />
         </div>
+      )}
 
-        {result && view === 'evaluate' && (
-          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, ease: 'easeOut' }}>
-            {result.warnings && result.warnings.length > 0 && (
-              <div style={{ marginBottom: 'var(--space-4)' }}>
-                {result.warnings.map((w, i) => (
-                  <div key={i} className={styles.errorBanner} style={{ background: 'rgba(234, 179, 8, 0.08)', color: '#a16207', marginBottom: i < result.warnings!.length - 1 ? 'var(--space-2)' : 0 }}>
-                    <AlertCircle size={16} />
-                    <span>{w}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-            <div className={styles.metricsRow}>
-              {metrics?.accuracy !== undefined && (
-                <div className={`${styles.metricCard} ${metricColor(metrics.accuracy) ? styles.metricCardHighlight : ''}`}>
-                  <span className={styles.metricLabel}>Accuracy</span>
-                  <span className={`${styles.metricValue} ${metricColor(metrics.accuracy)}`}>{fmtMetric(metrics.accuracy)}</span>
-                </div>
-              )}
-              {metrics?.precision !== undefined && (
-                <div className={`${styles.metricCard} ${metricColor(metrics.precision) ? styles.metricCardHighlight : ''}`}>
-                  <span className={styles.metricLabel}>Precision</span>
-                  <span className={`${styles.metricValue} ${metricColor(metrics.precision)}`}>{fmtMetric(metrics.precision)}</span>
-                </div>
-              )}
-              {metrics?.recall !== undefined && (
-                <div className={`${styles.metricCard} ${metricColor(metrics.recall) ? styles.metricCardHighlight : ''}`}>
-                  <span className={styles.metricLabel}>Recall</span>
-                  <span className={`${styles.metricValue} ${metricColor(metrics.recall)}`}>{fmtMetric(metrics.recall)}</span>
-                </div>
-              )}
-              {metrics?.f1 !== undefined && (
-                <div className={`${styles.metricCard} ${metricColor(metrics.f1) ? styles.metricCardHighlight : ''}`}>
-                  <span className={styles.metricLabel}>F1 Score</span>
-                  <span className={`${styles.metricValue} ${metricColor(metrics.f1)}`}>{fmtMetric(metrics.f1)}</span>
-                </div>
-              )}
-              {metrics?.roc_auc !== undefined && (
-                <div className={`${styles.metricCard} ${metricColor(metrics.roc_auc) ? styles.metricCardHighlight : ''}`}>
-                  <span className={styles.metricLabel}>ROC AUC</span>
-                  <span className={`${styles.metricValue} ${metricColor(metrics.roc_auc)}`}>{fmtMetric(metrics.roc_auc, false)}</span>
-                </div>
-              )}
-              {metrics?.mcc !== undefined && (
-                <div className={styles.metricCard}>
-                  <span className={styles.metricLabel}>MCC</span>
-                  <span className={styles.metricValue}>{fmtMetric(metrics.mcc, false)}</span>
-                </div>
-              )}
-              {metrics?.cohen_kappa !== undefined && (
-                <div className={styles.metricCard}>
-                  <span className={styles.metricLabel}>Cohen's Kappa</span>
-                  <span className={styles.metricValue}>{fmtMetric(metrics.cohen_kappa, false)}</span>
-                </div>
-              )}
-              {metrics?.log_loss !== undefined && (
-                <div className={styles.metricCard}>
-                  <span className={styles.metricLabel}>Log Loss</span>
-                  <span className={styles.metricValue}>{fmtMetric(metrics.log_loss, false)}</span>
-                </div>
-              )}
-              {metrics?.r2 !== undefined && (
-                <div className={`${styles.metricCard} ${metricColor(metrics.r2, 0.75) ? styles.metricCardHighlight : ''}`}>
-                  <span className={styles.metricLabel}>R²</span>
-                  <span className={`${styles.metricValue} ${metricColor(metrics.r2, 0.75)}`}>{fmtMetric(metrics.r2, false)}</span>
-                </div>
-              )}
-              {metrics?.rmse !== undefined && (
-                <div className={styles.metricCard}>
-                  <span className={styles.metricLabel}>RMSE</span>
-                  <span className={styles.metricValue}>{fmtMetric(metrics.rmse, false)}</span>
-                </div>
-              )}
-              {metrics?.mae !== undefined && (
-                <div className={styles.metricCard}>
-                  <span className={styles.metricLabel}>MAE</span>
-                  <span className={styles.metricValue}>{fmtMetric(metrics.mae, false)}</span>
-                </div>
-              )}
-              {metrics?.mape !== undefined && (
-                <div className={styles.metricCard}>
-                  <span className={styles.metricLabel}>MAPE</span>
-                  <span className={styles.metricValue}>{fmtMetric(metrics.mape, false)}</span>
-                </div>
-              )}
-              {result.train_size > 0 && (
-                <div className={styles.metricCard}>
-                  <span className={styles.metricLabel}>Train / Test</span>
-                  <span className={styles.metricValue} style={{ fontSize: 'var(--text-body)' }}>{result.train_size.toLocaleString()} / {result.test_size.toLocaleString()}</span>
-                </div>
-              )}
-            </div>
-
-            <div className={styles.tabsBar}>
-              {CHART_TABS.map((tab) => {
-                const Icon = tab.icon;
-                return (
-                  <button key={tab.id} className={`${styles.tab} ${activeTab === tab.id ? styles.tabActive : ''}`} onClick={() => setActiveTab(tab.id)}>
-                    <Icon size={15} />
-                    <span>{tab.label}</span>
-                  </button>
-                );
-              })}
-            </div>
-
-            <AnimatePresence mode="wait">
-              <motion.div key={activeTab} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }} className={styles.tabContent}>
-                {activeTab === 'confusion' && (result.confusion_matrix ? <ConfusionMatrix data={result.confusion_matrix} /> : <div className={styles.emptyTab}>Confusion matrix not available for regression</div>)}
-                {activeTab === 'roc' && (result.roc_curve ? <RocCurve data={result.roc_curve} /> : <div className={styles.emptyTab}>ROC curve not available</div>)}
-                {activeTab === 'pr' && (result.pr_curve ? <PrecisionRecallCurve data={result.pr_curve} /> : <div className={styles.emptyTab}>PR curve not available</div>)}
-                {activeTab === 'learning' && <LearningCurve data={result.learning_curve} />}
-                {activeTab === 'validation' && <ValidationCurve data={result.validation_curve} />}
-                {activeTab === 'importance' && (result.feature_importance.length > 0 ? <FeatureImportanceChart data={result.feature_importance} /> : <div className={styles.emptyTab}>Feature importance not available</div>)}
-                {activeTab === 'residual' && (result.residual_plot ? <ResidualPlot data={result.residual_plot} /> : <div className={styles.emptyTab}>Residual plot only for regression</div>)}
-                {activeTab === 'distribution' && <PredictionDistribution data={result.prediction_distribution} />}
-              </motion.div>
-            </AnimatePresence>
-
-            {result.prediction_samples && result.prediction_samples.length > 0 && (
-              <div className={styles.section} style={{ marginTop: 'var(--space-6)' }}>
-                <h3 className={styles.sectionTitle}><Table2 size={18} style={{ verticalAlign: 'middle', marginRight: 8 }} />Prediction Samples</h3>
-                <div className={styles.samplesCard}>
-                  <div className={styles.samplesScroll}>
-                    <table className={styles.samplesTable}>
-                      <thead>
-                        <tr>
-                          <th>#</th>
-                          <th>Actual</th>
-                          <th>Predicted</th>
-                          {result.task_type === 'classification' ? <th>Correct</th> : <th>Residual</th>}
-                          {result.task_type === 'classification' && <th>Probabilities</th>}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {result.prediction_samples.map((s, i) => (
-                          <tr key={i}>
-                            <td style={{ color: 'var(--color-text-tertiary)' }}>{i + 1}</td>
-                            <td style={{ fontWeight: 600 }}>{String(s.actual)}</td>
-                            <td style={{ fontWeight: 600 }}>{String(s.predicted)}</td>
-                            {result.task_type === 'classification' ? (
-                              <td>
-                                {s.correct !== undefined ? (
-                                  s.correct ? <span className={styles.correctBadge}>Correct</span> : <span className={styles.incorrectBadge}>Wrong</span>
-                                ) : '—'}
-                              </td>
-                            ) : (
-                              <td>{s.residual !== undefined ? s.residual.toFixed(4) : '—'}</td>
-                            )}
-                            {result.task_type === 'classification' && (
-                              <td style={{ fontSize: 'var(--text-tiny)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                {s.probability ? Object.entries(s.probability).map(([k, v]) => `${k}: ${(v * 100).toFixed(1)}%`).join(', ') : '—'}
-                              </td>
-                            )}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {result.ai_insights && (
-              <div className={styles.section} style={{ marginTop: 'var(--space-6)' }}>
-                <h3 className={styles.sectionTitle}><Brain size={18} style={{ verticalAlign: 'middle', marginRight: 8 }} />AI Insights</h3>
-                <div className={styles.insightsCard}>
-                  <div className={styles.insightsContent}>{renderInsights(result.ai_insights)}</div>
-                  <div className={styles.actionsRow}>
-                    <button className={styles.registerBtn}>
-                      <FileCheck size={16} />
-                      Register Model
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </motion.div>
-        )}
-
-        {compareResults.length > 0 && view === 'evaluate' && (
-          <div className={styles.section} style={{ marginTop: 'var(--space-6)' }}>
-            <h3 className={styles.sectionTitle}><Table2 size={18} style={{ verticalAlign: 'middle', marginRight: 8 }} />Model Comparison</h3>
-            <div className={styles.comparisonCard}>
-              <div className={styles.comparisonScroll}>
-                <table className={styles.comparisonTable}>
-                  <thead>
-                    <tr>
-                      <th>Metric</th>
-                      {sortedCompare.map((r) => (
-                        <th key={r.model_name} className={styles.metricLabelCell} style={{ cursor: 'default' }}>
-                          {r.model_name}
-                          {r.error && <span style={{ color: 'var(--color-danger)', fontSize: 'var(--text-tiny)', marginLeft: 4 }}>(error)</span>}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {comparisonMetricKeys.map((key) => {
-                      const bestVal = findBestVal(sortedCompare, key);
-                      return (
-                        <tr key={key}>
-                          <td className={`${styles.metricLabelCell} ${compareSortKey === key ? styles.sorted : ''}`} onClick={() => handleSortCompare(key)}>
-                            <ArrowUpDown size={12} style={{ marginRight: 4, opacity: 0.5 }} />
-                            {comparisonMetricLabels[key]}
-                          </td>
-                          {sortedCompare.map((r) => {
-                            if (r.error) return <td key={r.model_name} className={styles.errorCell}>Error</td>;
-                            let val: any;
-                            if (key === 'training_time') val = r.training_time;
-                            else val = (r.metrics as any)?.[key];
-                            if (val === null || val === undefined) return <td key={r.model_name}>—</td>;
-                            const isBest = bestVal !== null && val === bestVal && sortedCompare.length > 1;
-                            const formatted = key === 'training_time'
-                              ? (typeof val === 'number' ? `${val.toFixed(1)}s` : val)
-                              : (['accuracy', 'precision', 'recall', 'f1', 'roc_auc'].includes(key) ? `${(val * 100).toFixed(1)}%` : typeof val === 'number' ? val.toFixed(4) : val);
-                            return (
-                              <td key={r.model_name} className={isBest ? styles.bestValue : ''}>
-                                {formatted}
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {!result && !compareResults.length && !evaluateMutation.isPending && (
-          <div className={styles.emptyState}>
-            <div className={styles.emptyIcon}><BarChart3 size={32} /></div>
-            <h3 className={styles.emptyTitle}>Select a model and dataset to evaluate</h3>
-            <p className={styles.emptyDesc}>Choose from your trained models and uploaded datasets to generate comprehensive evaluation with metrics, charts, predictions, and model comparison</p>
-            <div className={styles.vizGrid}>
-              <div className={styles.vizCard}><Target size={16} /><span>Confusion Matrix</span></div>
-              <div className={styles.vizCard}><TrendingUp size={16} /><span>ROC Curve</span></div>
-              <div className={styles.vizCard}><GitBranch size={16} /><span>PR Curve</span></div>
-              <div className={styles.vizCard}><BarChart3 size={16} /><span>Learning Curve</span></div>
-              <div className={styles.vizCard}><Sliders size={16} /><span>Validation Curve</span></div>
-              <div className={styles.vizCard}><Lightbulb size={16} /><span>Feature Importance</span></div>
-              <div className={styles.vizCard}><Table2 size={16} /><span>Prediction Samples</span></div>
-              <div className={styles.vizCard}><Brain size={16} /><span>AI Insights</span></div>
-            </div>
-          </div>
-        )}
-      </motion.div>
+      {historyDetail.isError && viewingHistoryId && (
+        <ErrorState
+          title="Stored evaluation unavailable"
+          message={getErrorMessage(historyDetail.error, 'This evaluation could not be loaded.')}
+          onRetry={() => historyDetail.refetch()}
+        />
+      )}
     </div>
   );
 }
+
+function reasonFor(unavailable: string[], needle: string): string | undefined {
+  return unavailable.find((u) => u.toLowerCase().includes(needle.toLowerCase()));
+}
+
+export default ModelEvaluationPage;

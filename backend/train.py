@@ -231,6 +231,8 @@ def run_automl_training(X, y, task_type, model_name_prefix="automl_model", prepr
     metadata = {
         "task_type": task_type,
         "n_classes": n_classes,
+        "target_column": getattr(y, "name", None),
+        "dataset_name": getattr(X, "attrs", {}).get("dataset_name"),
         "feature_names": list(X.columns),
         "label_map": label_map,
         "best_params": best["best_params"],

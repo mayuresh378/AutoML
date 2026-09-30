@@ -1,0 +1,109 @@
+.wrapper {
+  display: flex;
+  gap: var(--space-3);
+  align-items: stretch;
+}
+
+.gridArea {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  flex: 1;
+  min-width: 0;
+}
+
+.matrix {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  aspect-ratio: 1.35;
+  min-height: 62px;
+  border-radius: var(--radius-md, 8px);
+  border: 1px solid var(--color-border);
+  padding: var(--space-1);
+  transition: transform 0.12s ease;
+}
+
+.cell:hover {
+  transform: scale(1.03);
+  border-color: var(--color-border-strong);
+}
+
+.count {
+  font-size: var(--text-body);
+  font-weight: 600;
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.pct {
+  font-size: var(--text-tiny);
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.axisRow {
+  display: grid;
+  gap: 3px;
+}
+
+.axisLabel {
+  font-size: var(--text-tiny);
+  color: var(--color-text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+}
+
+.axisLabel[data-axis='y'] {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.axisLabel[data-axis='x'] {
+  justify-content: center;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.axisLabel[data-axis='x-caption'] {
+  justify-content: center;
+}
+
+.unavailable {
+  padding: var(--space-6) var(--space-4);
+  color: var(--color-text-tertiary);
+  font-size: var(--text-body-sm);
+  text-align: center;
+  background: var(--color-surface);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-lg);
+  line-height: 1.5;
+}
+
+@media (max-width: 640px) {
+  .wrapper {
+    flex-direction: column;
+  }
+
+  .axisLabel[data-axis='y'] {
+    writing-mode: horizontal-tb;
+    transform: none;
+    align-self: flex-start;
+  }
+}

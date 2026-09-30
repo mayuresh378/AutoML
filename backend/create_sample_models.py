@@ -117,7 +117,7 @@ def get_feature_importance(model, feature_names):
     return [{"feature": feature_names[i], "importance": round(float(imp[i]), 4)} for i in idx[:20]]
 
 
-def train_and_save(name, model, X_df, y, feature_names, preprocessor, label_map, task_type, prefix, extra_params=None):
+def train_and_save(name, model, X_df, y, feature_names, preprocessor, label_map, task_type, prefix, extra_params=None, target_column=None, dataset_name=None):
     X_train, X_test, y_train, y_test = train_test_split(X_df, y, test_size=0.2, random_state=42,
                                                          stratify=y if task_type == "classification" else None)
     start = time.time()
@@ -155,6 +155,11 @@ def train_and_save(name, model, X_df, y, feature_names, preprocessor, label_map,
         "train_size": len(X_train),
         "total_results": [{"name": name, "cv_score": cv_score, "metrics": metrics, "training_time": train_time}],
     }
+    # Recorded so Model Evaluation can preselect the target without guessing.
+    if target_column:
+        metadata["target_column"] = target_column
+    if dataset_name:
+        metadata["dataset_name"] = dataset_name
     meta_path = save_path.replace(".pkl", "_meta.json")
     with open(meta_path, "w") as f:
         json.dump(metadata, f, indent=2, default=str)
@@ -187,7 +192,8 @@ def main():
 
     for name, (model, params) in cls_models.items():
         try:
-            train_and_save(name, model, X_cls, y_cls, feat_cls, pre_cls, label_map_cls, "classification", "iris_cls", params)
+            train_and_save(name, model, X_cls, y_cls, feat_cls, pre_cls, label_map_cls, "classification", "iris_cls", params,
+                           target_column="species", dataset_name="iris.csv")
         except Exception as e:
             print(f"  FAILED {name}: {e}")
 
@@ -211,7 +217,8 @@ def main():
 
     for name, (model, params) in reg_models.items():
         try:
-            train_and_save(name, model, X_reg, y_reg, feat_reg, pre_reg, None, "regression", "iris_reg", params)
+            train_and_save(name, model, X_reg, y_reg, feat_reg, pre_reg, None, "regression", "iris_reg", params,
+                           target_column="sepal_length", dataset_name="iris.csv")
         except Exception as e:
             print(f"  FAILED {name}: {e}")
 

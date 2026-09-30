@@ -1,0 +1,263 @@
+============================= test session starts =============================
+platform win32 -- Python 3.14.2, pytest-9.1.1, pluggy-1.6.0
+rootdir: C:\Users\mayuresh\Downloads\automl-platform-main\automl-platform-main\backend
+configfile: pytest.ini
+plugins: anyio-4.12.1
+collected 34 items
+
+tests\test_evaluation.py .............................                   [ 85%]
+tests\test_evaluation_dataset.py ....F                                   [100%]
+
+================================== FAILURES ===================================
+______________________ test_api_analyze_and_run_dataset _______________________
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\sqlalchemy\engine\base.py:1969: in _exec_single_context
+    self.dialect.do_execute(
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\sqlalchemy\engine\default.py:952: in do_execute
+    cursor.execute(statement, parameters)
+E   sqlite3.OperationalError: no such table: datasets
+
+The above exception was the direct cause of the following exception:
+tests\test_evaluation_dataset.py:100: in test_api_analyze_and_run_dataset
+    resp = client.post("/api/v1/evaluation/analyze", json={"file_name": "sample_clf.csv"})
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\starlette\testclient.py:546: in post
+    return super().post(
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\httpx\_client.py:1144: in post
+    return self.request(
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\starlette\testclient.py:445: in request
+    return super().request(
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\httpx\_client.py:825: in request
+    return self.send(request, auth=auth, follow_redirects=follow_redirects)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\httpx\_client.py:914: in send
+    response = self._send_handling_auth(
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\httpx\_client.py:942: in _send_handling_auth
+    response = self._send_handling_redirects(
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\httpx\_client.py:979: in _send_handling_redirects
+    response = self._send_single_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\httpx\_client.py:1014: in _send_single_request
+    response = transport.handle_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\starlette\testclient.py:348: in handle_request
+    raise exc
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\starlette\testclient.py:345: in handle_request
+    portal.call(self.app, scope, receive, send)
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\anyio\from_thread.py:334: in call
+    return cast(T_Retval, self.start_task_soon(func, *args).result())
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\concurrent\futures\_base.py:450: in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\concurrent\futures\_base.py:395: in __get_result
+    raise self._exception
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\anyio\from_thread.py:259: in _call_func
+    retval = await retval_or_awaitable
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\fastapi\applications.py:1160: in __call__
+    await super().__call__(scope, receive, send)
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\starlette\applications.py:107: in __call__
+    await self.middleware_stack(scope, receive, send)
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\starlette\middleware\errors.py:186: in __call__
+    raise exc
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\starlette\middleware\errors.py:164: in __call__
+    await self.app(scope, receive, _send)
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\starlette\middleware\trustedhost.py:36: in __call__
+    await self.app(scope, receive, send)
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\starlette\middleware\base.py:191: in __call__
+    with recv_stream, send_stream, collapse_excgroups():
+                                   ^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\contextlib.py:162: in __exit__
+    self.gen.throw(value)
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\starlette\_utils.py:87: in collapse_excgroups
+    raise exc
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\starlette\middleware\base.py:193: in __call__
+    response = await self.dispatch_func(request, call_next)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+middleware.py:90: in dispatch
+    response = await call_next(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\starlette\middleware\base.py:168: in call_next
+    raise app_exc from app_exc.__cause__ or app_exc.__context__
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\starlette\middleware\base.py:144: in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\starlette\middleware\base.py:191: in __call__
+    with recv_stream, send_stream, collapse_excgroups():
+                                   ^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\contextlib.py:162: in __exit__
+    self.gen.throw(value)
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\starlette\_utils.py:87: in collapse_excgroups
+    raise exc
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\starlette\middleware\base.py:193: in __call__
+    response = await self.dispatch_func(request, call_next)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+middleware.py:39: in dispatch
+    response = await call_next(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\starlette\middleware\base.py:168: in call_next
+    raise app_exc from app_exc.__cause__ or app_exc.__context__
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\starlette\middleware\base.py:144: in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\starlette\middleware\base.py:191: in __call__
+    with recv_stream, send_stream, collapse_excgroups():
+                                   ^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\contextlib.py:162: in __exit__
+    self.gen.throw(value)
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\starlette\_utils.py:87: in collapse_excgroups
+    raise exc
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\starlette\middleware\base.py:193: in __call__
+    response = await self.dispatch_func(request, call_next)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+logging_config.py:48: in dispatch
+    response = await call_next(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\starlette\middleware\base.py:168: in call_next
+    raise app_exc from app_exc.__cause__ or app_exc.__context__
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\starlette\middleware\base.py:144: in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\starlette\middleware\cors.py:87: in __call__
+    await self.app(scope, receive, send)
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\starlette\middleware\exceptions.py:63: in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\starlette\_exception_handler.py:53: in wrapped_app
+    raise exc
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\starlette\_exception_handler.py:42: in wrapped_app
+    await app(scope, receive, sender)
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\fastapi\middleware\asyncexitstack.py:18: in __call__
+    await self.app(scope, receive, send)
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\starlette\routing.py:716: in __call__
+    await self.middleware_stack(scope, receive, send)
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\starlette\routing.py:736: in app
+    await route.handle(scope, receive, send)
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\starlette\routing.py:290: in handle
+    await self.app(scope, receive, send)
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\fastapi\routing.py:130: in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\starlette\_exception_handler.py:53: in wrapped_app
+    raise exc
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\starlette\_exception_handler.py:42: in wrapped_app
+    await app(scope, receive, sender)
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\fastapi\routing.py:116: in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\fastapi\routing.py:670: in app
+    raw_response = await run_endpoint_function(
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\fastapi\routing.py:326: in run_endpoint_function
+    return await run_in_threadpool(dependant.call, **values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\starlette\concurrency.py:32: in run_in_threadpool
+    return await anyio.to_thread.run_sync(func)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\anyio\to_thread.py:63: in run_sync
+    return await get_async_backend().run_sync_in_worker_thread(
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\anyio\_backends\_asyncio.py:2502: in run_sync_in_worker_thread
+    return await future
+           ^^^^^^^^^^^^
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\anyio\_backends\_asyncio.py:986: in run
+    result = context.run(func, *args)
+             ^^^^^^^^^^^^^^^^^^^^^^^^
+main.py:1838: in analyze_dataset_endpoint
+    require_dataset_access(db, req.file_name, current_user)
+main.py:468: in require_dataset_access
+    record = get_dataset_record(db, name)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+crud.py:371: in get_dataset_record
+    return db.query(Dataset).filter(Dataset.filename == name).first()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\sqlalchemy\orm\query.py:2766: in first
+    return self.limit(1)._iter().first()  # type: ignore
+           ^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\sqlalchemy\orm\query.py:2864: in _iter
+    result: Union[ScalarResult[_T], Result[_T]] = self.session.execute(
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\sqlalchemy\orm\session.py:2373: in execute
+    return self._execute_internal(
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\sqlalchemy\orm\session.py:2271: in _execute_internal
+    result: Result[Any] = compile_state_cls.orm_execute_statement(
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\sqlalchemy\orm\context.py:306: in orm_execute_statement
+    result = conn.execute(
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\sqlalchemy\engine\base.py:1421: in execute
+    return meth(
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\sqlalchemy\sql\elements.py:526: in _execute_on_connection
+    return connection._execute_clauseelement(
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\sqlalchemy\engine\base.py:1643: in _execute_clauseelement
+    ret = self._execute_context(
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\sqlalchemy\engine\base.py:1848: in _execute_context
+    return self._exec_single_context(
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\sqlalchemy\engine\base.py:1988: in _exec_single_context
+    self._handle_dbapi_exception(
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\sqlalchemy\engine\base.py:2365: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\sqlalchemy\engine\base.py:1969: in _exec_single_context
+    self.dialect.do_execute(
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\sqlalchemy\engine\default.py:952: in do_execute
+    cursor.execute(statement, parameters)
+E   sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) no such table: datasets
+E   [SQL: SELECT datasets.id AS datasets_id, datasets.filename AS datasets_filename, datasets.original_filename AS datasets_original_filename, datasets.file_path AS datasets_file_path, datasets.file_size_kb AS datasets_file_size_kb, datasets.rows AS datasets_rows, datasets.columns AS datasets_columns, datasets.status AS datasets_status, datasets.description AS datasets_description, datasets.tags AS datasets_tags, datasets.version AS datasets_version, datasets.source AS datasets_source, datasets.source_url AS datasets_source_url, datasets.deleted_at AS datasets_deleted_at, datasets.created_at AS datasets_created_at, datasets.updated_at AS datasets_updated_at, datasets.project_id AS datasets_project_id, datasets.user_id AS datasets_user_id 
+E   FROM datasets 
+E   WHERE datasets.filename = ?
+E    LIMIT ? OFFSET ?]
+E   [parameters: ('sample_clf.csv', 1, 0)]
+E   (Background on this error at: https://sqlalche.me/e/20/e3q8)
+---------------------------- Captured stderr call -----------------------------
+Exception closing connection <sqlite3.Connection object at 0x000002844124DD50>
+Traceback (most recent call last):
+  File "C:\Users\mayuresh\AppData\Local\Programs\Python\Python314\Lib\site-packages\sqlalchemy\pool\base.py", line 375, in _close_connection
+    self._dialect.do_close(connection)
+    ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^
+  File "C:\Users\mayuresh\AppData\Local\Programs\Python\Python314\Lib\site-packages\sqlalchemy\engine\default.py", line 721, in do_close
+    dbapi_connection.close()
+    ~~~~~~~~~~~~~~~~~~~~~~^^
+sqlite3.ProgrammingError: SQLite objects created in a thread can only be used in that same thread. The object was created in thread id 10220 and this is thread id 7112.
+------------------------------ Captured log call ------------------------------
+ERROR    sqlalchemy.pool.impl.SingletonThreadPool:base.py:377 Exception closing connection <sqlite3.Connection object at 0x000002844124DD50>
+Traceback (most recent call last):
+  File "C:\Users\mayuresh\AppData\Local\Programs\Python\Python314\Lib\site-packages\sqlalchemy\pool\base.py", line 375, in _close_connection
+    self._dialect.do_close(connection)
+    ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^
+  File "C:\Users\mayuresh\AppData\Local\Programs\Python\Python314\Lib\site-packages\sqlalchemy\engine\default.py", line 721, in do_close
+    dbapi_connection.close()
+    ~~~~~~~~~~~~~~~~~~~~~~^^
+sqlite3.ProgrammingError: SQLite objects created in a thread can only be used in that same thread. The object was created in thread id 10220 and this is thread id 7112.
+============================== warnings summary ===============================
+tests/test_evaluation.py::test_unsupported_metric_is_explained_not_crashed
+  C:\Users\mayuresh\AppData\Local\Programs\Python\Python314\Lib\site-packages\sklearn\model_selection\_validation.py:489: FitFailedWarning: 
+  6 fits failed out of a total of 15.
+  The score on these train-test partitions for these parameters will be set to nan.
+  If these failures are not expected, you can try to debug them by setting error_score='raise'.
+  
+  Below are more details about the failures:
+  --------------------------------------------------------------------------------
+  6 fits failed with the following error:
+  Traceback (most recent call last):
+    File "C:\Users\mayuresh\AppData\Local\Programs\Python\Python314\Lib\site-packages\sklearn\model_selection\_validation.py", line 856, in _fit_and_score
+      estimator.fit(X_train, y_train, **fit_params)
+      ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    File "C:\Users\mayuresh\AppData\Local\Programs\Python\Python314\Lib\site-packages\sklearn\base.py", line 1403, in wrapper
+      return fit_method(estimator, *args, **kwargs)
+    File "C:\Users\mayuresh\AppData\Local\Programs\Python\Python314\Lib\site-packages\sklearn\pipeline.py", line 649, in fit
+      self._final_estimator.fit(Xt, y, **last_step_params["fit"])
+      ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    File "C:\Users\mayuresh\AppData\Local\Programs\Python\Python314\Lib\site-packages\sklearn\base.py", line 1403, in wrapper
+      return fit_method(estimator, *args, **kwargs)
+    File "C:\Users\mayuresh\AppData\Local\Programs\Python\Python314\Lib\site-packages\sklearn\svm\_classes.py", line 330, in fit
+      self.coef_, self.intercept_, n_iter_ = _fit_liblinear(
+                                             ~~~~~~~~~~~~~~^
+          X,
+          ^^
+      ...<13 lines>...
+          sample_weight=sample_weight,
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      )
+      ^
+    File "C:\Users\mayuresh\AppData\Local\Programs\Python\Python314\Lib\site-packages\sklearn\svm\_base.py", line 1235, in _fit_liblinear
+      raise ValueError(
+      ...<3 lines>...
+      )
+  ValueError: This solver needs samples of at least 2 classes in the data, but the data contains only one class: np.int64(0)
+  
+    warnings.warn(some_fits_failed_message, FitFailedWarning)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/test_evaluation_dataset.py::test_api_analyze_and_run_dataset - s...
+============= 1 failed, 33 passed, 1 warning in 67.85s (0:01:07) ==============

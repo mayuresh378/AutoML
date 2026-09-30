@@ -500,6 +500,9 @@ def _run_supervised(X, y, task_type, model_names, catalog, preprocessor, feature
             joblib.dump(full_pipeline, save_path)
             meta_path = save_path.replace(".pkl", "_meta.json")
             meta = {"task_type": task_type, "model": name, "feature_names": feature_names, "label_map": label_map, "metrics": metrics}
+            # Recorded so Model Evaluation can preselect the target without guessing.
+            meta["target_column"] = target_column
+            meta["dataset_name"] = file_name
             with open(meta_path, "w") as f:
                 json.dump(meta, f, indent=2, default=str)
 

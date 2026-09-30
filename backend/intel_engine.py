@@ -806,7 +806,7 @@ def run_intelligent_job(file_name, target, task, model_names, progress_callback=
     report = build_report(profile, results, task, best, tgt, mode, elapsed, _outer_info, names)
 
     if best:
-        _persist_models(best, task, file_name)
+        _persist_models(best, task, file_name, target_column=tgt)
 
     if progress_callback:
         progress_callback({"status": "completed", "message": f"Done — {len(successful)}/{total} models trained",
@@ -1091,7 +1091,7 @@ def _gen_combos(space, cap=16):
     return combos
 
 
-def _persist_models(best, task, file_name):
+def _persist_models(best, task, file_name, target_column=None):
     try:
         import joblib
         from sklearn.pipeline import Pipeline
@@ -1100,6 +1100,11 @@ def _persist_models(best, task, file_name):
         save_path = os.path.join(MODELS_DIR, filename)
         meta = {"task_type": task, "model": name, "metrics": best.get("optimized_metrics") or best.get("metrics"),
                 "params": best.get("best_params")}
+        # Recorded so Model Evaluation can preselect the target without guessing.
+        if target_column:
+            meta["target_column"] = target_column
+        if file_name:
+            meta["dataset_name"] = file_name
         with open(save_path.replace(".pkl", "_meta.json"), "w") as f:
             json.dump(meta, f, indent=2, default=str)
     except Exception:
