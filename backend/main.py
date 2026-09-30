@@ -53,11 +53,12 @@ from crud import (
     get_audit_log,
     get_team, update_team, delete_team,
     list_models as list_model_registry_entries,
+    create_evaluation_record, list_evaluation_records, get_evaluation_record,
 )
 from api_responses import ok, error, created, deleted, paginated, TAGS_METADATA
 from fastapi.exceptions import RequestValidationError
 from schemas import (
-    WebhookCreate, WebhookResponse,
+    WebhookCreate, WebhookResponse, EvaluationRequest,
 )
 from preprocess import auto_preprocess, analyze_target
 from train import run_automl_training
@@ -1895,6 +1896,117 @@ def evaluate_model_api(
     return result
 
 
+@app.post("/api/v1/evaluation/evaluate", tags=["Evaluation"], summary="Evaluate model (JSON)", description="Run comprehensive evaluation on model and dataset with structured output and persistent record.")
+def evaluate_model_endpoint(
+    req: EvaluationRequest,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_optional_user),
+):
+    from evaluation import evaluate_model_comprehensive, generate_ai_insights
+
+    # Resolve model name
+    mname = req.model_name or req.model_id
+    if not mname:
+        raise HTTPException(status_code=400, detail="model_id or model_name is required")
+    if not mname.endswith(".pkl") and not os.path.exists(os.path.join(MODELS_DIR, mname)):
+        if os.path.exists(os.path.join(MODELS_DIR, f"{mname}.pkl")):
+            mname = f"{mname}.pkl"
+
+    # Resolve dataset name
+    dname = req.dataset_name or req.file_name or req.dataset_id
+    if not dname:
+        raise HTTPException(status_code=400, detail="dataset_id or dataset_name is required")
+
+    fpath = os.path.join(MODELS_DIR, mname)
+    if not os.path.exists(fpath):
+        raise HTTPException(status_code=404, detail=f"Model '{mname}' not found")
+
+    require_model_access(db, mname, current_user)
+    require_dataset_access(db, dname, current_user)
+
+    try:
+        result = evaluate_model_comprehensive(mname, dname, req.target_column)
+        insights = generate_ai_insights(result)
+        result["ai_insights"] = insights
+
+        uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
+        rec = create_evaluation_record(db, {
+            "user_id": uid,
+            "model_id": req.model_id or mname,
+            "model_name": mname,
+            "dataset_id": req.dataset_id or dname,
+            "dataset_name": dname,
+            "target_column": req.target_column,
+            "task_type": result.get("task_type", "classification"),
+            "metrics": result.get("metrics"),
+            "results_summary": {
+                "train_size": result.get("train_size"),
+                "test_size": result.get("test_size"),
+                "feature_names": result.get("feature_names"),
+            },
+            "ai_insights": insights,
+        })
+        result["evaluation_id"] = rec.id
+        log_audit(db, current_user.get("name", "User") if current_user else "User", "model.evaluated", mname, "model", rec.id)
+        return result
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=400, detail=f"Evaluation failed: {str(e)}")
+
+
+@app.get("/api/v1/evaluation/history", tags=["Evaluation"], summary="List evaluation history", description="Get evaluation history for current user.")
+def list_evaluations_endpoint(
+    db: Session = Depends(get_db),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=500),
+    current_user: dict = Depends(get_optional_user),
+):
+    uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
+    records = list_evaluation_records(db, user_id=uid, limit=limit, offset=offset)
+    total = len(records)
+    items = [{
+        "id": r.id,
+        "model_id": r.model_id,
+        "model_name": r.model_name,
+        "dataset_id": r.dataset_id,
+        "dataset_name": r.dataset_name,
+        "target_column": r.target_column,
+        "task_type": r.task_type,
+        "metrics": r.metrics,
+        "ai_insights": r.ai_insights,
+        "created_at": r.created_at.isoformat() if r.created_at else None,
+    } for r in records]
+    return paginated(items, total, offset, limit, key="evaluations")
+
+
+@app.get("/api/v1/evaluation/{eval_id}", tags=["Evaluation"], summary="Get evaluation detail", description="Get single evaluation record by ID.")
+def get_evaluation_endpoint(
+    eval_id: str,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_optional_user),
+):
+    uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
+    rec = get_evaluation_record(db, eval_id, user_id=uid)
+    if not rec:
+        raise HTTPException(status_code=404, detail="Evaluation not found")
+    return {
+        "id": rec.id,
+        "model_id": rec.model_id,
+        "model_name": rec.model_name,
+        "dataset_id": rec.dataset_id,
+        "dataset_name": rec.dataset_name,
+        "target_column": rec.target_column,
+        "task_type": rec.task_type,
+        "metrics": rec.metrics,
+        "results_summary": rec.results_summary,
+        "ai_insights": rec.ai_insights,
+        "created_at": rec.created_at.isoformat() if rec.created_at else None,
+    }
+
+
 @app.post("/api/v1/models/{name}/evaluate-all", tags=["Models"], summary="Comprehensive model evaluation", description="Compute all evaluation visualizations, metrics, prediction samples.")
 def evaluate_model_all(
     name: str,
@@ -1911,13 +2023,27 @@ def evaluate_model_all(
     require_dataset_access(db, file_name, current_user)
     try:
         result = evaluate_model_comprehensive(name, file_name, target_column)
-        result["ai_insights"] = generate_ai_insights(result)
-        log_audit(db, current_user.get("name", "User"), "model.evaluated_all", name, "model")
+        insights = generate_ai_insights(result)
+        result["ai_insights"] = insights
+        uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
+        rec = create_evaluation_record(db, {
+            "user_id": uid,
+            "model_name": name,
+            "dataset_name": file_name,
+            "target_column": target_column,
+            "task_type": result.get("task_type", "classification"),
+            "metrics": result.get("metrics"),
+            "results_summary": {"train_size": result.get("train_size"), "test_size": result.get("test_size")},
+            "ai_insights": insights,
+        })
+        result["evaluation_id"] = rec.id
+        log_audit(db, current_user.get("name", "User"), "model.evaluated_all", name, "model", rec.id)
         return result
     except Exception as e:
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=400, detail=f"{type(e).__name__}: {str(e)}")
+
 
 
 @app.post("/api/v1/models/compare", tags=["Models"], summary="Compare multiple models", description="Evaluate multiple models on the same dataset and compare metrics side by side.")

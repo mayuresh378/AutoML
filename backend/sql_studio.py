@@ -24,7 +24,10 @@ from datetime import datetime
 from threading import Lock
 from typing import Optional
 
-import duckdb
+try:
+    import duckdb
+except ImportError:
+    duckdb = None
 from fastapi import APIRouter, Depends, Form, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session

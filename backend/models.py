@@ -412,3 +412,23 @@ class ActivityLog(Base):
 
     user_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
     user = relationship("User", back_populates="activity_logs")
+
+
+class EvaluationRecord(Base):
+    __tablename__ = "evaluation_records"
+
+    id = Column(String, primary_key=True, default=_uuid)
+    model_id = Column(String, nullable=True, index=True)
+    model_name = Column(String, nullable=False, index=True)
+    dataset_id = Column(String, nullable=True, index=True)
+    dataset_name = Column(String, nullable=False, index=True)
+    target_column = Column(String, nullable=False)
+    task_type = Column(String, nullable=False)
+    metrics = Column(JSON, nullable=True)
+    results_summary = Column(JSON, nullable=True)
+    ai_insights = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=_now, index=True)
+
+    user_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
+    user = relationship("User")
+

@@ -99,7 +99,7 @@ export default function ModelEvaluationPage() {
   });
 
   const selectedDataset = useMemo(
-    () => datasetsQuery.data?.find((d) => d.name === fileName),
+    () => datasetsQuery.data?.find((d) => d.name === fileName || d.id === fileName),
     [datasetsQuery.data, fileName],
   );
 
@@ -115,9 +115,36 @@ export default function ModelEvaluationPage() {
   const models = modelsQuery.data ?? [];
   const datasets = datasetsQuery.data ?? [];
 
+  const handleDatasetChange = (newFileName: string) => {
+    setFileName(newFileName);
+    const ds = datasets.find((d) => d.name === newFileName || d.id === newFileName);
+    if (ds?.columns && ds.columns.length > 0) {
+      const lastCol = ds.columns[ds.columns.length - 1];
+      const targetCandidate = ds.columns.find((c) => ['target', 'label', 'species', 'class', 'outcome', 'price'].includes(c.toLowerCase())) || lastCol;
+      setTargetColumn(targetCandidate);
+    } else if (newFileName.toLowerCase().includes('iris')) {
+      setTargetColumn('species');
+    } else {
+      setTargetColumn('');
+    }
+  };
+
   const evaluateMutation = useMutation({
-    mutationFn: () => evaluationService.comprehensive(modelName, fileName, targetColumn),
-    onSuccess: (data) => { setResult(data); setView('evaluate'); },
+    mutationFn: () => evaluationService.evaluate({
+      model_name: modelName,
+      dataset_name: fileName,
+      file_name: fileName,
+      target_column: targetColumn,
+    }),
+    onSuccess: (data) => {
+      setResult(data);
+      setView('evaluate');
+      if (data.task_type === 'regression' && ['confusion', 'roc', 'pr'].includes(activeTab)) {
+        setActiveTab('importance');
+      } else if (data.task_type === 'classification' && activeTab === 'residual') {
+        setActiveTab('confusion');
+      }
+    },
   });
 
   const compareMutation = useMutation({
@@ -137,6 +164,7 @@ export default function ModelEvaluationPage() {
     if (compareSelected.size < 2 || !fileName.trim() || !targetColumn.trim()) return;
     compareMutation.mutate();
   };
+
 
   function toggleCompareSelect(name: string) {
     setCompareSelected((prev) => {
@@ -218,10 +246,10 @@ export default function ModelEvaluationPage() {
             <div className={styles.inputGroup}>
               <label className={styles.label}>Dataset</label>
               <div className={styles.selectWrapper}>
-                <select className={styles.select} value={fileName} onChange={(e) => { setFileName(e.target.value); setTargetColumn(''); }}>
+                <select className={styles.select} value={fileName} onChange={(e) => handleDatasetChange(e.target.value)}>
                   <option value="">{datasetsQuery.isLoading ? 'Loading...' : 'Select dataset'}</option>
                   {datasets.map((d) => (
-                    <option key={d.name} value={d.name}>{d.name} ({d.rows?.toLocaleString()} rows)</option>
+                    <option key={d.name || d.id} value={d.name}>{d.name} ({d.rows?.toLocaleString()} rows)</option>
                   ))}
                 </select>
                 <ChevronDown size={16} className={styles.selectIcon} />

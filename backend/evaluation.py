@@ -27,10 +27,25 @@ def _load_model(name):
 
 
 def _load_meta(name):
-    meta_path = os.path.join(MODELS_DIR, name.replace(".pkl", "_meta.json"))
-    if os.path.exists(meta_path):
-        with open(meta_path) as f:
-            return json.load(f)
+    base_name = name[:-4] if name.endswith(".pkl") else name
+    candidates = [
+        f"{base_name}_meta.json",
+        f"{name}_meta.json",
+        f"{base_name}.meta.json",
+        f"{base_name}.meta.pkl",
+        f"{name}.meta.pkl",
+    ]
+    for candidate in candidates:
+        p = os.path.join(MODELS_DIR, candidate)
+        if os.path.exists(p):
+            try:
+                if candidate.endswith(".json"):
+                    with open(p) as f:
+                        return json.load(f)
+                else:
+                    return joblib.load(p)
+            except Exception:
+                pass
     return {}
 
 
@@ -45,6 +60,19 @@ def _extract_model(pipeline):
                 model = pipeline.named_steps[key]
                 break
     return model, preprocessor
+
+
+def _infer_task_type(model_obj, meta):
+    if meta and meta.get("task_type"):
+        return meta.get("task_type")
+    model, _ = _extract_model(model_obj)
+    estimator_type = getattr(model, "_estimator_type", None)
+    if estimator_type == "regressor":
+        return "regression"
+    if estimator_type == "classifier":
+        return "classification"
+    return "classification"
+
 
 
 def _fmt(v):
@@ -490,7 +518,7 @@ def evaluate_model_comprehensive(model_name, file_name, target_column):
     pipeline = _load_model(model_name)
     meta = _load_meta(model_name)
     model, preprocessor = _extract_model(pipeline)
-    task_type = meta.get("task_type", "classification")
+    task_type = _infer_task_type(pipeline, meta)
     feature_names = meta.get("feature_names", [])
 
     X_for_split, y_processed, model_obj, data_warnings = _prepare_data(file_name, target_column, pipeline, meta, task_type)

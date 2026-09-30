@@ -108,3 +108,13 @@ class AuditLogResponse(BaseModel):
     resource_type: Optional[str] = None
     status: str
     created_at: datetime
+
+
+class EvaluationRequest(BaseModel):
+    model_id: Optional[str] = None
+    model_name: Optional[str] = None
+    dataset_id: Optional[str] = None
+    dataset_name: Optional[str] = str
+    file_name: Optional[str] = None
+    target_column: str
+

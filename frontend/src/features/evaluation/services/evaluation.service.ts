@@ -127,7 +127,31 @@ export interface ModelComparisonResult {
   error?: string;
 }
 
+export interface EvaluationRecordItem {
+  id: string;
+  model_id?: string;
+  model_name: string;
+  dataset_id?: string;
+  dataset_name: string;
+  target_column: string;
+  task_type: string;
+  metrics: EvaluationMetrics;
+  ai_insights?: string;
+  created_at?: string;
+}
+
 export const evaluationService = {
+  evaluate: (payload: {
+    model_id?: string;
+    model_name?: string;
+    dataset_id?: string;
+    dataset_name?: string;
+    file_name?: string;
+    target_column: string;
+  }) => {
+    return http.post<ComprehensiveEvaluation>('/evaluation/evaluate', payload);
+  },
+
   comprehensive: (modelName: string, fileName: string, targetColumn: string) => {
     const form = new FormData();
     form.append('file_name', fileName);
@@ -142,4 +166,13 @@ export const evaluationService = {
     form.append('target_column', targetColumn);
     return http.post<{ results: ModelComparisonResult[] }>('/models/compare', form);
   },
+
+  history: () => {
+    return http.get<{ items: EvaluationRecordItem[]; total: number }>('/evaluation/history');
+  },
+
+  get: (evalId: string) => {
+    return http.get<ComprehensiveEvaluation>(`/evaluation/${evalId}`);
+  },
 };
+

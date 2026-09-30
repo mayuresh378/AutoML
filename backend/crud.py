@@ -11,7 +11,7 @@ from jose import jwt
 from models import (User, Team, TeamMember, ApiKey, Experiment, ModelRegistry,
                     PredictionLog, Webhook, AuditLog,
                     Project, MarketplaceItem, Dataset, DatasetShare, Notification, ActivityLog,
-                    DatasetCleanStep, CleaningHistory, SavedQuery, QueryHistory)
+                    DatasetCleanStep, CleaningHistory, SavedQuery, QueryHistory, EvaluationRecord)
 
 from config import settings
 
@@ -847,3 +847,41 @@ def clear_query_history(db: Session, user_id: str) -> int:
                .delete(synchronize_session=False))
     db.commit()
     return deleted
+
+
+# ─── Evaluation Records ─────────────────────────────────────────────
+
+def create_evaluation_record(db: Session, data: dict) -> EvaluationRecord:
+    rec = EvaluationRecord(
+        id=_uid(),
+        user_id=data.get("user_id"),
+        model_id=data.get("model_id"),
+        model_name=data.get("model_name"),
+        dataset_id=data.get("dataset_id"),
+        dataset_name=data.get("dataset_name"),
+        target_column=data.get("target_column"),
+        task_type=data.get("task_type"),
+        metrics=data.get("metrics"),
+        results_summary=data.get("results_summary"),
+        ai_insights=data.get("ai_insights"),
+        created_at=_now(),
+    )
+    db.add(rec)
+    db.commit()
+    db.refresh(rec)
+    return rec
+
+
+def list_evaluation_records(db: Session, user_id: str = None, limit: int = 50, offset: int = 0) -> list:
+    q = db.query(EvaluationRecord)
+    if user_id is not None:
+        q = q.filter(EvaluationRecord.user_id == user_id)
+    return q.order_by(desc(EvaluationRecord.created_at)).offset(offset).limit(limit).all()
+
+
+def get_evaluation_record(db: Session, eval_id: str, user_id: str = None) -> Optional[EvaluationRecord]:
+    q = db.query(EvaluationRecord).filter(EvaluationRecord.id == eval_id)
+    if user_id is not None:
+        q = q.filter(EvaluationRecord.user_id == user_id)
+    return q.first()
+
