@@ -918,10 +918,15 @@ def query_evaluation_records(
     total = q.count()
 
     column = EVALUATION_SORT_COLUMNS.get(sort_by, EvaluationRecord.created_at)
+    # Null-safe placement via NULLS LAST, not COALESCE(col, ''). COALESCE is
+    # only valid for the text columns here; on created_at (a timestamp) it
+    # raises "COALESCE types timestamp without time zone and character varying
+    # cannot be matched" on Postgres. Clause order must be <col> DESC NULLS
+    # LAST, so nulls_last() comes after desc()/asc().
     if order == "asc":
-        q = q.order_by(func.coalesce(column, "0").asc())
+        q = q.order_by(column.asc().nulls_last())
     else:
-        q = q.order_by(func.coalesce(column, "").desc())
+        q = q.order_by(column.desc().nulls_last())
 
     return q.offset(offset).limit(limit).all(), total
 

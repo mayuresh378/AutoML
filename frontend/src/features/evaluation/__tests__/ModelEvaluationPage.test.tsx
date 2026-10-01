@@ -47,8 +47,7 @@ const models = [
 const datasets = [
   {
     id: 'd1',
-    name: 'iris',
-    filename: 'iris.csv',
+    name: 'iris.csv',
     rows: 150,
     columns: ['sepal_length', 'sepal_width', 'petal_length', 'petal_width', 'species'],
     size_kb: 3,

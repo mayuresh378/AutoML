@@ -41,7 +41,13 @@ export interface AuthResponse {
 export interface Dataset {
   id: string;
   name: string;
-  filename: string;
+  /**
+   * Only returned by a few endpoints (import-url, import-database, version
+   * detail). The dataset list endpoint returns `name` only, so this must stay
+   * optional -- declaring it required let `d.filename` compile while always
+   * evaluating to `undefined` at runtime and silently broke consumers.
+   */
+  filename?: string;
   rows: number;
   columns: string[];
   size_kb: number;

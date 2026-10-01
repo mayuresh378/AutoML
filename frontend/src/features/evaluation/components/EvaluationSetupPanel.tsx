@@ -154,8 +154,8 @@ export function EvaluationSetupPanel({
                   })
                 }
                 options={readyDatasets.map((d) => ({
-                  value: d.filename,
-                  label: `${d.filename} (${d.rows || '?'} rows · ${d.columns?.length || '?'} cols)`,
+                  value: d.name,
+                  label: `${d.name} (${d.rows || '?'} rows · ${d.columns?.length || '?'} cols)`,
                 }))}
               />
             </div>
