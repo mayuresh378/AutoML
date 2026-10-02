@@ -3,7 +3,10 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { evaluationService } from '../services/evaluation.service';
 import { ModelEvaluationPage } from '../pages/ModelEvaluationPage';
-import type { ComprehensiveEvaluation } from '../services/evaluation.service';
+import type {
+  ComprehensiveEvaluation,
+  DatasetAnalyzeResponse,
+} from '../services/evaluation.service';
 
 vi.mock('recharts', () => {
   const Stub = ({ children }: any) => <div data-testid="recharts">{children}</div>;
@@ -132,6 +135,8 @@ vi.mock('../services/evaluation.service', async () => {
     ...actual,
     evaluationService: {
       evaluate: vi.fn(),
+      analyzeDataset: vi.fn(),
+      evaluateDataset: vi.fn(),
       compare: vi.fn(),
       history: vi.fn(),
       get: vi.fn(),
@@ -139,76 +144,123 @@ vi.mock('../services/evaluation.service', async () => {
   };
 });
 
+const analysis: DatasetAnalyzeResponse = {
+  file_name: 'iris.csv',
+  rows: 150,
+  columns: ['sepal_length', 'sepal_width', 'petal_length', 'petal_width', 'species'],
+  missing_count: 0,
+  duplicate_count: 0,
+  dtypes: {},
+  suggested_target: 'species',
+  target_confidence: 'High' as const,
+  detected_task_type: 'classification' as const,
+  potential_id_columns: [],
+  numeric_columns: ['sepal_length', 'sepal_width', 'petal_length', 'petal_width'],
+  categorical_columns: ['species'],
+  preview_data: [],
+};
+
+/**
+ * The page is dataset-driven: picking a dataset triggers an analyze call that
+ * preselects the target, then "Evaluate Model" runs the AutoML baseline via
+ * evaluateDataset. These helpers drive that real sequence instead of the removed
+ * model-selector UI.
+ */
+async function selectDataset() {
+  // Several native <select> elements exist (dataset, then target + task once
+  // analysis returns), and the dataset one has no <label>, so pick the
+  // control that actually offers the dataset as an option.
+  const selects = await screen.findAllByRole('combobox');
+  const datasetSelect = selects.find((el) =>
+    Array.from((el as HTMLSelectElement).options).some((o) => o.value === 'iris.csv'),
+  )!;
+  fireEvent.change(datasetSelect, { target: { value: 'iris.csv' } });
+  await waitFor(() =>
+    expect(screen.getByText('Auto-Detected (High Confidence)')).toBeInTheDocument(),
+  );
+}
+
+async function runEvaluation() {
+  const button = await screen.findByRole('button', { name: /evaluate model/i });
+  await waitFor(() => expect(button).toBeEnabled());
+  fireEvent.click(button);
+}
+
 describe('ModelEvaluationPage', () => {
   beforeEach(() => {
-    vi.mocked(evaluationService.history).mockResolvedValue({ evaluations: [], total: 0, offset: 0, limit: 10 });
+    // Clear call history so assertions like `not.toHaveBeenCalled()` are
+    // scoped to the current test. Implementations survive clearAllMocks.
+    vi.clearAllMocks();
+    vi.mocked(evaluationService.history).mockResolvedValue({
+      evaluations: [],
+      total: 0,
+      offset: 0,
+      limit: 10,
+    });
   });
 
-  it('blocks the run until a full selection is made, and explains why', async () => {
+  it('blocks the run until a dataset is chosen, and explains why', async () => {
     renderPage();
-    await waitFor(() => expect(screen.getByText('Evaluation setup')).toBeInTheDocument());
 
-    expect(screen.getByText('Select a model to evaluate.')).toBeInTheDocument();
-    expect(screen.getByText('Select a dataset to evaluate against.')).toBeInTheDocument();
-    expect(screen.getByText('Select the target column to predict.')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /run evaluation/i })).toBeDisabled();
+    await screen.findByRole('heading', { level: 1, name: 'Model Evaluation' });
+    expect(screen.getByText('Upload or select a dataset to evaluate.')).toBeInTheDocument();
+    expect(screen.getByText('Select or confirm the target column to predict.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /evaluate model/i })).toBeDisabled();
+    // Nothing may run before a dataset exists.
+    expect(evaluationService.evaluateDataset).not.toHaveBeenCalled();
   });
 
-  it('preselects the training target once model and dataset are chosen', async () => {
+  it('preselects the target and task type from the real analyze response', async () => {
+    vi.mocked(evaluationService.analyzeDataset).mockResolvedValue(analysis);
     renderPage();
-    await waitFor(() => expect(screen.getByText('Evaluation setup')).toBeInTheDocument());
 
-    fireEvent.change(screen.getByLabelText('Model'), { target: { value: 'iris_rf.pkl' } });
-    fireEvent.change(screen.getByLabelText('Dataset'), { target: { value: 'iris.csv' } });
+    await selectDataset();
 
-    await waitFor(() => expect(screen.getByLabelText('Target column')).toHaveValue('species'));
-    await waitFor(() => expect(screen.getByRole('button', { name: /run evaluation/i })).toBeEnabled());
+    expect(evaluationService.analyzeDataset).toHaveBeenCalledWith('iris.csv', undefined);
+    // Target comes from the backend suggestion, not a hardcoded value.
+    expect(screen.getByText('species (Suggested Target)')).toBeInTheDocument();
+    expect(screen.getByText('Auto-Detected (High Confidence)')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /evaluate model/i })).toBeEnabled();
   });
 
-  it('runs an evaluation and renders the real result', async () => {
-    vi.mocked(evaluationService.evaluate).mockResolvedValue(evaluation);
+  it('runs the dataset evaluation and renders the real result', async () => {
+    vi.mocked(evaluationService.analyzeDataset).mockResolvedValue(analysis);
+    vi.mocked(evaluationService.evaluateDataset).mockResolvedValue(evaluation);
     renderPage();
-    await waitFor(() => expect(screen.getByText('Evaluation setup')).toBeInTheDocument());
 
-    fireEvent.change(screen.getByLabelText('Model'), { target: { value: 'iris_rf.pkl' } });
-    fireEvent.change(screen.getByLabelText('Dataset'), { target: { value: 'iris.csv' } });
-    await waitFor(() => expect(screen.getByRole('button', { name: /run evaluation/i })).toBeEnabled());
-    fireEvent.click(screen.getByRole('button', { name: /run evaluation/i }));
+    await selectDataset();
+    await runEvaluation();
 
     await waitFor(() => expect(screen.getByText('0.9600')).toBeInTheDocument());
-    expect(evaluationService.evaluate).toHaveBeenCalledWith({
-      model_name: 'iris_rf.pkl',
-      dataset_name: 'iris.csv',
+    // The dataset-driven endpoint is used, not the saved-model one.
+    expect(evaluationService.evaluateDataset).toHaveBeenCalledWith({
+      file_name: 'iris.csv',
       target_column: 'species',
+      task_type: 'classification',
     });
-    // Result header proves which model/dataset/target produced the numbers.
-    const header = screen.getByRole('heading', { name: 'iris_rf.pkl' });
-    expect(header).toBeInTheDocument();
-    expect(header.parentElement).toHaveTextContent('iris.csv');
-    expect(header.parentElement).toHaveTextContent('species');
+    expect(evaluationService.evaluate).not.toHaveBeenCalled();
     expect(screen.getByText('120 train / 30 test rows')).toBeInTheDocument();
   });
 
-  it('surfaces a server error with a retry path and no fabricated metrics', async () => {
-    vi.mocked(evaluationService.evaluate).mockRejectedValue(
-      new Error("Dataset is missing 3 features required by the model: a, b, c"),
+  it('surfaces a server error and never fabricates metrics', async () => {
+    vi.mocked(evaluationService.analyzeDataset).mockResolvedValue(analysis);
+    vi.mocked(evaluationService.evaluateDataset).mockRejectedValue(
+      new Error('Target column not found in dataset'),
     );
     renderPage();
-    await waitFor(() => expect(screen.getByText('Evaluation setup')).toBeInTheDocument());
 
-    fireEvent.change(screen.getByLabelText('Model'), { target: { value: 'iris_rf.pkl' } });
-    fireEvent.change(screen.getByLabelText('Dataset'), { target: { value: 'iris.csv' } });
-    await waitFor(() => expect(screen.getByRole('button', { name: /run evaluation/i })).toBeEnabled());
-    fireEvent.click(screen.getByRole('button', { name: /run evaluation/i }));
+    await selectDataset();
+    await runEvaluation();
 
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
-    expect(screen.getByText(/missing 3 features/)).toBeInTheDocument();
+    expect(screen.getByText(/Target column not found/)).toBeInTheDocument();
     // No placeholder KPI may appear after a failure.
     expect(screen.queryByText('0.9600')).not.toBeInTheDocument();
   });
 
   it('reports unsupported metrics instead of hiding them', async () => {
-    vi.mocked(evaluationService.evaluate).mockResolvedValue({
+    vi.mocked(evaluationService.analyzeDataset).mockResolvedValue(analysis);
+    vi.mocked(evaluationService.evaluateDataset).mockResolvedValue({
       ...evaluation,
       metrics: { accuracy: 0.9 },
       roc_curve: null,
@@ -216,16 +268,15 @@ describe('ModelEvaluationPage', () => {
       unavailable: ['ROC curve could not be computed: AttributeError'],
     });
     renderPage();
-    await waitFor(() => expect(screen.getByText('Evaluation setup')).toBeInTheDocument());
 
-    fireEvent.change(screen.getByLabelText('Model'), { target: { value: 'iris_rf.pkl' } });
-    fireEvent.change(screen.getByLabelText('Dataset'), { target: { value: 'iris.csv' } });
-    await waitFor(() => expect(screen.getByRole('button', { name: /run evaluation/i })).toBeEnabled());
-    fireEvent.click(screen.getByRole('button', { name: /run evaluation/i }));
+    await selectDataset();
+    await runEvaluation();
 
     await waitFor(() => expect(screen.getByText('0.9000')).toBeInTheDocument());
     const rocTile = screen.getByText('ROC AUC').closest('[data-empty="true"]')!;
     expect(rocTile).not.toBeNull();
+    // The reason is surfaced rather than the tile silently disappearing.
+    expect(screen.getAllByText(/ROC curve could not be computed/).length).toBeGreaterThan(0);
   });
 
   it('shows an empty history before anything has been evaluated', async () => {
@@ -234,7 +285,10 @@ describe('ModelEvaluationPage', () => {
     expect(await screen.findByText('No evaluations yet')).toBeInTheDocument();
   });
 
-  it('passes the selection to the comparison endpoint on one shared split', async () => {
+  it('compares the models the user actually selects, on one shared split', async () => {
+    // Regression: compareSelection could never be populated, so the Compare tab
+    // was unreachable dead UI even though /models/compare works.
+    vi.mocked(evaluationService.analyzeDataset).mockResolvedValue(analysis);
     vi.mocked(evaluationService.compare).mockResolvedValue({
       results: [
         { model_name: 'iris_rf.pkl', task_type: 'classification', metrics: { accuracy: 0.96 } },
@@ -244,21 +298,170 @@ describe('ModelEvaluationPage', () => {
       failed: 1,
     });
     renderPage();
-    await waitFor(() => expect(screen.getByText('Evaluation setup')).toBeInTheDocument());
 
-    fireEvent.change(screen.getByLabelText('Model'), { target: { value: 'iris_rf.pkl' } });
-    fireEvent.change(screen.getByLabelText('Dataset'), { target: { value: 'iris.csv' } });
-    await waitFor(() => expect(screen.getByRole('button', { name: /run evaluation/i })).toBeEnabled());
+    await selectDataset();
 
-    fireEvent.click(screen.getByRole('button', { name: /choose models to compare/i }));
+    // Nothing is sent until models are explicitly ticked.
+    expect(evaluationService.compare).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /iris_rf\.pkl/ }));
     fireEvent.click(screen.getByRole('button', { name: /compare 1 model/i }));
 
     await waitFor(() => expect(evaluationService.compare).toHaveBeenCalled());
     expect(evaluationService.compare).toHaveBeenCalledWith(['iris_rf.pkl'], 'iris.csv', 'species');
+
     // A single failed model must not hide the successful one.
-    await waitFor(() => expect(screen.getByText('Model comparison')).toBeInTheDocument());
-    expect(screen.getByText("Model 'broken.pkl' not found")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("Model 'broken.pkl' not found")).toBeInTheDocument());
     expect(screen.getByRole('cell', { name: /iris_rf\.pkl/ })).toBeInTheDocument();
+  });
+
+  it('deselecting a model updates the compare count and disables the action', async () => {
+    vi.mocked(evaluationService.analyzeDataset).mockResolvedValue(analysis);
+    renderPage();
+
+    await selectDataset();
+    fireEvent.click(screen.getByRole('checkbox', { name: /iris_rf\.pkl/ }));
+    expect(screen.getByRole('button', { name: /compare 1 model/i })).toBeEnabled();
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /iris_rf\.pkl/ }));
+    expect(screen.getByRole('button', { name: /compare 0 models/i })).toBeDisabled();
+    expect(evaluationService.compare).not.toHaveBeenCalled();
+  });
+
+  it('renders the narrative ai_insights the backend returns', async () => {
+    // Regression: ai_insights was returned and typed but rendered nowhere.
+    vi.mocked(evaluationService.analyzeDataset).mockResolvedValue(analysis);
+    vi.mocked(evaluationService.evaluateDataset).mockResolvedValue({
+      ...evaluation,
+      ai_insights: 'Accuracy is strong on 30 test rows.\nWatch the 11-row minority class.',
+    });
+    renderPage();
+
+    await selectDataset();
+    await runEvaluation();
+
+    await waitFor(() => expect(screen.getByRole('region', { name: /ai insights/i })).toBeInTheDocument());
+    expect(screen.getByText(/Accuracy is strong on 30 test rows/)).toBeInTheDocument();
+    expect(screen.getByText(/Watch the 11-row minority class/)).toBeInTheDocument();
+  });
+
+  it('renders a stored result that has no split sizes instead of crashing', async () => {
+    // Regression: result.train_size.toLocaleString() threw on older records.
+    vi.mocked(evaluationService.analyzeDataset).mockResolvedValue(analysis);
+    vi.mocked(evaluationService.history).mockResolvedValue({
+      evaluations: [
+        {
+          id: 'ev_nosplit',
+          model_name: 'iris_rf.pkl',
+          dataset_name: 'iris.csv',
+          target_column: 'species',
+          task_type: 'classification',
+          metrics: { accuracy: 0.9 },
+          created_at: '2026-01-02T10:00:00Z',
+        },
+      ],
+      total: 1,
+      offset: 0,
+      limit: 10,
+    });
+    const noSplit = { ...evaluation } as Record<string, unknown>;
+    delete noSplit.train_size;
+    delete noSplit.test_size;
+    // Mirrors the live API shape: `result` is null, payload in `results_summary`.
+    vi.mocked(evaluationService.get).mockResolvedValue({
+      id: 'ev_nosplit',
+      model_name: 'iris_rf.pkl',
+      dataset_name: 'iris.csv',
+      target_column: 'species',
+      task_type: 'classification',
+      metrics: evaluation.metrics,
+      result: null,
+      results_summary: noSplit as unknown as ComprehensiveEvaluation,
+    });
+    renderPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: /view/i }));
+    await waitFor(() => expect(evaluationService.get).toHaveBeenCalledWith('ev_nosplit'));
+
+    // Must not throw. With both sizes absent the split is omitted entirely
+    // rather than printing '? train / ? test rows'.
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'iris_rf.pkl' })).toBeInTheDocument());
+    expect(
+      screen.queryByText((_content, el) =>
+        /train \/ .*test rows/.test(el?.textContent ?? '') && el?.tagName === 'P',
+      ),
+    ).not.toBeInTheDocument();
+
+    });
+
+  it('renders a partial split without crashing', async () => {
+    // One size present, one missing: the missing half must degrade to '?'.
+    vi.mocked(evaluationService.analyzeDataset).mockResolvedValue(analysis);
+    vi.mocked(evaluationService.history).mockResolvedValue({
+      evaluations: [
+        {
+          id: 'ev_partial',
+          model_name: 'iris_rf.pkl',
+          dataset_name: 'iris.csv',
+          target_column: 'species',
+          task_type: 'classification',
+          metrics: { accuracy: 0.9 },
+          created_at: '2026-01-02T10:00:00Z',
+        },
+      ],
+      total: 1,
+      offset: 0,
+      limit: 10,
+    });
+    vi.mocked(evaluationService.get).mockResolvedValue({
+      id: 'ev_partial',
+      model_name: 'iris_rf.pkl',
+      dataset_name: 'iris.csv',
+      target_column: 'species',
+      task_type: 'classification',
+      metrics: evaluation.metrics,
+      result: null,
+      results_summary: {
+        ...evaluation,
+        train_size: evaluation.train_size,
+        test_size: undefined as unknown as number,
+      },
+    });
+    renderPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: /view/i }));
+    await waitFor(() => expect(evaluationService.get).toHaveBeenCalledWith('ev_partial'));
+    await waitFor(() =>
+      expect(
+        screen.getByText((_content, el) =>
+          /\d[\d,]* train \/ \? test rows/.test(el?.textContent ?? '') && el?.tagName === 'P',
+        ),
+      ).toBeInTheDocument(),
+    );
+  });
+
+  it('derives regression from a numeric suggested target', async () => {
+    // Regression: `selection.taskType || data.detected_task_type` could never
+    // apply detection because taskType always held the classification default.
+    vi.mocked(evaluationService.analyzeDataset).mockResolvedValue({
+      ...analysis,
+      suggested_target: 'age',
+      detected_task_type: 'regression',
+      numeric_columns: ['age', 'tenure'],
+      columns: ['age', 'tenure'],
+    });
+    vi.mocked(evaluationService.evaluateDataset).mockResolvedValue(evaluation);
+    renderPage();
+
+    await selectDataset();
+    await runEvaluation();
+
+    // The numeric target must reach the request as a regression task.
+    expect(evaluationService.evaluateDataset).toHaveBeenCalledWith({
+      file_name: 'iris.csv',
+      target_column: 'age',
+      task_type: 'regression',
+    });
   });
 
   it('keeps history scoped and searchable through the service', async () => {

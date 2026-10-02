@@ -179,7 +179,13 @@ export interface StoredEvaluation {
   target_column: string;
   task_type: TaskType;
   metrics: EvaluationMetrics;
+  /**
+   * Full evaluation payload. Verified against the live API: this is null and
+   * the real payload arrives in `results_summary`, so consumers must read
+   * `results_summary` and fall back to `result`.
+   */
   result: ComprehensiveEvaluation | null;
+  results_summary?: ComprehensiveEvaluation | null;
   ai_insights?: string;
   created_at?: string;
 }

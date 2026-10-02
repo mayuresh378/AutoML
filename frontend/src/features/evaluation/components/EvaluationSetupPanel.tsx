@@ -15,14 +15,30 @@ export interface DatasetSelection {
   modelName?: string;
 }
 
+/**
+ * Trust the backend's detection rather than guessing from the dtype.
+ *
+ * An earlier fix inferred the task locally with "numeric target => regression".
+ * That is wrong for real targets like a 0/1 churn column, which are numeric but
+ * must be classified. `/evaluation/analyze` already decides this properly, so
+ * re-run it whenever the target changes and adopt `detected_task_type`.
+ */
+function detectedTaskType(data: DatasetAnalyzeResponse, target: string): TaskType {
+  if (!target) return 'classification';
+  return (data.detected_task_type as TaskType) ?? 'classification';
+}
+
 interface Props {
   datasets: Dataset[];
   models: Model[];
   selection: DatasetSelection;
   onChange: (next: DatasetSelection) => void;
   onRunEvaluation: () => void;
-  onRunModelEvaluation?: () => void;
+  compareSelection: string[];
+  onCompareSelectionChange: (modelName: string) => void;
+  onCompare: () => void;
   isRunning: boolean;
+  isComparing?: boolean;
   blockers: string[];
   hasResult: boolean;
 }
@@ -33,7 +49,11 @@ export function EvaluationSetupPanel({
   selection,
   onChange,
   onRunEvaluation,
+  compareSelection,
+  onCompareSelectionChange,
+  onCompare,
   isRunning,
+  isComparing = false,
   blockers,
 }: Props) {
   const [analysisData, setAnalysisData] = useState<DatasetAnalyzeResponse | null>(null);
@@ -43,12 +63,22 @@ export function EvaluationSetupPanel({
 
   const analyzeMutation = useAnalyzeDataset();
 
+  // Comparison only makes sense for models that are not archived. `status` here
+  // is the lifecycle stage (ready/archived/staging/...), never an error state, so
+  // filter on the presence of a usable name rather than a non-existent 'error'.
+  const availableModels = useMemo(
+    () => models.filter((m) => Boolean(m.name) && m.status !== 'archived'),
+    [models],
+  );
+
   const readyDatasets = useMemo(
     () => datasets.filter((d) => d.status !== 'error'),
     [datasets]
   );
 
-  // Trigger automatic analysis whenever fileName changes
+  // Re-analyze when the file or the chosen target changes. Sending the explicit
+  // target lets the backend classify it correctly, which a client-side dtype
+  // guess cannot do for numeric-but-categorical targets.
   useEffect(() => {
     if (!selection.fileName) {
       setAnalysisData(null);
@@ -61,19 +91,16 @@ export function EvaluationSetupPanel({
         onSuccess: (data) => {
           setAnalysisData(data);
           const target = selection.targetColumn || data.suggested_target;
-          const task = selection.taskType || data.detected_task_type;
-          onChange({
-            ...selection,
-            targetColumn: target,
-            taskType: task,
-          });
+          const taskType = detectedTaskType(data, target);
+          if (target === selection.targetColumn && taskType === selection.taskType) return;
+          onChange({ ...selection, targetColumn: target, taskType });
         },
         onError: () => {
           setAnalysisData(null);
         },
       }
     );
-  }, [selection.fileName]);
+  }, [selection.fileName, selection.targetColumn]);
 
   const handleFileUpload = async (file: File) => {
     if (!file.name.toLowerCase().endsWith('.csv')) {
@@ -250,6 +277,61 @@ export function EvaluationSetupPanel({
               </span>
             </div>
           ) : null}
+        </div>
+      )}
+
+      {/* Model picker for the comparison tab. Without this the Compare tab
+          could never be populated, because compareSelection was never set. */}
+      {availableModels.length > 0 && (
+        <div className={styles.compareSection}>
+          <div className={styles.compareHeader}>
+            <label className={styles.fieldLabel} htmlFor="compare-models">
+              Models to compare
+            </label>
+            <span className={styles.compareHint}>
+              Pick two or more trained models to evaluate them on one shared test set.
+            </span>
+          </div>
+          <div id="compare-models" className={styles.compareGrid}>
+            {availableModels.map((m) => {
+              const checked = compareSelection.includes(m.name);
+              return (
+                <label key={m.id || m.name} className={styles.compareOption}>
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => onCompareSelectionChange(m.name)}
+                  />
+                  <span className={styles.compareOptionText}>
+                    <span className={styles.compareOptionName}>{m.name}</span>
+                    <span className={styles.compareOptionMeta}>
+                      {m.algorithm || 'unknown'}
+                      {m.task_type ? ` · ${m.task_type}` : ''}
+                      {m.version ? ` · v${m.version}` : ''}
+                    </span>
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={compareSelection.length === 0 || isComparing}
+            onClick={onCompare}
+          >
+            {isComparing ? (
+              <>
+                <RefreshCw className={styles.spin} />
+                Comparing...
+              </>
+            ) : (
+              <>
+                <BarChart2 />
+                {`Compare ${compareSelection.length} model${compareSelection.length === 1 ? '' : 's'}`}
+              </>
+            )}
+          </Button>
         </div>
       )}
 

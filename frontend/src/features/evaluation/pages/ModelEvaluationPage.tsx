@@ -78,10 +78,18 @@ export function ModelEvaluationPage() {
   const datasets = useMemo(() => datasetsQuery.data ?? [], [datasetsQuery.data]);
 
   const liveResult = runDatasetEvaluation.data;
-  const storedResult = historyDetail.data?.result ?? null;
+  // Verified against the live API: GET /evaluation/{id} returns the payload in
+  // `results_summary`, and `result` is null. The page previously read only
+  // `.result`, so opening any stored evaluation rendered nothing.
+  const detailPayload = historyDetail.data as
+    | {
+        result?: ComprehensiveEvaluation | null;
+        results_summary?: ComprehensiveEvaluation | null;
+      }
+    | undefined;
+  const storedResult: ComprehensiveEvaluation | null =
+    detailPayload?.result ?? detailPayload?.results_summary ?? null;
   const result: ComprehensiveEvaluation | null = (viewingHistoryId ? storedResult : liveResult) ?? null;
-
-  const taskType = (result?.task_type ?? selection.taskType ?? 'classification') as TaskType;
 
   const blockers = useMemo(() => {
     const out: string[] = [];
@@ -89,6 +97,16 @@ export function ModelEvaluationPage() {
     if (!selection.targetColumn) out.push('Select or confirm the target column to predict.');
     return out;
   }, [selection]);
+
+  // Prefer the task the backend actually used, so charts and metric labels match
+  // the run even if the selection was edited afterwards. Falls back to the
+  // selection, which now reflects `/evaluation/analyze` detection.
+  const effectiveTaskType = useMemo<TaskType>(() => {
+    if (result?.task_type) return result.task_type as TaskType;
+    return selection.taskType;
+  }, [result, selection.taskType]);
+
+  const taskType = effectiveTaskType;
 
   const handleRunEvaluation = useCallback(() => {
     setViewingHistoryId(null);
@@ -100,14 +118,29 @@ export function ModelEvaluationPage() {
     });
   }, [runDatasetEvaluation, selection]);
 
+  const compareBlockers = useMemo(() => {
+    const out: string[] = [];
+    if (!selection.fileName) out.push('Select a dataset to compare models against.');
+    if (!selection.targetColumn) out.push('Select the target column to compare on.');
+    if (compareSelection.length === 0) out.push('Select at least one model to compare.');
+    return out;
+  }, [selection.fileName, selection.targetColumn, compareSelection]);
+
+  const handleCompareSelectionChange = useCallback((modelName: string) => {
+    setCompareSelection((prev) =>
+      prev.includes(modelName) ? prev.filter((n) => n !== modelName) : [...prev, modelName],
+    );
+  }, []);
+
   const handleCompare = useCallback(() => {
+    if (compareBlockers.length > 0 || compareSelection.length === 0) return;
     compareMutation.mutate({
       modelNames: compareSelection,
       datasetName: selection.fileName,
       targetColumn: selection.targetColumn,
     });
     setTab('compare');
-  }, [compareMutation, compareSelection, selection.fileName, selection.targetColumn]);
+  }, [compareBlockers.length, compareMutation, compareSelection, selection.fileName, selection.targetColumn]);
 
   const handleSearchChange = useCallback((value: string) => {
     setHistorySearch(value);
@@ -119,11 +152,16 @@ export function ModelEvaluationPage() {
     setHistoryOffset(0);
   }, []);
 
-  const resourceError = modelsQuery.isError || datasetsQuery.isError;
+  // The dataset-driven evaluation only needs datasets. The model list feeds the
+// comparison picker, so a model-list failure must not block the main flow.
+const resourceError = datasetsQuery.isError;
   const errorMessage =
-    (modelsQuery.error && getErrorMessage(modelsQuery.error, 'Models could not be loaded.')) ||
     (datasetsQuery.error && getErrorMessage(datasetsQuery.error, 'Datasets could not be loaded.')) ||
+    (modelsQuery.isError
+      ? getErrorMessage(modelsQuery.error, 'Models could not be loaded. Comparison is unavailable.')
+      : '') ||
     '';
+  const modelsUnavailable = modelsQuery.isError;
 
   const runError = runDatasetEvaluation.isError
     ? getErrorMessage(runDatasetEvaluation.error, 'Evaluation could not be completed.')
@@ -133,11 +171,34 @@ export function ModelEvaluationPage() {
     : null;
 
   const unavailable = result?.unavailable ?? [];
-  const basis = result
-    ? `${result.train_size.toLocaleString()} train / ${result.test_size.toLocaleString()} test rows`
-    : undefined;
 
-  const isInitialLoad = modelsQuery.isLoading || datasetsQuery.isLoading;
+  // The backend returns a narrative string here; accept either a string or an
+  // already-structured list so both shapes render.
+  // The backend returns a narrative string here. Normalise defensively so a
+  // non-string payload degrades to an empty string instead of crashing render.
+  const aiInsightText = useMemo(() => {
+    const raw: unknown = result?.ai_insights;
+    if (!raw) return '';
+    if (typeof raw === 'string') return raw.trim();
+    if (Array.isArray(raw)) {
+      return (raw as unknown[]).filter((x) => typeof x === 'string' && x).join('\n');
+    }
+    return '';
+  }, [result]);
+  // Guard the split sizes: a stored history row written before the split was
+// recorded has no train_size/test_size, and calling .toLocaleString() on
+// undefined threw and took down the whole results view.
+const basis = (() => {
+    if (!result) return undefined;
+    const { train_size: train, test_size: test } = result;
+    if (typeof train !== 'number' && typeof test !== 'number') return undefined;
+    const fmt = (n?: number) => (typeof n === 'number' ? n.toLocaleString() : '?');
+    return `${fmt(train)} train / ${fmt(test)} test rows`;
+  })();
+
+  // Only the dataset list gates the setup panel. Waiting on models here made the
+// whole page blank while the model list loaded.
+const isInitialLoad = datasetsQuery.isLoading;
 
   return (
     <div className={styles.page}>
@@ -175,10 +236,20 @@ export function ModelEvaluationPage() {
           selection={selection}
           onChange={setSelection}
           onRunEvaluation={handleRunEvaluation}
+          compareSelection={compareSelection}
+          onCompareSelectionChange={handleCompareSelectionChange}
+          onCompare={handleCompare}
           isRunning={runDatasetEvaluation.isPending}
+          isComparing={compareMutation.isPending}
           blockers={blockers}
           hasResult={Boolean(result)}
         />
+      )}
+
+      {modelsUnavailable && !resourceError && (
+        <p className={styles.errorBanner} role="status">
+          {errorMessage}
+        </p>
       )}
 
       {runError && (
@@ -282,6 +353,23 @@ export function ModelEvaluationPage() {
 
               {/* AI Insights & Observations */}
               <InsightsPanel insights={result.insights ?? []} basis={basis} />
+
+              {/* Narrative summary returned by the backend. Previously this
+                  field was returned and typed but never rendered anywhere. */}
+              {aiInsightText && (
+                <section className={styles.unavailableCard} aria-label="AI insights">
+                  <h3 className={styles.unavailableTitle}>AI Insights</h3>
+                  {aiInsightText
+                    .split(/\n{2,}|\n(?=[-•*\d])/)
+                    .map((line: string) => line.replace(/^[-•*]\s*/, '').trim())
+                    .filter(Boolean)
+                    .map((line: string, i: number) => (
+                      <p key={i} className={styles.insightText}>
+                        {line}
+                      </p>
+                    ))}
+                </section>
+              )}
 
               {/* Visualizations */}
               {taskType === 'classification' ? (

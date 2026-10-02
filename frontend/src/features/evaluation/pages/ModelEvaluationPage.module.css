@@ -202,6 +202,17 @@
   margin: 0 0 var(--space-3);
 }
 
+.insightText {
+  font-size: var(--text-body);
+  color: var(--color-text-secondary);
+  line-height: 1.6;
+  margin: 0 0 var(--space-2);
+}
+
+.insightText:last-child {
+  margin-bottom: 0;
+}
+
 .unavailableList {
   margin: 0;
   padding-left: calc(var(--space-4) + 1em);

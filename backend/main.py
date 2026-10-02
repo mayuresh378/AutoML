@@ -71,7 +71,7 @@ from train import CLASSIFICATION_MODELS, REGRESSION_MODELS, run_engine_training,
 from hpo import HPORunner, get_param_ranges, friendly_hpo_error, OPTUNA_AVAILABLE, SKOPT_AVAILABLE, PARAM_RANGES as HPO_PARAM_RANGES
 from engine import get_all_models, run_engine_job, CLASSIFICATION_MODELS as ENGINE_CLF_MODELS, REGRESSION_MODELS as ENGINE_REG_MODELS, CLUSTERING_MODELS, TIME_SERIES_MODELS
 from intel_engine import run_intelligent_job, recommend_models, build_dataset_profile, get_models_response as intel_models_response
-from features import generate_features, suggest_features
+from features import generate_features, suggest_features, FeatureError
 from explain import explain_prediction
 from ai_assistant import answer_question, list_datasets as ai_list_datasets, load_experiments as ai_load_experiments
 from sql_studio import sql_router, ai_router
@@ -1129,9 +1129,18 @@ def generate(name: str, operations: str = Form(...), db: Session = Depends(get_d
     require_dataset_access(db, name, current_user, owner_only=True)
     try:
         ops = json.loads(operations)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=400,
+            detail="'operations' must be valid JSON, e.g. '[{\"type\": \"bin\", \"columns\": [\"age\"], \"n_bins\": 5}]'",
+        ) from exc
+
+    try:
         result = generate_features(name, ops)
         log_audit(db, current_user.get("name", "User"), "features.generated", name, "dataset")
         return result
+    except FeatureError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except HTTPException:
         raise
     except Exception as e:

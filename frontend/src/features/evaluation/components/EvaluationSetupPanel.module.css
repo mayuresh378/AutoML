@@ -437,3 +437,72 @@
   }
 }
 
+.compareSection {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 1px solid var(--border, #27272a);
+  border-radius: 0.5rem;
+  background: var(--surface, #18181b);
+}
+
+.compareHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.compareHint {
+  font-size: 0.75rem;
+  color: #a1a1aa;
+}
+
+.compareGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  gap: 0.5rem;
+  max-height: 12rem;
+  overflow-y: auto;
+}
+
+.compareOption {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  border: 1px solid var(--border, #3f3f46);
+  border-radius: 0.375rem;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.compareOption:hover {
+  border-color: #52525b;
+  background-color: rgba(63, 63, 70, 0.25);
+}
+
+.compareOption input {
+  margin-top: 0.125rem;
+  accent-color: #10b981;
+}
+
+.compareOptionText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.compareOptionName {
+  font-size: 0.8125rem;
+  color: #e4e4e7;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compareOptionMeta {
+  font-size: 0.6875rem;
+  color: #71717a;
+}
+

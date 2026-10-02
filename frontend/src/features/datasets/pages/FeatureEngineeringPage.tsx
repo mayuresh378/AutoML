@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Wand2, CheckCircle2, RotateCcw, FileText, Download, Lightbulb } from 'lucide-react';
+import { Wand2, CheckCircle2, RotateCcw, FileText, Download, Lightbulb, AlertTriangle } from 'lucide-react';
 import { datasetsService } from '../../../services/datasets.service';
 import { Card, CardHeader, CardTitle, CardContent } from '../../../components/ui/Card';
 import { PageContainer, PageHeader } from '../../../components/layout/PageContainer';
@@ -19,6 +19,7 @@ export default function FeatureEngineeringPage() {
   const [selectedDataset, setSelectedDataset] = useState(searchParams.get('dataset') ?? '');
   const [selectedOps, setSelectedOps] = useState<Set<number>>(new Set());
   const [result, setResult] = useState<any>(null);
+const [resultWarnings, setResultWarnings] = useState<string[]>([]);
 
   const { data: datasets, isLoading, isError, error } = useQuery({
     queryKey: ['datasets'],
@@ -54,8 +55,18 @@ export default function FeatureEngineeringPage() {
     });
     datasetsService.generateFeatures(selectedDataset, ops).then((data: any) => {
       setResult(data);
-      notifySuccess('Features generated successfully');
+      // The backend reports imputation/skips here. Passing them to the user
+      // matters: a silently imputed column would otherwise look untouched.
+      const warnings: string[] = data?.warnings || [];
+      if (warnings.length) {
+        setResultWarnings(warnings);
+        notifySuccess(`Features generated with ${warnings.length} warning(s)`);
+      } else {
+        setResultWarnings([]);
+        notifySuccess('Features generated successfully');
+      }
     }).catch((err) => {
+      setResultWarnings([]);
       notifyError('Feature generation failed', getErrorMessage(err));
     });
   };
@@ -173,6 +184,26 @@ export default function FeatureEngineeringPage() {
                     </ul>
                   ) : (
                     <p className="text-sm text-zinc-500">No features were generated</p>
+                  )}
+
+                  {resultWarnings.length > 0 && (
+                    <div
+                      role="status"
+                      className="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3"
+                    >
+                      <p className="flex items-center gap-2 text-sm font-medium text-amber-300">
+                        <AlertTriangle className="w-4 h-4 shrink-0" />
+                        Applied with {resultWarnings.length} adjustment
+                        {resultWarnings.length === 1 ? '' : 's'}
+                      </p>
+                      <ul className="mt-2 space-y-1">
+                        {resultWarnings.map((w, i) => (
+                          <li key={i} className="text-xs text-amber-200/90">
+                            {w}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
                   )}
                 </CardContent>
               </Card>

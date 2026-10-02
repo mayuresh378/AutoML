@@ -45,6 +45,12 @@ frontend/test_output_frontend.txt
 # Misc
 response.txt
 *.tsbuildinfo
-backend/tests/
+# Keep backend tests in version control, but never track their throwaway
+# artifacts. They used to be ignored wholesale, which meant test_features.py
+# and the rest of the suite were never committed.
+backend/tests/__pycache__/
+backend/tests/*.pyc
+backend/tests/.pytest_cache/
+backend/tests/*.db
 frontend/dev-server.log
 *.log
