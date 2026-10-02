@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { useModels, usePromoteModel, useArchiveModel, useDeleteModel } from '../../../hooks/useApi';
 import { modelsService } from '../../../services/models.service';
+import { useAuth } from '../../../hooks/useAuth';
 import type { Model } from '../../../types/api';
 import styles from './ModelRegistryPage.module.css';
 
@@ -87,7 +88,10 @@ function ConfirmDialog({ title, message, onConfirm, onCancel }: {
 }
 
 export default function ModelRegistryPage() {
-  const { data: models, isLoading, error } = useModels();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
+  const [showAllUsers, setShowAllUsers] = useState(false);
+  const { data: models, isLoading, error } = useModels({ allUsers: showAllUsers });
   const [activeFilter, setActiveFilter] = useState<StatusFilter>('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
@@ -157,6 +161,18 @@ export default function ModelRegistryPage() {
             <h1 className={styles.title}>Model Registry</h1>
             <p className={styles.subtitle}>Version, track, and manage your trained models</p>
           </div>
+          {isAdmin && (
+            <label className={styles.adminToggle}>
+              <input
+                type="checkbox"
+                checked={showAllUsers}
+                onChange={(e) => setShowAllUsers(e.target.checked)}
+              />
+              <span>
+                {showAllUsers ? 'Viewing all accounts' : 'Admin: view all accounts'}
+              </span>
+            </label>
+          )}
         </div>
 
         <div className={styles.summaryGrid}>

@@ -131,3 +131,30 @@
   font-size: var(--text-small);
   color: var(--color-text-tertiary);
 }
+
+.signOut {
+  margin-left: auto;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.signOut:hover:not(:disabled) {
+  background: var(--color-surface-active);
+  border-color: var(--color-border);
+  color: var(--color-text);
+}
+
+.signOut:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

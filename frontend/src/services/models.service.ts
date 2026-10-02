@@ -20,7 +20,8 @@ export function filterUsableModels(models: Model[] | undefined | null): Model[] 
 }
 
 export const modelsService = {
-  list: () => http.get<{ models: Model[] }>('/models'),
+  list: (options?: { allUsers?: boolean }) =>
+    http.get<{ models: Model[] }>(options?.allUsers ? '/models?all_users=true' : '/models'),
 
   get: (name: string) => http.get<Model>(`/models/${encodeURIComponent(name)}`),
 

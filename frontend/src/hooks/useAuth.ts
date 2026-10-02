@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { useAuthStore } from '../store/useAuthStore';
@@ -44,6 +44,17 @@ export function useAuth() {
     storeLogout();
   }, [storeLogout]);
 
+  const [isSigningOut, setIsSigningOut] = useState(false);
+
+  const logoutAsync = useCallback(async () => {
+    setIsSigningOut(true);
+    try {
+      await logout();
+    } finally {
+      setIsSigningOut(false);
+    }
+  }, [logout]);
+
   return {
     user,
     token,
@@ -57,7 +68,8 @@ export function useAuth() {
     registerAsync: registerMutation.mutateAsync,
     registerError: registerMutation.error,
     isRegisterLoading: registerMutation.isPending,
-    logout,
+    logout: logoutAsync,
+    isSigningOut,
   };
 }
 

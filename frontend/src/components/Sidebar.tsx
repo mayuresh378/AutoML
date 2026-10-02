@@ -1,4 +1,4 @@
-import { NavLink, useLocation } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useAuth } from '../hooks/useAuth';
 import styles from './Sidebar.module.css';
@@ -139,13 +139,19 @@ function NavIcon({ name }: { name: string }) {
 
 export default function Sidebar() {
   const location = useLocation();
-  const { user } = useAuth();
+  const navigate = useNavigate();
+  const { user, logout, isSigningOut } = useAuth();
 
   const projectMatch = location.pathname.match(/^\/app\/projects\/([^/]+)/);
   const groups = projectMatch ? buildWorkspaceNav(projectMatch[1]) : NAV_GROUPS;
 
   const userName = user?.name || 'Guest';
   const initials = userName.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2);
+
+  const handleSignOut = async () => {
+    await logout();
+    navigate('/login', { replace: true });
+  };
 
   return (
     <aside className={styles.sidebar}>
@@ -193,6 +199,29 @@ export default function Sidebar() {
             <span className={styles.userName}>{userName}</span>
             <span className={styles.userRole}>{user?.email || 'Guest'}</span>
           </div>
+          <button
+            type="button"
+            className={styles.signOut}
+            onClick={handleSignOut}
+            disabled={isSigningOut}
+            title="Sign out"
+            aria-label="Sign out"
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <path d="m16 17 5-5-5-5" />
+              <path d="M21 12H9" />
+            </svg>
+          </button>
         </div>
       </div>
     </aside>

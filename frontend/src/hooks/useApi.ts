@@ -22,10 +22,13 @@ function pollWhenVisible(intervalMs: number) {
   return () => (typeof document !== 'undefined' && document.hidden ? false : intervalMs);
 }
 
-export function useModels() {
+export function useModels(options?: { allUsers?: boolean }) {
+  const allUsers = options?.allUsers ?? false;
   return useQuery({
-    queryKey: ['models'],
-    queryFn: () => modelsService.list(),
+    // Keep the plain key for the default view so existing cache entries and
+    // `invalidateQueries({ queryKey: ['models'] })` calls keep working.
+    queryKey: allUsers ? ['models', 'all-users'] : ['models'],
+    queryFn: () => modelsService.list({ allUsers }),
     select: (data) => data.models,
     staleTime: 60_000,
     refetchInterval: pollWhenVisible(60_000),

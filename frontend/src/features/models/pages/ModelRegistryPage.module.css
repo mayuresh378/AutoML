@@ -4,6 +4,9 @@
 .header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: var(--space-6); }
 .title { font-size: var(--text-h2); font-weight: 700; letter-spacing: -0.02em; color: var(--color-text); }
 .subtitle { font-size: var(--text-body); color: var(--color-text-secondary); margin-top: var(--space-1); }
+.adminToggle { display: inline-flex; align-items: center; gap: var(--space-2); cursor: pointer; color: var(--color-text-secondary); font-size: var(--text-sm); }
+.adminToggle input { accent-color: var(--color-primary, #4f46e5); cursor: pointer; }
+.adminToggle span { user-select: none; }
 
 /* ── Summary Grid ── */
 .summaryGrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-4); margin-bottom: var(--space-6); }

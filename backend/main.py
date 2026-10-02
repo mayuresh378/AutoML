@@ -5,6 +5,7 @@ import json
 import time
 import uuid
 import re
+import secrets
 import shutil
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -176,6 +177,92 @@ def _load_model_meta(name: str) -> dict:
         with open(meta_path) as f:
             return json.load(f)
     return {}
+
+
+def _persist_trained_model(
+    db, model_name_prefix: str, best: dict, fitted: dict, preprocessor,
+    task: str, dataset_name: str, target_column: str, X, y, X_test, y_test,
+    user_id: str | None = None,
+) -> str:
+    """Write the winning pipeline to disk and register it against the owner.
+
+    Training previously stopped at the experiment record, so nothing was ever
+    saved. The model then could not be listed, explained, or predicted on, and
+    it did not come back after signing in again. Registering with the training
+    user also keeps each account's models private to that account.
+    """
+    import joblib
+    from sklearn.pipeline import Pipeline
+
+    estimator = fitted.get("model")
+    if estimator is None:
+        raise RuntimeError("the winning estimator was not retained")
+
+    full_pipeline = (
+        Pipeline([("preprocessor", preprocessor), ("model", estimator)])
+        if preprocessor is not None else estimator
+    )
+
+    safe_prefix = re.sub(r"[^A-Za-z0-9_.-]+", "_", model_name_prefix or "model")
+    filename = f"{safe_prefix}_{re.sub(r'[^A-Za-z0-9_.-]+', '_', best['name'])}.pkl"
+    save_path = os.path.join(MODELS_DIR, filename)
+    os.makedirs(MODELS_DIR, exist_ok=True)
+    joblib.dump(full_pipeline, save_path)
+
+    feature_names = list(X.columns) if hasattr(X, "columns") else None
+    label_encoder = getattr(y, "attrs", {}).get("label_encoder")
+    label_map = None
+    if label_encoder is not None and hasattr(label_encoder, "classes_"):
+        label_map = {int(i): str(c) for i, c in enumerate(label_encoder.classes_)}
+
+    metadata = {
+        "task_type": task,
+        "n_classes": int(getattr(label_encoder, "classes_").size) if label_map else None,
+        "target_column": target_column,
+        "dataset_name": dataset_name,
+        "feature_names": feature_names,
+        "label_map": label_map,
+        "best_params": fitted.get("params") or {},
+        "cv_score": best.get("cv_score"),
+        "metrics": best.get("metrics"),
+        "training_time": best.get("time"),
+        "train_size": int(getattr(X, "shape", [None, None])[0]) if hasattr(X, "shape") else None,
+        "test_size": int(getattr(X_test, "shape", [None, None])[0]) if hasattr(X_test, "shape") else None,
+        "framework": "sklearn",
+    }
+    with open(save_path.replace(".pkl", "_meta.json"), "w") as f:
+        json.dump(metadata, f, indent=2, default=str)
+
+    # Attach ownership so the model is visible to its trainer on every login
+    # and to nobody else. Without a row the file stayed ownerless and was
+    # therefore listed for every account on the instance.
+    from models import ModelRegistry
+    existing = db.query(ModelRegistry).filter(ModelRegistry.name == filename).first()
+    if existing is None:
+        existing = ModelRegistry(
+            id=f"reg_{secrets.token_hex(8)}",
+            name=filename,
+            user_id=user_id,
+            model_type=task,
+            task_type=task,
+            framework="sklearn",
+            file_path=save_path,
+            file_size_kb=round(os.path.getsize(save_path) / 1024, 1),
+            cv_score=best.get("cv_score"),
+            metrics=best.get("metrics"),
+            status="ready",
+        )
+        db.add(existing)
+    else:
+        existing.user_id = user_id
+        existing.file_path = save_path
+        existing.file_size_kb = round(os.path.getsize(save_path) / 1024, 1)
+        existing.cv_score = best.get("cv_score")
+        existing.metrics = best.get("metrics")
+        if existing.status in (None, "", "staging"):
+            existing.status = "ready"
+    db.commit()
+    return filename
 
 
 def _get_dataset_df(name: str) -> pd.DataFrame:
@@ -494,9 +581,10 @@ def require_model_access(db, name, current_user, owner_only=False):
     if not reg and not file_exists:
         raise HTTPException(status_code=404, detail=f"Model '{name}' not found")
 
-    if reg is not None and reg.user_id is not None and uid is not None and reg.user_id != uid:
+    is_admin = current_user.get("role") == "admin" if current_user else False
+    if not is_admin and reg is not None and reg.user_id is not None and uid is not None and reg.user_id != uid:
         raise HTTPException(status_code=403, detail="Access denied")
-    if owner_only and reg is not None and reg.user_id != uid:
+    if not is_admin and owner_only and reg is not None and reg.user_id != uid:
         raise HTTPException(status_code=403, detail="Access denied")
     return reg
 
@@ -1540,6 +1628,7 @@ async def run_training_workflow(
 
             from sklearn.metrics import accuracy_score, f1_score, r2_score, mean_squared_error
             all_results = []
+            fitted_models = {}
             for idx, (name, spec) in enumerate(model_candidates.items()):
                 model_progress = ((idx) / total_models) * 80 + 10
                 _update_progress(job_id, {
@@ -1583,6 +1672,14 @@ async def run_training_workflow(
 
                     result = {"name": name, "metrics": metrics, "cv_score": round(cv_score, 4), "time": mtime}
                     all_results.append(result)
+                    # Keep the fitted estimator so the winner can be persisted.
+                    # Previously this endpoint trained models and threw them
+                    # away, so a model trained from the UI never reached disk and
+                    # could never reappear after signing in again.
+                    fitted_models[name] = {
+                        "model": best_model,
+                        "params": getattr(best_model, "get_params", lambda: {})(),
+                    }
                     metrics_history.append({"model": name, **metrics, "cv_score": round(cv_score, 4)})
                     log(f"{name}: accuracy={metrics.get('accuracy', 'N/A')}, cv={cv_score:.4f} ({mtime}s)")
                     _update_progress(job_id, {
@@ -1600,11 +1697,32 @@ async def run_training_workflow(
             elapsed = round(time.time() - start, 2)
             log(f"Training complete! Best model: {best['name']} (accuracy={best.get('metrics', {}).get('accuracy', 'N/A')})")
 
+            # Persist the winning pipeline to disk and attach it to the training
+            # account, so the model is still there on the next sign-in.
+            saved_model_name = None
+            try:
+                saved_model_name = _persist_trained_model(
+                    db=db,
+                    model_name_prefix=os.path.splitext(os.path.basename(file_name))[0],
+                    best=best,
+                    fitted=fitted_models.get(best["name"], {}),
+                    preprocessor=preprocessor,
+                    task=task,
+                    dataset_name=file_name,
+                    target_column=target_column,
+                    X=X, y=y, X_test=X_test, y_test=y_test,
+                    user_id=current_user.get("id"),
+                )
+                log(f"Saved model: {saved_model_name}")
+            except Exception as save_err:
+                log(f"Warning: could not persist model: {save_err}")
+                _update_progress(job_id, {"save_warning": str(save_err)})
+
             _update_progress(job_id, {
                 "status": "completed", "progress": 100, "current_step": "complete",
                 "message": f"Best model: {best['name']}",
                 "best_model": best, "all_results": all_results,
-                "elapsed": elapsed,
+                "elapsed": elapsed, "saved_model_name": saved_model_name,
             })
 
             best_model_name = f"{file_name.split('.')[0]}_{best['name']}"
@@ -1629,12 +1747,20 @@ async def run_training_workflow(
 
 
 @app.get("/api/v1/models", tags=["Models"], summary="List models", description="List all available models from filesystem and registry.")
-def list_models_api(db: Session = Depends(get_db), offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=500), current_user: dict = Depends(get_optional_user)):
+def list_models_api(
+    db: Session = Depends(get_db),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=500),
+    all_users: bool = Query(False, description="Admin only: include every account's models"),
+    current_user: dict = Depends(get_optional_user),
+):
     uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
     if uid is None:
         return paginated([], 0, offset, limit, key="models")
+    # Only an admin may widen the view to every account's models.
+    include_all = all_users and (current_user.get("role") == "admin")
     from models import ModelRegistry
-    db_models = list_models(db, user_id=uid)
+    db_models = list_models(db, user_id=None if include_all else uid)
     all_registry = {m.name: m for m in db.query(ModelRegistry).all()}
     fs_models = []
     fs_sizes = {}
@@ -1643,7 +1769,7 @@ def list_models_api(db: Session = Depends(get_db), offset: int = Query(0, ge=0),
             # Registry names keep the ".pkl" suffix, but older rows may not, so
             # check both. Missing this made registered models show up twice.
             reg = all_registry.get(f) or all_registry.get(f[:-4])
-            if reg is not None and reg.user_id is not None and reg.user_id != uid:
+            if not include_all and reg is not None and reg.user_id is not None and reg.user_id != uid:
                 continue
             fpath = os.path.join(MODELS_DIR, f)
             size_kb = round(os.path.getsize(fpath) / 1024, 1)
@@ -1730,7 +1856,13 @@ def register_model_api(model_name: str = Form(...), version: str = Form(None), d
     if not os.path.exists(fpath):
         raise HTTPException(status_code=404, detail=f"Model '{model_name}' not found")
     meta = _load_model_meta(model_name)
-    existing = db.query(ModelRegistry).filter(ModelRegistry.name == model_name).first()
+    # Registrations are scoped to the current account: an identical filename
+    # already owned by another user must not bump that user's version or be
+    # visible to this trainer.
+    existing = db.query(ModelRegistry).filter(
+        ModelRegistry.name == model_name,
+        ModelRegistry.user_id == current_user.get("id"),
+    ).first()
     if existing:
         existing.version = (existing.version or 1) + 1
         existing.updated_at = datetime.now(timezone.utc)
@@ -1746,7 +1878,7 @@ def register_model_api(model_name: str = Form(...), version: str = Form(None), d
         "file_size_kb": round(os.path.getsize(fpath) / 1024, 1),
         "cv_score": meta.get("cv_score"),
         "metrics": meta.get("metrics"),
-        "status": "staging",
+        "status": "ready",
     })
     return {"id": m.id, "name": m.name, "version": m.version}
 
