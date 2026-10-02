@@ -438,9 +438,13 @@ export interface HPOProgress {
   best_params?: Record<string, any>;
   best_score?: number;
   error?: string;
+  message?: string;
   model_results?: { name: string; params?: Record<string, any>; score?: number; error?: string }[];
   best_model?: string;
+  best_metrics?: Record<string, any>;
   experiments?: { id: string; name: string; model: string; cv_score: number }[];
+  saved_model_name?: string;
+  save_warning?: string;
   timestamp?: number;
 }
 
@@ -450,6 +454,8 @@ export interface HPOAvailability {
   grid: boolean;
   random: boolean;
   param_ranges: Record<string, Record<string, HPOParamRange>>;
+  classification_models?: string[];
+  regression_models?: string[];
 }
 
 export interface TargetAnalysis {

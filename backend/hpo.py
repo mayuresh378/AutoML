@@ -212,10 +212,16 @@ class HPORunner:
 
     def run(self):
         model_candidates = CLASSIFICATION_MODELS if self.task_type == "classification" else REGRESSION_MODELS
-        X_train, X_test, y_train, y_test = train_test_split(
-            self.X, self.y, test_size=0.2, random_state=42,
-            stratify=self.y if self.task_type == "classification" else None,
-        )
+        split_kwargs = {"test_size": 0.2, "random_state": 42}
+        if self.task_type == "classification":
+            try:
+                X_train, X_test, y_train, y_test = train_test_split(
+                    self.X, self.y, stratify=self.y, **split_kwargs,
+                )
+            except ValueError:
+                X_train, X_test, y_train, y_test = train_test_split(self.X, self.y, **split_kwargs)
+        else:
+            X_train, X_test, y_train, y_test = train_test_split(self.X, self.y, **split_kwargs)
 
         all_results = []
         total = len(self.models)
@@ -254,6 +260,8 @@ class HPORunner:
             "best_model": best["name"] if best else None,
             "best_params": best.get("best_params") if best else None,
             "best_score": best.get("cv_score") if best else None,
+            "best_estimator": best.get("estimator") if best else None,
+            "best_metrics": best.get("metrics") if best else None,
             "task_type": self.task_type,
         }
 
@@ -303,6 +311,7 @@ class HPORunner:
                 "metrics": metrics,
                 "training_time": round(train_time, 2),
                 "trials": len(study.trials),
+                "estimator": base_model,
             }
 
         elif self.method in ("grid", "random"):
@@ -344,6 +353,7 @@ class HPORunner:
             "metrics": metrics,
             "training_time": round(train_time, 2),
             "n_candidates": n_candidates,
+            "estimator": getattr(search_cv, "best_estimator_", None) or base_model,
         }
 
     def _run_cv_search(self, search_cv, X_train, y_train, model_name, idx, total):

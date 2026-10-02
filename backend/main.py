@@ -2290,37 +2290,52 @@ def run_tuning_endpoint(
 
 hpo_progress_store: dict[str, dict] = {}
 hpo_lock = threading.Lock()
+hpo_runners: dict[str, object] = {}
+hpo_runners_lock = threading.Lock()
 
 def _hpo_update(job_id, model_name, status, current, total, best_params, best_score, error=None):
     with hpo_lock:
+        prev = hpo_progress_store.get(job_id, {})
         hpo_progress_store[job_id] = {
-            "status": "running",
+            "status": status or "running",
             "current_model": model_name,
             "current": current,
             "total": total,
             "best_params": best_params,
             "best_score": best_score,
             "error": error,
-            "model_results": hpo_progress_store.get(job_id, {}).get("model_results", []),
+            "model_results": prev.get("model_results", []),
+            "best_model": prev.get("best_model"),
+            "best_metrics": prev.get("best_metrics"),
+            "saved_model_name": prev.get("saved_model_name"),
+            "experiments": prev.get("experiments", []),
             "timestamp": time.time(),
         }
 
 @app.get("/api/v1/hpo/availability", tags=["HPO"], summary="HPO availability")
 def hpo_availability():
+    from train import CLASSIFICATION_MODELS as _CM, REGRESSION_MODELS as _RM
     return {
         "optuna": OPTUNA_AVAILABLE,
         "bayesian": SKOPT_AVAILABLE,
         "grid": True,
         "random": True,
         "param_ranges": {k: v for k, v in HPO_PARAM_RANGES.items()},
+        "classification_models": sorted(_CM.keys()),
+        "regression_models": sorted(_RM.keys()),
     }
 
 PARAM_RANGES_ref = HPO_PARAM_RANGES
 
 @app.get("/api/v1/hpo/params", tags=["HPO"], summary="Get HPO param ranges")
 def hpo_get_params():
+    from train import CLASSIFICATION_MODELS as _CM, REGRESSION_MODELS as _RM
     from hpo import PARAM_RANGES as _PR
-    return {"classification": {}, "regression": {}, "ranges": _PR}
+    return {
+        "classification": {name: _PR.get(name, {}) for name in sorted(_CM.keys())},
+        "regression": {name: _PR.get(name, {}) for name in sorted(_RM.keys())},
+        "ranges": _PR,
+    }
 
 
 @app.post("/api/v1/hpo/target-analysis", tags=["HPO"], summary="Analyze target before HPO", description="Detect task type, class distribution, high-cardinality/identifier-like targets, and the safe CV fold count for a target column before running optimization.")
@@ -2350,10 +2365,19 @@ def run_hpo(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
+    if method not in ("grid", "random", "bayesian", "optuna"):
+        raise HTTPException(status_code=400, detail=f"Unknown search method '{method}'. Use grid, random, bayesian, or optuna.")
+    if method == "bayesian" and not SKOPT_AVAILABLE:
+        raise HTTPException(status_code=400, detail="Bayesian optimization requires scikit-optimize. Install it with: pip install scikit-optimize")
+    if method == "optuna" and not OPTUNA_AVAILABLE:
+        raise HTTPException(status_code=400, detail="Optuna is not installed. Install it with: pip install optuna")
+
     try:
         model_list = json.loads(models)
     except Exception:
         raise HTTPException(status_code=400, detail="'models' must be a valid JSON array of model names.")
+    if not isinstance(model_list, list) or not model_list:
+        raise HTTPException(status_code=400, detail="Select at least one model to optimize.")
 
     try:
         analysis = analyze_target(file_name, target_column, task_type, cv_folds)
@@ -2367,37 +2391,54 @@ def run_hpo(
 
     try:
         job_id = str(uuid.uuid4())
-
-        _hpo_update(job_id, "", "starting", 0, len(model_list), None, None)
-        hpo_progress_store[job_id]["status"] = "queued"
+        _hpo_update(job_id, "", "queued", 0, len(model_list), None, None)
 
         def run_in_background():
             try:
                 preprocess_result = auto_preprocess(file_name, target_column, task_type)
                 X = preprocess_result["X"]
                 y = preprocess_result["y"]
+                preprocessor = preprocess_result["preprocessor"]
                 task = preprocess_result["task_type"]
+                _hpo_update(job_id, "", "running", 0, len(model_list), None, None)
+                log_audit(db, current_user.get("name", "User"), "hpo.started",
+                          f"HPO {method} started on {file_name} ({len(model_list)} models)", "hpo")
+
+                results_list: list[dict] = []
 
                 def progress_callback(model_name, status, current, total, best_params, best_score, error):
-                    results_list = hpo_progress_store.get(job_id, {}).get("model_results", [])
+                    with hpo_lock:
+                        if hpo_progress_store.get(job_id, {}).get("status", "").lower() == "cancelled":
+                            return
                     if status == "completed":
-                        results_list.append({
-                            "name": model_name,
-                            "params": best_params,
-                            "score": best_score,
-                        })
+                        results_list.append({"name": model_name, "params": best_params, "score": best_score})
                     elif status == "failed":
-                        results_list.append({
-                            "name": model_name,
-                            "error": error,
-                        })
+                        results_list.append({"name": model_name, "error": error})
                     _hpo_update(job_id, model_name, "running", current, total, best_params, best_score, error)
-                    hpo_progress_store[job_id]["model_results"] = results_list
+                    with hpo_lock:
+                        hpo_progress_store[job_id]["model_results"] = list(results_list)
 
-                runner = HPORunner(
-                    X, y, task, model_list, method, effective_cv, n_iter, callback=progress_callback,
-                )
+                runner = HPORunner(X, y, task, model_list, method, effective_cv, n_iter, callback=progress_callback)
+                with hpo_runners_lock:
+                    hpo_runners[job_id] = runner
                 result = runner.run()
+
+                with hpo_lock:
+                    stored_cancelled = hpo_progress_store.get(job_id, {}).get("status", "").lower() == "cancelled"
+                is_cancelled = stored_cancelled or getattr(runner, "_cancelled", False)
+
+                if is_cancelled:
+                    with hpo_lock:
+                        hpo_progress_store[job_id].update({
+                            "status": "cancelled",
+                            "message": hpo_progress_store[job_id].get("message") or "Optimization cancelled",
+                            "current": len(results_list),
+                            "model_results": list(results_list),
+                            "best_model": result.get("best_model"),
+                            "best_params": result.get("best_params"),
+                            "best_score": result.get("best_score"),
+                        })
+                    return
 
                 exp_data_list = []
                 for r in result["results"]:
@@ -2422,6 +2463,53 @@ def run_hpo(
                     exp = create_experiment(db, exp_data)
                     exp_data_list.append({"id": exp.id, "name": exp.name, "model": r["name"], "cv_score": r["cv_score"]})
 
+                saved_model_name = None
+                save_warning = None
+                if result.get("best_estimator") is not None and result.get("best_model"):
+                    try:
+                        from sklearn.model_selection import train_test_split
+                        split_kwargs = {"test_size": 0.2, "random_state": 42}
+                        if task == "classification":
+                            try:
+                                X_train, X_test, y_train, y_test = train_test_split(X, y, stratify=y, **split_kwargs)
+                            except ValueError:
+                                X_train, X_test, y_train, y_test = train_test_split(X, y, **split_kwargs)
+                        else:
+                            X_train, X_test, y_train, y_test = train_test_split(X, y, **split_kwargs)
+                        best_result = next(
+                            (r for r in result["results"] if r.get("name") == result.get("best_model") and "error" not in r),
+                            {},
+                        )
+                        best_for_persist = {
+                            "name": result["best_model"],
+                            "cv_score": result.get("best_score"),
+                            "metrics": result.get("best_metrics"),
+                            "time": best_result.get("training_time"),
+                        }
+                        saved_model_name = _persist_trained_model(
+                            db=db,
+                            model_name_prefix=os.path.splitext(os.path.basename(file_name))[0],
+                            best=best_for_persist,
+                            fitted={"model": result["best_estimator"], "params": result.get("best_params") or {}},
+                            preprocessor=preprocessor, task=task, dataset_name=file_name,
+                            target_column=target_column, X=X, y=y, X_test=X_test, y_test=y_test,
+                            user_id=current_user.get("id"),
+                        )
+                    except Exception as save_err:
+                        save_warning = f"Best model could not be saved: {save_err}"
+
+                with hpo_lock:
+                    still_cancelled = hpo_progress_store.get(job_id, {}).get("status", "").lower() == "cancelled"
+                if still_cancelled:
+                    with hpo_lock:
+                        hpo_progress_store[job_id].update({
+                            "status": "cancelled",
+                            "message": hpo_progress_store[job_id].get("message") or "Optimization cancelled",
+                            "model_results": list(results_list),
+                            "saved_model_name": saved_model_name,
+                        })
+                    return
+
                 with hpo_lock:
                     hpo_progress_store[job_id].update({
                         "status": "completed",
@@ -2429,15 +2517,19 @@ def run_hpo(
                         "best_params": result.get("best_params"),
                         "best_score": result.get("best_score"),
                         "experiments": exp_data_list,
+                        "saved_model_name": saved_model_name,
+                        "save_warning": save_warning,
+                        "message": None,
                     })
 
                 log_audit(db, current_user.get("name", "User"), "hpo.completed",
-                          f"HPO {method} on {file_name}: {len(exp_data_list)} models", "hpo")
+                          f"HPO {method} on {file_name}: {len(exp_data_list)} models tuned", "hpo")
                 try:
                     create_notification(db, {
                         "user_id": current_user.get("id"),
                         "title": "HPO Complete",
-                        "message": f"HPO ({method}) on {file_name} completed: best={result.get('best_model')} score={result.get('best_score')}",
+                        "message": f"HPO ({method}) on {file_name} completed: best={result.get('best_model')} score={result.get('best_score')}"
+                                   + (f", saved as {saved_model_name}" if saved_model_name else ""),
                         "type": "success",
                         "category": "training",
                     })
@@ -2450,6 +2542,9 @@ def run_hpo(
                         "status": "failed",
                         "error": friendly_hpo_error(e),
                     })
+            finally:
+                with hpo_runners_lock:
+                    hpo_runners.pop(job_id, None)
 
         thread = threading.Thread(target=run_in_background, daemon=True)
         thread.start()
@@ -2481,12 +2576,33 @@ async def hpo_progress_sse(job_id: str):
 
 
 @app.get("/api/v1/hpo/{job_id}", tags=["HPO"], summary="Get HPO results")
-def hpo_get_results(job_id: str):
+def hpo_get_results(job_id: str, current_user: dict = Depends(get_current_user)):
     with hpo_lock:
         data = hpo_progress_store.get(job_id)
     if not data:
         raise HTTPException(status_code=404, detail="HPO job not found")
     return data
+
+
+@app.delete("/api/v1/hpo/{job_id}", tags=["HPO"], summary="Cancel HPO run")
+def hpo_cancel(job_id: str, current_user: dict = Depends(get_current_user)):
+    with hpo_lock:
+        data = hpo_progress_store.get(job_id)
+    if not data:
+        raise HTTPException(status_code=404, detail="HPO job not found")
+    with hpo_runners_lock:
+        runner = hpo_runners.get(job_id)
+    if runner is not None and hasattr(runner, "cancel"):
+        try:
+            runner.cancel()
+        except Exception:
+            pass
+    with hpo_lock:
+        hpo_progress_store[job_id].update({
+            "status": "cancelled",
+            "message": "Optimization cancelled by user",
+        })
+    return {"status": "cancelled", "message": "Optimization cancelled"}
 
 
 # ── AutoML Engine ────────────────────────────────────────────────────

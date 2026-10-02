@@ -68,7 +68,9 @@ export default function HyperparameterPage() {
   const [targetProfile, setTargetProfile] = useState<TargetAnalysis | null>(null);
   const [targetAnalyzing, setTargetAnalyzing] = useState(false);
   const [targetError, setTargetError] = useState<string | null>(null);
+  const [stopping, setStopping] = useState(false);
   const unsubRef = useRef<(() => void) | null>(null);
+  const cvFoldsRef = useRef(5);
 
   const selectedDs = useMemo(
     () => datasets.find((d: any) => d.name === selectedDataset),
@@ -77,12 +79,45 @@ export default function HyperparameterPage() {
 
   const dsColumns = useMemo(() => (selectedDs as any)?.columns || [], [selectedDs]);
 
+  const taskType = targetProfile?.task_type;
+
+  const compatibleModels = useMemo(() => {
+    if (!availability) return [];
+    const source = taskType === 'regression' ? availability.regression_models : availability.classification_models;
+    if (source && source.length > 0) return source;
+    return [];
+  }, [availability, taskType]);
+
   const allModels = useMemo(() => {
     if (!availability) return [];
+    if (compatibleModels.length > 0) return compatibleModels;
     const keys = new Set<string>();
     Object.keys(availability.param_ranges || {}).forEach((k) => keys.add(k));
     return Array.from(keys).sort();
+  }, [availability, compatibleModels]);
+
+  const rangeHint = useCallback((name: string) => {
+    if (!availability?.param_ranges?.[name]) return null;
+    const keys = Object.keys(availability.param_ranges[name]);
+    if (keys.length === 0) return null;
+    return `${keys.slice(0, 4).join(', ')}${keys.length > 4 ? ` +${keys.length - 4}` : ''}`;
   }, [availability]);
+
+  useEffect(() => {
+    setSelectedModels((prev) => {
+      if (allModels.length === 0) return prev;
+      const next = new Set(prev);
+      let changed = false;
+      for (const name of next) {
+        if (!allModels.includes(name)) { next.delete(name); changed = true; }
+      }
+      return changed ? next : prev;
+    });
+  }, [allModels]);
+
+  useEffect(() => {
+    cvFoldsRef.current = cvFolds;
+  }, [cvFolds]);
 
   const isMethodAvailable = useCallback((methodId: string) => {
     if (!availability) return false;
@@ -110,7 +145,8 @@ export default function HyperparameterPage() {
   }, []);
 
   const isRunning = progress?.status === 'running' || progress?.status === 'queued' || progress?.status === 'starting';
-  const isDone = progress?.status === 'completed' || progress?.status === 'failed';
+  const isDone = progress?.status === 'completed' || progress?.status === 'failed' || progress?.status === 'cancelled';
+  const isCancelled = progress?.status === 'cancelled';
   const targetBlocked = !!targetProfile?.blocked;
   const canRun = selectedDataset && targetColumn && selectedModels.size > 0 && isMethodAvailable(method) && !isRunning && !targetBlocked;
 
@@ -133,6 +169,7 @@ export default function HyperparameterPage() {
     setJobId(null);
     setProgress(null);
     setRunError(null);
+    setStopping(false);
     setExpandedResults(new Set());
   }
 
@@ -140,6 +177,7 @@ export default function HyperparameterPage() {
     if (!canRun) return;
     setRunError(null);
     setProgress(null);
+    setStopping(false);
     setExpandedResults(new Set());
     try {
       const res = await tuningService.run({
@@ -149,6 +187,7 @@ export default function HyperparameterPage() {
         method,
         cv_folds: cvFolds,
         n_iter: nIter,
+        task_type: taskType,
       });
       setJobId(res.job_id);
       setProgress({ status: 'queued', model_results: [] });
@@ -158,10 +197,14 @@ export default function HyperparameterPage() {
     }
   }
 
-  function handleStop() {
-    if (unsubRef.current) { unsubRef.current(); unsubRef.current = null; }
-    setJobId(null);
-    setProgress(null);
+  async function handleStop() {
+    if (stopping || !jobId) return;
+    setStopping(true);
+    try {
+      await tuningService.cancel(jobId);
+    } catch {
+      // Cancel may fail if the job just finished; the live SSE will surface the real terminal state.
+    }
   }
 
   useEffect(() => {
@@ -185,10 +228,18 @@ export default function HyperparameterPage() {
       return;
     }
     let cancelled = false;
+    const folds = cvFoldsRef.current;
     setTargetAnalyzing(true);
     setTargetError(null);
-    tuningService.analyzeTarget(selectedDataset, targetColumn, { cv_folds: cvFolds })
-      .then((p) => { if (!cancelled) { setTargetProfile(p); setTargetAnalyzing(false); } })
+    tuningService.analyzeTarget(selectedDataset, targetColumn, { cv_folds: folds })
+      .then((p) => {
+        if (cancelled) return;
+        setTargetProfile(p);
+        setTargetAnalyzing(false);
+        if (p.task_type === 'classification' && p.safe_cv_folds && p.safe_cv_folds >= 2 && p.safe_cv_folds < folds) {
+          setCvFolds(p.safe_cv_folds);
+        }
+      })
       .catch((err: any) => {
         if (cancelled) return;
         setTargetProfile(null);
@@ -199,10 +250,11 @@ export default function HyperparameterPage() {
   }, [selectedDataset, targetColumn, cvFolds]);
 
   useEffect(() => {
-    if (!targetProfile || targetProfile.task_type !== 'classification') return;
-    const safe = targetProfile.safe_cv_folds;
-    if (safe && safe >= 2 && safe < cvFolds) setCvFolds(safe);
-  }, [targetProfile, cvFolds]);
+    if (!progress) return;
+    if (progress.status === 'completed' || progress.status === 'failed' || progress.status === 'cancelled') {
+      if (progress.status === 'cancelled') setStopping(false);
+    }
+  }, [progress]);
 
   function toggleExpandResult(name: string) {
     setExpandedResults((prev) => {
@@ -395,6 +447,11 @@ export default function HyperparameterPage() {
                   </div>
                 </div>
                 <div className={styles.modelList}>
+                  {allModels.length === 0 && (
+                    <div className={styles.modelEmpty}>
+                      {targetProfile ? 'No compatible models found for this target type' : 'Select a dataset and target to see models'}
+                    </div>
+                  )}
                   {allModels.map((name) => (
                     <label key={name} className={`${styles.modelCheck} ${selectedModels.has(name) ? styles.modelCheckActive : ''}`}>
                       <input
@@ -403,7 +460,10 @@ export default function HyperparameterPage() {
                         onChange={() => toggleModel(name)}
                         disabled={isRunning}
                       />
-                      <span className={styles.modelCheckName}>{name}</span>
+                      <span className={styles.modelCheckText}>
+                        <span className={styles.modelCheckName}>{name}</span>
+                        {rangeHint(name) && <span className={styles.modelCheckHint}>{rangeHint(name)}</span>}
+                      </span>
                     </label>
                   ))}
                 </div>
@@ -420,8 +480,12 @@ export default function HyperparameterPage() {
               {/* Run / Stop Button */}
               <div className={styles.actions}>
                 {isRunning ? (
-                  <button className={`${styles.runBtn} ${styles.stopBtn}`} onClick={handleStop}>
-                    <Square size={16} /> Stop Optimization
+                  <button className={`${styles.runBtn} ${styles.stopBtn}`} onClick={handleStop} disabled={stopping}>
+                    {stopping ? (
+                      <><Loader2 size={16} className={styles.spinIcon} /> Cancelling…</>
+                    ) : (
+                      <><Square size={16} /> Stop Optimization</>
+                    )}
                   </button>
                 ) : (
                   <button className={styles.runBtn} onClick={handleRun} disabled={!canRun}>
@@ -491,13 +555,16 @@ export default function HyperparameterPage() {
                     ? <Loader2 size={16} className={styles.spinIcon} style={{ color: '#a78bfa' }} />
                     : progress.status === 'completed'
                       ? <CheckCircle2 size={16} style={{ color: '#22c55e' }} />
-                      : <XCircle size={16} style={{ color: '#ef4444' }} />
+                      : progress.status === 'cancelled'
+                        ? <Square size={16} style={{ color: '#f59e0b' }} />
+                        : <XCircle size={16} style={{ color: '#ef4444' }} />
                   }
                   <h2 className={styles.cardTitle}>
                     {progress.status === 'queued' && 'Queued...'}
                     {progress.status === 'starting' && 'Starting optimization...'}
                     {progress.status === 'running' && `Optimizing ${progress.current_model || ''} (${progress.current || 0}/${progress.total || 0})`}
                     {progress.status === 'completed' && 'Optimization Complete'}
+                    {progress.status === 'cancelled' && 'Optimization Cancelled'}
                     {progress.status === 'failed' && `Failed: ${progress.error || 'Unknown'}`}
                   </h2>
                 </div>
@@ -537,6 +604,20 @@ export default function HyperparameterPage() {
                       <button className={styles.copyBtn} onClick={() => navigator.clipboard.writeText(JSON.stringify(progress.best_params, null, 2))}>
                         <Copy size={12} /> Copy
                       </button>
+                    </div>
+                  )}
+
+                  {isCancelled && (
+                    <div className={styles.errorBox}>
+                      <AlertTriangle size={14} />
+                      <span>Optimization was cancelled. Partial results shown below.</span>
+                    </div>
+                  )}
+
+                  {progress.status === 'completed' && progress.saved_model_name && (
+                    <div className={styles.experimentsCreated}>
+                      <CheckCircle2 size={14} style={{ color: '#22c55e' }} />
+                      <span>Best model saved as <strong>{progress.saved_model_name}</strong></span>
                     </div>
                   )}
 

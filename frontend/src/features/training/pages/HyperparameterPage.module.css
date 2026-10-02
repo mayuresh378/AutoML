@@ -309,8 +309,31 @@ select {
   height: 14px;
 }
 
+.modelCheckText {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
 .modelCheckName {
   font-weight: 500;
+}
+
+.modelCheckHint {
+  font-size: 11px;
+  color: #6b7280;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.modelEmpty {
+  padding: 14px 12px;
+  text-align: center;
+  font-size: 12px;
+  color: #6b7280;
 }
 
 /* Actions */
