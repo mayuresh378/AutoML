@@ -46,7 +46,7 @@ from crud import (
     global_search,
     create_prediction_log, list_prediction_logs,
     create_notification, list_notifications, mark_notification_read,
-    mark_all_notifications_read, delete_notification,
+    mark_all_notifications_read, delete_notification, _json_safe,
     list_marketplace_items, install_marketplace_item,
     get_prediction_log, delete_prediction_log,
     get_experiment,
@@ -215,7 +215,7 @@ def _persist_trained_model(
     if label_encoder is not None and hasattr(label_encoder, "classes_"):
         label_map = {int(i): str(c) for i, c in enumerate(label_encoder.classes_)}
 
-    metadata = {
+    metadata = _json_safe({
         "task_type": task,
         "n_classes": int(getattr(label_encoder, "classes_").size) if label_map else None,
         "target_column": target_column,
@@ -229,7 +229,7 @@ def _persist_trained_model(
         "train_size": int(getattr(X, "shape", [None, None])[0]) if hasattr(X, "shape") else None,
         "test_size": int(getattr(X_test, "shape", [None, None])[0]) if hasattr(X_test, "shape") else None,
         "framework": "sklearn",
-    }
+    })
     with open(save_path.replace(".pkl", "_meta.json"), "w") as f:
         json.dump(metadata, f, indent=2, default=str)
 
@@ -249,7 +249,7 @@ def _persist_trained_model(
             file_path=save_path,
             file_size_kb=round(os.path.getsize(save_path) / 1024, 1),
             cv_score=best.get("cv_score"),
-            metrics=best.get("metrics"),
+            metrics=_json_safe(best.get("metrics")),
             status="ready",
         )
         db.add(existing)
@@ -258,7 +258,7 @@ def _persist_trained_model(
         existing.file_path = save_path
         existing.file_size_kb = round(os.path.getsize(save_path) / 1024, 1)
         existing.cv_score = best.get("cv_score")
-        existing.metrics = best.get("metrics")
+        existing.metrics = _json_safe(best.get("metrics"))
         if existing.status in (None, "", "staging"):
             existing.status = "ready"
     db.commit()
@@ -2309,8 +2309,83 @@ def _hpo_update(job_id, model_name, status, current, total, best_params, best_sc
             "best_metrics": prev.get("best_metrics"),
             "saved_model_name": prev.get("saved_model_name"),
             "experiments": prev.get("experiments", []),
+            "config": prev.get("config"),
+            "user_id": prev.get("user_id"),
+            "started_at": prev.get("started_at"),
             "timestamp": time.time(),
         }
+
+
+# Persistent record of completed/cancelled HPO runs so users can re-open, compare,
+# re-run, and delete past optimizations. Stored as JSON alongside the app (the
+# existing services already persist lightweight JSON state files this way).
+HPO_HISTORY_FILE = os.path.join(BASE_DIR, "hpo_history.json")
+_hpo_history_lock = threading.Lock()
+HPO_HISTORY_LIMIT = 200
+
+
+def _load_hpo_history() -> list:
+    try:
+        with open(HPO_HISTORY_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, list) else []
+    except Exception:
+        return []
+
+
+def _save_hpo_history(records: list) -> None:
+    tmp = HPO_HISTORY_FILE + ".tmp"
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(records, f, indent=2, default=str)
+        os.replace(tmp, HPO_HISTORY_FILE)
+    except Exception:
+        try:
+            if os.path.exists(tmp):
+                os.remove(tmp)
+        except Exception:
+            pass
+        raise
+
+
+def _record_hpo_experiment(job_id: str) -> None:
+    """Snapshot a finished HPO job into the persistent history store."""
+    with hpo_lock:
+        data = hpo_progress_store.get(job_id, {}).copy()
+    if not data.get("status") or not data.get("config"):
+        return
+    config = data["config"]
+    record = {
+        "id": job_id,
+        "user_id": data.get("user_id"),
+        "project_id": config.get("project_id"),
+        "name": f"{str(config.get('file_name', 'dataset')).split('.')[0]} · {config.get('method', '?')}",
+        "config": config,
+        "status": data["status"],
+        "error": data.get("error"),
+        "save_warning": data.get("save_warning"),
+        "best_model": data.get("best_model"),
+        "best_params": data.get("best_params"),
+        "best_score": data.get("best_score"),
+        "best_metrics": data.get("best_metrics"),
+        "saved_model_name": data.get("saved_model_name"),
+        "experiments": data.get("experiments", []),
+        "trials": data.get("model_results", []),
+        "total": data.get("total") or len(data.get("model_results", [])),
+        "started_at": data.get("started_at"),
+        "completed_at": datetime.now(timezone.utc).isoformat(),
+    }
+    with _hpo_history_lock:
+        records = _load_hpo_history()
+        records = [r for r in records if r.get("id") != job_id]
+        records.insert(0, record)
+        _save_hpo_history(records[:HPO_HISTORY_LIMIT])
+
+
+def _find_hpo_history_record(exp_id: str):
+    with _hpo_history_lock:
+        records = _load_hpo_history()
+    return next((r for r in records if r.get("id") == exp_id), None)
 
 @app.get("/api/v1/hpo/availability", tags=["HPO"], summary="HPO availability")
 def hpo_availability():
@@ -2352,19 +2427,24 @@ def hpo_target_analysis(
         raise HTTPException(status_code=400, detail=friendly_hpo_error(e))
 
 
-@app.post("/api/v1/hpo/run", tags=["HPO"], summary="Run HPO", description="Run hyperparameter optimization asynchronously with SSE progress.")
-def run_hpo(
-    file_name: str = Form(...),
-    target_column: str = Form(...),
-    models: str = Form(...),
-    method: str = Form("random"),
-    cv_folds: int = Form(5),
-    n_iter: int = Form(50),
-    task_type: str = Form(None),
-    project_id: str = Form(None),
-    db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
-):
+def _launch_hpo(
+    *,
+    file_name: str,
+    target_column: str,
+    models,
+    method: str = "random",
+    cv_folds: int = 5,
+    n_iter: int = 50,
+    task_type: str | None = None,
+    project_id: str | None = None,
+    current_user: dict,
+    db: Session,
+) -> str:
+    """Validate and start an HPO job in a background thread. Returns the job id.
+
+    Shared by the `/hpo/run` endpoint and the experiment re-run endpoint so re-runs
+    follow the exact same validation and execution path.
+    """
     if method not in ("grid", "random", "bayesian", "optuna"):
         raise HTTPException(status_code=400, detail=f"Unknown search method '{method}'. Use grid, random, bayesian, or optuna.")
     if method == "bayesian" and not SKOPT_AVAILABLE:
@@ -2373,7 +2453,7 @@ def run_hpo(
         raise HTTPException(status_code=400, detail="Optuna is not installed. Install it with: pip install optuna")
 
     try:
-        model_list = json.loads(models)
+        model_list = json.loads(models) if isinstance(models, str) else list(models or [])
     except Exception:
         raise HTTPException(status_code=400, detail="'models' must be a valid JSON array of model names.")
     if not isinstance(model_list, list) or not model_list:
@@ -2392,6 +2472,20 @@ def run_hpo(
     try:
         job_id = str(uuid.uuid4())
         _hpo_update(job_id, "", "queued", 0, len(model_list), None, None)
+        with hpo_lock:
+            hpo_progress_store[job_id]["config"] = {
+                "file_name": file_name,
+                "target_column": target_column,
+                "method": method,
+                "cv_folds": effective_cv,
+                "n_iter": n_iter,
+                "models": model_list,
+                "task_type": analysis.get("task_type"),
+                "metric": "r2" if analysis.get("task_type") == "regression" else "accuracy",
+                "project_id": project_id,
+            }
+            hpo_progress_store[job_id]["user_id"] = current_user.get("id")
+            hpo_progress_store[job_id]["started_at"] = datetime.now(timezone.utc).isoformat()
 
         def run_in_background():
             try:
@@ -2438,6 +2532,7 @@ def run_hpo(
                             "best_params": result.get("best_params"),
                             "best_score": result.get("best_score"),
                         })
+                    _record_hpo_experiment(job_id)
                     return
 
                 exp_data_list = []
@@ -2508,6 +2603,7 @@ def run_hpo(
                             "model_results": list(results_list),
                             "saved_model_name": saved_model_name,
                         })
+                    _record_hpo_experiment(job_id)
                     return
 
                 with hpo_lock:
@@ -2521,6 +2617,7 @@ def run_hpo(
                         "save_warning": save_warning,
                         "message": None,
                     })
+                _record_hpo_experiment(job_id)
 
                 log_audit(db, current_user.get("name", "User"), "hpo.completed",
                           f"HPO {method} on {file_name}: {len(exp_data_list)} models tuned", "hpo")
@@ -2542,6 +2639,7 @@ def run_hpo(
                         "status": "failed",
                         "error": friendly_hpo_error(e),
                     })
+                _record_hpo_experiment(job_id)
             finally:
                 with hpo_runners_lock:
                     hpo_runners.pop(job_id, None)
@@ -2549,9 +2647,30 @@ def run_hpo(
         thread = threading.Thread(target=run_in_background, daemon=True)
         thread.start()
 
-        return {"job_id": job_id, "status": "queued"}
+        return job_id
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/v1/hpo/run", tags=["HPO"], summary="Run HPO", description="Run hyperparameter optimization asynchronously with SSE progress.")
+def run_hpo(
+    file_name: str = Form(...),
+    target_column: str = Form(...),
+    models: str = Form(...),
+    method: str = Form("random"),
+    cv_folds: int = Form(5),
+    n_iter: int = Form(50),
+    task_type: str = Form(None),
+    project_id: str = Form(None),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    job_id = _launch_hpo(
+        file_name=file_name, target_column=target_column, models=models,
+        method=method, cv_folds=cv_folds, n_iter=n_iter, task_type=task_type,
+        project_id=project_id, current_user=current_user, db=db,
+    )
+    return {"job_id": job_id, "status": "queued"}
 
 
 @app.get("/api/v1/hpo/{job_id}/progress", tags=["HPO"], summary="HPO progress SSE")
@@ -2573,6 +2692,67 @@ async def hpo_progress_sse(job_id: str):
 
     return StreamingResponse(event_generator(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@app.get("/api/v1/hpo/experiments", tags=["HPO"], summary="List HPO experiments", description="List prior hyperparameter optimization runs (config + best model + status) for the current user.")
+def hpo_list_experiments(
+    offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    current_user: dict = Depends(get_current_user),
+):
+    uid = current_user.get("id")
+    with _hpo_history_lock:
+        records = _load_hpo_history()
+    owned = [r for r in records if r.get("user_id") == uid]
+    total = len(owned)
+    items = owned[offset:offset + limit]
+    return {"experiments": items, "total": total, "offset": offset, "limit": limit}
+
+
+@app.get("/api/v1/hpo/experiments/{exp_id}", tags=["HPO"], summary="Get HPO experiment", description="Return the full detail for a stored HPO experiment, including every trial.")
+def hpo_get_experiment(exp_id: str, current_user: dict = Depends(get_current_user)):
+    record = _find_hpo_history_record(exp_id)
+    if record is None or record.get("user_id") != current_user.get("id"):
+        raise HTTPException(status_code=404, detail="Experiment not found")
+    return record
+
+
+@app.post("/api/v1/hpo/experiments/{exp_id}/rerun", tags=["HPO"], summary="Re-run HPO experiment", description="Start a new optimization job reusing a stored experiment's configuration.")
+def hpo_rerun_experiment(
+    exp_id: str,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    record = _find_hpo_history_record(exp_id)
+    if record is None or record.get("user_id") != current_user.get("id"):
+        raise HTTPException(status_code=404, detail="Experiment not found")
+    cfg = record.get("config") or {}
+    if not cfg.get("file_name") or not cfg.get("target_column") or not cfg.get("models"):
+        raise HTTPException(status_code=400, detail="The stored experiment configuration is incomplete and cannot be re-run.")
+    job_id = _launch_hpo(
+        file_name=cfg["file_name"],
+        target_column=cfg["target_column"],
+        models=list(cfg.get("models") or []),
+        method=cfg.get("method") or "random",
+        cv_folds=int(cfg.get("cv_folds") or 5),
+        n_iter=int(cfg.get("n_iter") or 50),
+        task_type=cfg.get("task_type"),
+        project_id=cfg.get("project_id"),
+        current_user=current_user,
+        db=db,
+    )
+    return {"job_id": job_id, "status": "queued", "rerun_of": exp_id}
+
+
+@app.delete("/api/v1/hpo/experiments/{exp_id}", tags=["HPO"], summary="Delete HPO experiment", description="Remove a stored HPO experiment from history.")
+def hpo_delete_experiment(exp_id: str, current_user: dict = Depends(get_current_user)):
+    with _hpo_history_lock:
+        records = _load_hpo_history()
+        kept = [r for r in records if r.get("id") != exp_id or r.get("user_id") != current_user.get("id")]
+        if len(kept) == len(records):
+            raise HTTPException(status_code=404, detail="Experiment not found")
+        _save_hpo_history(kept)
+    return {"status": "deleted", "id": exp_id}
 
 
 @app.get("/api/v1/hpo/{job_id}", tags=["HPO"], summary="Get HPO results")

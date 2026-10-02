@@ -1,11 +1,13 @@
 import { Fragment, useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   Sliders, Database, Sparkles, SlidersHorizontal, ListChecks, Settings2,
   Rocket, Square, Loader2, CheckCircle2, XCircle, AlertTriangle, Trophy,
   Copy, ChevronDown, ChevronRight, Lock, FolderKanban, Search, Grid3X3,
-  Brain, Zap, Clock, BarChart3,
+  Brain, Zap, Clock, BarChart3, History, RotateCcw, Trash2, Columns3,
+  ExternalLink, ArrowUpDown, Filter as FilterIcon,
 } from 'lucide-react';
 import {
   LineChart as ReLineChart, Line, XAxis, YAxis, CartesianGrid,
@@ -14,7 +16,7 @@ import {
 import { datasetsService } from '../../../services/datasets.service';
 import { projectsService } from '../../../services/projects.service';
 import { tuningService } from '../../../services/tuning.service';
-import type { HPOProgress, TargetAnalysis } from '../../../types/api';
+import type { HPOExperiment, HPOProgress, TargetAnalysis } from '../../../types/api';
 import styles from './HyperparameterPage.module.css';
 
 const METHODS = [
@@ -74,6 +76,17 @@ export default function HyperparameterPage() {
     staleTime: 60_000,
   });
 
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+
+  const historyQuery = useQuery({
+    queryKey: ['hpo-experiments'],
+    queryFn: () => tuningService.experiments(),
+    select: (d) => d?.experiments || [],
+    staleTime: 5_000,
+  });
+  const history = historyQuery.data ?? [];
+
   const [selectedDataset, setSelectedDataset] = useState('');
   const [targetColumn, setTargetColumn] = useState('');
   const [selectedModels, setSelectedModels] = useState<Set<string>>(new Set());
@@ -91,6 +104,11 @@ export default function HyperparameterPage() {
   const [targetError, setTargetError] = useState<string | null>(null);
   const [stopping, setStopping] = useState(false);
   const [elapsedMs, setElapsedMs] = useState(0);
+  const [compareSel, setCompareSel] = useState<Set<string>>(new Set());
+  const [chartModelFilter, setChartModelFilter] = useState<Set<string>>(new Set());
+  const [trialSort, setTrialSort] = useState<'added' | 'score-desc' | 'score-asc' | 'alpha'>('added');
+  const [trialFilter, setTrialFilter] = useState<'all' | 'ok' | 'err'>('all');
+  const [historyBusy, setHistoryBusy] = useState<string | null>(null);
   const unsubRef = useRef<(() => void) | null>(null);
   const cvFoldsRef = useRef(5);
   const startRef = useRef(0);
@@ -213,16 +231,24 @@ export default function HyperparameterPage() {
     return <>{idx + 1}</>;
   };
 
+  const chartModelNames = useMemo(() => {
+    if (!progress?.model_results) return [];
+    return Array.from(new Set(progress.model_results.map((r) => r.name))).sort();
+  }, [progress?.model_results]);
+
   const chartData = useMemo(() => {
     if (!progress?.model_results) return [];
-    const rows = progress.model_results.filter((r) => r.score != null);
+    const pooled = chartModelFilter.size === 0
+      ? progress.model_results
+      : progress.model_results.filter((r) => chartModelFilter.has(r.name));
+    const rows = pooled.filter((r) => r.score != null);
     let bestVal = -Infinity;
     return rows.map((r, i) => {
       const score = r.score != null ? +(r.score * 100).toFixed(2) : 0;
       if (score > bestVal) bestVal = score;
       return { trial: i + 1, score, name: r.name, best: score === bestVal, isBest: progress?.best_model === r.name };
     });
-  }, [progress?.model_results, progress?.best_model]);
+  }, [progress?.model_results, progress?.best_model, chartModelFilter]);
 
   function resetProgressTimers() {
     startRef.current = 0;
@@ -239,6 +265,16 @@ export default function HyperparameterPage() {
     setStopping(false);
     setExpandedResults(new Set());
     resetProgressTimers();
+  }
+
+  function startJob(res: { job_id: string }) {
+    setRunError(null);
+    setStopping(false);
+    setExpandedResults(new Set());
+    resetProgressTimers();
+    setJobId(res.job_id);
+    startRef.current = Date.now();
+    setProgress({ status: 'queued', model_results: [] });
   }
 
   async function handleRun() {
@@ -259,13 +295,72 @@ export default function HyperparameterPage() {
         task_type: taskType,
         project_id: selectedProject || undefined,
       });
-      setJobId(res.job_id);
-      startRef.current = Date.now();
-      setProgress({ status: 'queued', model_results: [] });
+      startJob(res);
     } catch (err: any) {
       const msg = err?.message || 'Failed to start HPO';
       setRunError(msg);
     }
+  }
+
+  async function handleRerun(exp: HPOExperiment) {
+    if (isRunning) return;
+    setHistoryBusy(exp.id);
+    try {
+      const res = await tuningService.rerunExperiment(exp.id);
+      setHistoryBusy(null);
+      queryClient.invalidateQueries({ queryKey: ['hpo-experiments'] });
+      startJob(res);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch {
+      setHistoryBusy(null);
+    }
+  }
+
+  async function handleDelete(exp: HPOExperiment) {
+    if (!window.confirm(`Delete “${exp.name || exp.id}” from history? Saved models and experiments in the registry are kept.`)) return;
+    try {
+      await tuningService.deleteExperiment(exp.id);
+    } catch {
+      // Surface via the query refetch (404/5xx ignore here).
+    }
+    setCompareSel((prev) => {
+      const next = new Set(prev);
+      next.delete(exp.id);
+      return next;
+    });
+    queryClient.invalidateQueries({ queryKey: ['hpo-experiments'] });
+  }
+
+  function handleOpen(exp: HPOExperiment) {
+    if (isRunning) return;
+    resetState();
+    const recordProgress: HPOProgress = {
+      status: exp.status,
+      current: exp.trials?.length ?? 0,
+      total: exp.total ?? exp.trials?.length ?? 0,
+      best_params: exp.best_params,
+      best_score: exp.best_score,
+      best_model: exp.best_model,
+      best_metrics: exp.best_metrics,
+      saved_model_name: exp.saved_model_name,
+      save_warning: exp.save_warning ?? undefined,
+      experiments: exp.experiments,
+      model_results: exp.trials?.map((t) => ({ name: t.name, params: t.params, score: t.score, error: t.error })) ?? [],
+      error: exp.error ?? undefined,
+    };
+    setElapsedMs(0);
+    setExpandedResults(new Set());
+    setProgress(recordProgress);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function toggleCompare(id: string) {
+    setCompareSel((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   }
 
   async function handleStop() {
@@ -337,6 +432,13 @@ export default function HyperparameterPage() {
     return () => { cancelled = true; };
   }, [selectedDataset, targetColumn, cvFolds]);
 
+  useEffect(() => {
+    const st = progress?.status;
+    if (st === 'completed' || st === 'failed' || st === 'cancelled') {
+      queryClient.invalidateQueries({ queryKey: ['hpo-experiments'] });
+    }
+  }, [progress?.status, queryClient]);
+
   function toggleExpandResult(name: string) {
     setExpandedResults((prev) => {
       const next = new Set(prev);
@@ -345,6 +447,25 @@ export default function HyperparameterPage() {
       return next;
     });
   }
+
+  const trialRows = useMemo(() => {
+    const rows = (progress?.model_results ?? [])
+      .map((r, i) => ({ ...r, origIndex: i }))
+      .filter((r) => {
+        if (trialFilter === 'ok') return !r.error;
+        if (trialFilter === 'err') return !!r.error;
+        return true;
+      });
+    if (trialSort === 'score-desc') rows.sort((a, b) => (b.score ?? -Infinity) - (a.score ?? -Infinity));
+    else if (trialSort === 'score-asc') rows.sort((a, b) => (a.score ?? -Infinity) - (b.score ?? -Infinity));
+    else if (trialSort === 'alpha') rows.sort((a, b) => a.name.localeCompare(b.name));
+    return rows;
+  }, [progress?.model_results, trialSort, trialFilter]);
+
+  const compared = useMemo(
+    () => history.filter((h) => compareSel.has(h.id)),
+    [history, compareSel],
+  );
 
   const methodLabel = METHODS.find((m) => m.id === method)?.label || method;
   const allConfigured = firstOpen === -1;
@@ -734,10 +855,17 @@ export default function HyperparameterPage() {
               </div>
 
               {(progress.status === 'completed' && (progress.saved_model_name || (progress.experiments?.length ?? 0) > 0)) && (
-                <div className={styles.footerNote}>
-                  {progress.saved_model_name && <span className={styles.footerItem}><CheckCircle2 size={13} /> saved <strong>{progress.saved_model_name}</strong></span>}
-                  {(progress.experiments?.length ?? 0) > 0 && (
-                    <span className={styles.footerItem}><CheckCircle2 size={13} /> {progress.experiments!.length} experiment{progress.experiments!.length !== 1 ? 's' : ''} created</span>
+                <div className={styles.footerActionRow}>
+                  <div className={styles.footerNote}>
+                    {progress.saved_model_name && <span className={styles.footerItem}><CheckCircle2 size={13} /> saved <strong>{progress.saved_model_name}</strong></span>}
+                    {(progress.experiments?.length ?? 0) > 0 && (
+                      <span className={styles.footerItem}><CheckCircle2 size={13} /> {progress.experiments!.length} experiment{progress.experiments!.length !== 1 ? 's' : ''} created</span>
+                    )}
+                  </div>
+                  {progress.saved_model_name && (
+                    <button className={styles.registryBtn} onClick={() => navigate('/app/models')}>
+                      <ExternalLink size={13} /> View in Model Registry
+                    </button>
                   )}
                 </div>
               )}
@@ -753,6 +881,34 @@ export default function HyperparameterPage() {
                     <h2 className={styles.cardTitle}>Score Progression</h2>
                     {progress.best_score != null && <span className={styles.metaChip}>best {formatScore(progress.best_score, taskType)}</span>}
                   </div>
+                  {chartModelNames.length > 1 && (
+                    <div className={styles.chartFilters}>
+                      <span className={styles.chartFilterLabel}>Models</span>
+                      {chartModelNames.map((n) => {
+                        const on = chartModelFilter.size === 0 || chartModelFilter.has(n);
+                        return (
+                          <button
+                            key={n}
+                            className={`${styles.chartFilterChip} ${on ? styles.chartFilterOn : ''}`}
+                            onClick={() => {
+                              setChartModelFilter((prev) => {
+                                const next = new Set(prev);
+                                if (prev.size === 0) {
+                                  chartModelNames.forEach((m) => next.add(m));
+                                }
+                                if (next.has(n)) next.delete(n);
+                                else next.add(n);
+                                if (next.size === 0 || next.size === chartModelNames.length) return new Set();
+                                return next;
+                              });
+                            }}
+                          >
+                            {n}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                   <div className={styles.chartBody}>
                     <ResponsiveContainer width="100%" height={250}>
                       <ReLineChart data={chartData} margin={{ top: 16, right: 20, bottom: 4, left: -6 }}>
@@ -799,6 +955,32 @@ export default function HyperparameterPage() {
                     <h2 className={styles.cardTitle}>Trial Log</h2>
                     <span className={styles.metaChip}>{progress.model_results.length} trial{progress.model_results.length !== 1 ? 's' : ''}</span>
                   </div>
+                  <div className={styles.trialControls}>
+                    <div className={styles.filterSeg}>
+                      {(['all', 'ok', 'err'] as const).map((f) => (
+                        <button
+                          key={f}
+                          className={`${styles.filterSegBtn} ${trialFilter === f ? styles.filterSegOn : ''}`}
+                          onClick={() => setTrialFilter(f)}
+                        >
+                          {f === 'all' ? 'All' : f === 'ok' ? 'OK' : 'Errors'}
+                        </button>
+                      ))}
+                    </div>
+                    <div className={styles.trialSortWrap}>
+                      <ArrowUpDown size={12} />
+                      <select
+                        value={trialSort}
+                        onChange={(e) => setTrialSort(e.target.value as any)}
+                        className={styles.trialSortSel}
+                      >
+                        <option value="added">Order added</option>
+                        <option value="score-desc">Score: high to low</option>
+                        <option value="score-asc">Score: low to high</option>
+                        <option value="alpha">Model A–Z</option>
+                      </select>
+                    </div>
+                  </div>
                   <div className={styles.tableWrap}>
                     <table className={styles.table}>
                       <thead>
@@ -813,7 +995,7 @@ export default function HyperparameterPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {progress.model_results.map((r, i) => {
+                        {trialRows.map((r, i) => {
                           const isExpanded = expandedResults.has(r.name);
                           const isBest = progress.best_model === r.name;
                           const dur = modelDurRef.current[r.name];
@@ -874,6 +1056,11 @@ export default function HyperparameterPage() {
                             </Fragment>
                           );
                         })}
+                        {trialRows.length === 0 && (
+                          <tr>
+                            <td colSpan={7} className={styles.trialEmptyCell}>No trials match the current filter</td>
+                          </tr>
+                        )}
                       </tbody>
                     </table>
                   </div>
@@ -883,6 +1070,153 @@ export default function HyperparameterPage() {
           )}
         </motion.div>
       </div>
+
+      {/* ───── Experiment History ───── */}
+      <motion.div className={styles.historySection} initial="hidden" animate="visible" variants={fadeIn}>
+        <div className={styles.card}>
+          <div className={styles.cardHeader}>
+            <History size={15} className={styles.cardHeaderIcon} />
+            <h2 className={styles.cardTitle}>Experiment History</h2>
+            {compared.length >= 2 && (
+              <button className={styles.comparedToggle} onClick={() => setCompareSel(new Set())}>
+                <Columns3 size={12} /> Clear compare ({compared.length})
+              </button>
+            )}
+            <span className={styles.metaChip}>{history.length} saved</span>
+          </div>
+
+          {history.length === 0 ? (
+            <div className={styles.historyEmpty}>
+              Completed optimizations are saved here so you can reopen them, re-run them, compare results, or delete them.
+              Your saved models and training experiments are never removed.
+            </div>
+          ) : (
+            <div className={styles.tableWrap}>
+              <table className={styles.table}>
+                <thead>
+                  <tr>
+                    <th className={styles.compareTh}><Columns3 size={12} /></th>
+                    <th>Name</th>
+                    <th>Task</th>
+                    <th>Method</th>
+                    <th>Best Model</th>
+                    <th>Best Score</th>
+                    <th>Status</th>
+                    <th>Date</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {history.map((exp) => {
+                    const cfg = exp.config || {};
+                    const task = cfg.task_type || '';
+                    const isSel = compareSel.has(exp.id);
+                    const busy = historyBusy === exp.id;
+                    return (
+                      <tr key={exp.id} className={`${styles.tableRow} ${isSel ? styles.rowSel : ''}`}>
+                        <td>
+                          <input
+                            type="checkbox"
+                            className={styles.compareCheck}
+                            checked={isSel}
+                            onChange={() => toggleCompare(exp.id)}
+                            disabled={isRunning}
+                          />
+                        </td>
+                        <td className={styles.histNameCell}>
+                          <span className={styles.histName}>{exp.name || exp.id.slice(0, 12)}</span>
+                          <span className={styles.histSub}>{cfg.file_name} · {cfg.target_column}</span>
+                        </td>
+                        <td>
+                          <span className={`${styles.badgeClf} ${task !== 'classification' ? styles.badgeReg : ''}`}>
+                            {task === 'regression' ? 'Regression' : 'Classification'}
+                          </span>
+                        </td>
+                        <td className={styles.histMethod}>{String(cfg.method || 'random')}</td>
+                        <td className={styles.cellModel}>
+                          <span className={styles.modelName}>{exp.best_model || '—'}</span>
+                          {exp.best_model && <span className={styles.bestBadge}>BEST</span>}
+                        </td>
+                        <td className={styles.tdScore}>{formatScore(exp.best_score, task)}</td>
+                        <td>
+                          <span className={`${styles.statusChip} ${styles[`status_${exp.status}`] || ''}`}>
+                            {exp.status === 'completed' ? 'Completed'
+                              : exp.status === 'failed' ? 'Failed'
+                                : exp.status === 'cancelled' ? 'Cancelled'
+                                  : exp.status === 'running' ? 'Running' : 'Queued'}
+                          </span>
+                        </td>
+                        <td className={styles.durTd}>{exp.started_at ? new Date(exp.started_at).toLocaleString() : '—'}</td>
+                        <td>
+                          <div className={styles.histActions}>
+                            <button className={styles.histBtn} onClick={() => handleOpen(exp)} disabled={isRunning} title="Open results">
+                              <BarChart3 size={13} />
+                            </button>
+                            <button className={styles.histBtn} onClick={() => handleRerun(exp)} disabled={isRunning || busy} title="Re-run with same config">
+                              {busy ? <Loader2 size={13} className={styles.spinIcon} /> : <RotateCcw size={13} />}
+                            </button>
+                            <button className={`${styles.histBtn} ${styles.histBtnDanger}`} onClick={() => handleDelete(exp)} disabled={isRunning} title="Delete from history">
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {compared.length >= 2 && (
+            <div className={styles.compareBlock}>
+              <div className={styles.compareHead}>
+                <Columns3 size={14} className={styles.cardHeaderIcon} />
+                <span className={styles.compareTitle}>Compare {compared.length} experiments</span>
+              </div>
+              <div className={styles.tableWrap}>
+                <table className={styles.table}>
+                  <thead>
+                    <tr>
+                      <th className={styles.cmpKeyCol}>Metric</th>
+                      {compared.map((e) => (
+                        <th key={e.id} className={styles.cmpValCol}>
+                          <span className={styles.cmpName}>{e.name || e.id.slice(0, 12)}</span>
+                          <span className={styles.histSub}>{e.config?.method}</span>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {([
+                      ['Status', (e: HPOExperiment) => e.status],
+                      ['Dataset', (e: HPOExperiment) => e.config?.file_name || '—'],
+                      ['Target', (e: HPOExperiment) => e.config?.target_column || '—'],
+                      ['Task', (e: HPOExperiment) => String(e.config?.task_type || '—')],
+                      ['Search method', (e: HPOExperiment) => String(e.config?.method || '—')],
+                      ['CV folds', (e: HPOExperiment) => String(e.config?.cv_folds ?? '—')],
+                      ['Iterations', (e: HPOExperiment) => String(e.config?.n_iter ?? '—')],
+                      ['Models', (e: HPOExperiment) => (e.config?.models ?? []).join(', ') || '—'],
+                      ['Best model', (e: HPOExperiment) => e.best_model || '—'],
+                      ['Best score', (e: HPOExperiment) => formatScore(e.best_score, e.config?.task_type)],
+                      ['Trials', (e: HPOExperiment) => String((e.trials ?? []).length)],
+                      ['Saved model', (e: HPOExperiment) => e.saved_model_name || '—'],
+                      ['Ran', (e: HPOExperiment) => e.started_at ? new Date(e.started_at).toLocaleString() : '—'],
+                    ] as [string, (e: HPOExperiment) => string][]).map(([label, fn]) => (
+                      <tr key={label}>
+                        <td className={styles.cmpKey}>{label}</td>
+                        {compared.map((e) => (
+                          <td key={e.id} className={styles.cmpVal}>{fn(e)}</td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      </motion.div>
     </div>
   );
 }

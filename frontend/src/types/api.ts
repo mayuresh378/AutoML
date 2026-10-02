@@ -458,6 +458,46 @@ export interface HPOAvailability {
   regression_models?: string[];
 }
 
+export interface HPOExperimentConfig {
+  file_name: string;
+  target_column: string;
+  method: string;
+  cv_folds: number;
+  n_iter: number;
+  models: string[];
+  task_type?: string;
+  metric?: string;
+  project_id?: string;
+}
+
+export interface HPOExperiment {
+  id: string;
+  name?: string;
+  user_id?: string;
+  project_id?: string | null;
+  config: HPOExperimentConfig;
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+  error?: string | null;
+  save_warning?: string | null;
+  best_model?: string;
+  best_params?: Record<string, any>;
+  best_score?: number;
+  best_metrics?: Record<string, any>;
+  saved_model_name?: string;
+  experiments?: { id: string; name: string; model: string; cv_score: number }[];
+  trials?: { name: string; params?: Record<string, any>; score?: number; error?: string }[];
+  total?: number;
+  started_at?: string;
+  completed_at?: string;
+}
+
+export interface HPOExperimentList {
+  experiments: HPOExperiment[];
+  total: number;
+  offset: number;
+  limit: number;
+}
+
 export interface TargetAnalysis {
   target_column: string;
   task_type: 'classification' | 'regression';

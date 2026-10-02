@@ -109,7 +109,39 @@ def list_experiments(db: Session, limit: int = 100, offset: int = 0, project_id:
     return q.offset(offset).limit(limit).all()
 
 
+def _json_safe(obj):
+    """Recursively replace non-finite floats with None.
+
+    PostgreSQL rejects the JSON ``NaN``/``Infinity`` tokens that ``json.dumps``
+    produces by default, and metric dicts routinely contain NaN (e.g. ``roc_auc``
+    on degenerate folds). Sanitising at the write choke points keeps every JSONB
+    column valid regardless of caller.
+    """
+    if isinstance(obj, dict):
+        return {k: _json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_json_safe(v) for v in obj]
+    if isinstance(obj, float):
+        if _json_safe._math is not None and (_json_safe._math.isnan(obj) or _json_safe._math.isinf(obj)):
+            return None
+        return obj
+    get_obj_item = getattr(obj, "item", None)
+    if callable(get_obj_item):
+        try:
+            return _json_safe(get_obj_item())
+        except Exception:
+            return obj
+    return obj
+
+
+_json_safe._math = __import__("math")
+
+
 def create_experiment(db: Session, data: dict) -> Experiment:
+    data = {**data}
+    for key in ("metrics", "params"):
+        if key in data:
+            data[key] = _json_safe(data[key])
     exp = Experiment(id=_uid(), created_at=_now(), **data)
     try:
         db.add(exp)
@@ -143,6 +175,10 @@ def get_model(db: Session, model_id: str) -> Optional[ModelRegistry]:
 
 
 def create_model(db: Session, data: dict) -> ModelRegistry:
+    data = {**data}
+    for key in ("metrics",):
+        if key in data:
+            data[key] = _json_safe(data[key])
     model = ModelRegistry(id=_uid(), created_at=_now(), **data)
     db.add(model)
     db.commit()

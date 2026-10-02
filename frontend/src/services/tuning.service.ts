@@ -1,5 +1,5 @@
 import { http, BASE } from './http';
-import type { HPOAvailability, HPOProgress, TargetAnalysis } from '../types/api';
+import type { HPOAvailability, HPOExperiment, HPOExperimentList, HPOProgress, TargetAnalysis } from '../types/api';
 
 export const tuningService = {
   availability: () => http.get<HPOAvailability>('/hpo/availability'),
@@ -38,6 +38,14 @@ export const tuningService = {
   },
 
   cancel: (jobId: string) => http.delete<{ status: string; message: string }>(`/hpo/${jobId}`),
+
+  experiments: () => http.get<HPOExperimentList>('/hpo/experiments'),
+
+  experimentDetail: (expId: string) => http.get<HPOExperiment>(`/hpo/experiments/${expId}`),
+
+  rerunExperiment: (expId: string) => http.post<{ job_id: string; status: string; rerun_of: string }>(`/hpo/experiments/${expId}/rerun`, null),
+
+  deleteExperiment: (expId: string) => http.delete<{ status: string; id: string }>(`/hpo/experiments/${expId}`),
 
   /**
    * Subscribe to SSE progress with automatic reconnection and a fallback to
