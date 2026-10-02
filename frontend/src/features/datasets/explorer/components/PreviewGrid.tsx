@@ -127,7 +127,9 @@ export function PreviewGrid({ dataset, onSelectColumn, selectedColumn, profile, 
           id: col,
           accessorKey: col,
           header: col,
-          size: 190,
+          size: 200,
+          minSize: 160,
+          maxSize: 640,
           enableSorting: true,
           cell: ({ getValue }) => {
             const v = getValue() as any;
@@ -282,9 +284,9 @@ export function PreviewGrid({ dataset, onSelectColumn, selectedColumn, profile, 
       </div>
 
       {/* Table */}
-      <div className="overflow-auto max-h-[64vh]">
+      <div className="overflow-x-auto overflow-y-auto max-h-[64vh] overscroll-x-contain">
         <table className="border-collapse text-[13px]" style={{ width: table.getTotalSize(), minWidth: '100%' }}>
-          <thead className="sticky top-0 z-20">
+          <thead>
             {table.getHeaderGroups().map((hg) => (
               <tr key={hg.id} className="border-b border-white/[0.08] bg-surface">
                 {hg.headers.map((header) => {
@@ -299,13 +301,14 @@ export function PreviewGrid({ dataset, onSelectColumn, selectedColumn, profile, 
                       key={header.id}
                       scope="col"
                       aria-sort={sortDir === 'asc' ? 'ascending' : sortDir === 'desc' ? 'descending' : undefined}
-                      style={{ width: header.getSize() }}
+                      style={{ width: header.getSize(), minWidth: header.column.columnDef.minSize }}
                       className={cn(
                         'relative px-4 py-3 align-bottom border-r border-white/[0.04] select-none',
+                        'sticky top-0 z-20 bg-surface',
                         numeric ? 'text-right' : 'text-left',
-                        pinned && 'sticky z-30 bg-surface border-r border-white/[0.10]',
-                        pinned === 'left' && 'left-0',
-                        hasSel && 'bg-white/[0.03]',
+                        pinned === 'left' && 'left-0 z-30 border-r border-white/[0.10]',
+                        pinned === 'right' && 'right-0 z-30 border-r border-white/[0.10]',
+                        hasSel && 'shadow-[inset_0_-2px_0_0_rgba(96,165,250,0.8)]',
                       )}
                     >
                       {colId === '__select' || colId === '__index' ? (
@@ -315,22 +318,22 @@ export function PreviewGrid({ dataset, onSelectColumn, selectedColumn, profile, 
                             : null
                           : <span className="text-xs font-medium text-zinc-500">#</span>
                       ) : (
-                        <div className={cn('flex flex-col gap-1 min-w-0', numeric && 'items-end')}>
-                          <div className={cn('flex items-center gap-1.5 min-w-0', numeric && 'flex-row-reverse')}>
-                            <meta.Icon className="w-3 h-3 shrink-0" style={{ color: meta.hex }} />
+                        <div className={cn('flex flex-col gap-1.5 min-w-0', numeric && 'items-end')}>
+                          <div className={cn('flex items-center gap-1.5 min-w-0', numeric && 'justify-end')}>
+                            <meta.Icon className="w-3.5 h-3.5 shrink-0" style={{ color: meta.hex }} />
                             <button
                               type="button"
                               onClick={() => onSelectColumn(colId)}
-                              title="Inspect column"
+                              title={colId}
                               className={cn(
-                                'text-xs font-semibold uppercase tracking-wider truncate max-w-[160px]',
+                                'text-xs font-semibold uppercase tracking-wider min-w-0 truncate',
                                 hasSel ? 'text-blue-300' : 'text-zinc-400 hover:text-zinc-100',
                                 focusRing,
                               )}
                             >
                               {colId}
                             </button>
-                            {colId !== '__index' && colId !== '__select' && header.column.getCanSort() && (
+                            {header.column.getCanSort() && (
                               <button
                                 type="button"
                                 onClick={header.column.getToggleSortingHandler()}
@@ -338,7 +341,7 @@ export function PreviewGrid({ dataset, onSelectColumn, selectedColumn, profile, 
                                 aria-label={`Sort ${colId}`}
                                 className={cn('shrink-0 text-zinc-600 hover:text-zinc-300', sortDir && 'text-zinc-200', focusRing)}
                               >
-                                {sortDir === 'asc' ? <ArrowUp className="w-3 h-3" /> : sortDir === 'desc' ? <ArrowDown className="w-3 h-3" /> : <ArrowUpDown className="w-3 h-3" />}
+                                {sortDir === 'asc' ? <ArrowUp className="w-3.5 h-3.5" /> : sortDir === 'desc' ? <ArrowDown className="w-3.5 h-3.5" /> : <ArrowUpDown className="w-3.5 h-3.5" />}
                               </button>
                             )}
                             <button
@@ -348,10 +351,10 @@ export function PreviewGrid({ dataset, onSelectColumn, selectedColumn, profile, 
                               aria-label={`View details for ${colId}`}
                               className={cn('shrink-0 text-zinc-600 hover:text-blue-300', focusRing)}
                             >
-                              <Eye className="w-3 h-3" />
+                              <Eye className="w-3.5 h-3.5" />
                             </button>
                           </div>
-                          <span className={cn('inline-flex w-fit items-center rounded-full border px-1.5 py-px text-[9px] font-medium', meta.cls, numeric && 'mr-auto')}>
+                          <span className={cn('inline-flex w-fit items-center rounded-full border px-1.5 py-px text-[9px] font-medium whitespace-nowrap', meta.cls)}>
                             {meta.label}
                           </span>
                         </div>
