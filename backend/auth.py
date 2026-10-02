@@ -114,6 +114,19 @@ def verify_password(plain: str, hashed: str | None) -> bool:
         return False
 
 
+def oauth_password_hash() -> str:
+    """An unusable password hash for accounts that authenticate via OAuth.
+
+    These users must still have a non-null `password_hash`: the database column
+    is NOT NULL even though the ORM declares it nullable, so inserting NULL made
+    provisioning fail. The failure was swallowed, the caller was downgraded to a
+    guest, and every model endpoint then answered 200 with an empty list, so a
+    Google/Firebase sign-in saw an empty Explain AI model dropdown. A hash of a
+    random secret nobody knows keeps the row insertable and unguessable.
+    """
+    return hash_password(secrets.token_urlsafe(48))
+
+
 def validate_email(email: str) -> bool:
     return bool(EMAIL_RE.match(email))
 
@@ -320,7 +333,7 @@ def get_current_user(
                     firebase_uid=fb_uid,
                     email=email or f"{fb_uid}@firebase.user",
                     name=name,
-                    password_hash=None,
+                    password_hash=oauth_password_hash(),
                     role="member",
                     is_active=True,
                     email_verified=bool(fb_decoded.get("email_verified", True)),
@@ -339,37 +352,15 @@ def get_current_user(
         if payload and payload.get("sub"):
             user = db.query(User).filter(User.id == payload.get("sub")).first()
 
-    # 3. Third attempt: Unverified JSON/JWT fallback for test suites or Google sign-in fallback
-    if not user and raw_token:
-        try:
-            raw_decoded = jwt.decode(raw_token, options={"verify_signature": False})
-            if isinstance(raw_decoded, dict):
-                sub = raw_decoded.get("sub") or raw_decoded.get("uid")
-                email = (raw_decoded.get("email") or "").strip().lower()
-                name = raw_decoded.get("name") or (email.split("@")[0] if email else "User")
-                picture = raw_decoded.get("picture")
-
-                if sub or email:
-                    user = db.query(User).filter(
-                        (User.id == sub) | (User.firebase_uid == sub) | (User.email == email)
-                    ).first()
-                    if not user and email:
-                        user = User(
-                            id=f"usr_{secrets.token_hex(12)}",
-                            firebase_uid=sub if sub and sub != email else None,
-                            email=email,
-                            name=name,
-                            role="member",
-                            is_active=True,
-                            profile_picture=picture,
-                            avatar_url=picture,
-                            created_at=datetime.now(timezone.utc),
-                        )
-                        db.add(user)
-                        db.commit()
-                        db.refresh(user)
-        except Exception:
-            pass
+    # 3. There is deliberately no "unverified decode" fallback here.
+    #    Decoding a token without checking its signature lets anyone mint a
+    #    JWT with an `email` claim and be provisioned as that account, so
+    #    accepting one is an authentication bypass. An earlier version of this
+    #    function tried exactly that; it only failed by accident, because
+    #    `jwt.decode` was called without its required `key` argument and raised
+    #    TypeError. Google/Firebase tokens must verify through step 1, which
+    #    needs working FIREBASE_* service-account credentials in the backend
+    #    environment.
 
     if user is None or not user.is_active:
         raise HTTPException(status_code=401, detail="Invalid or expired authentication token")
@@ -399,8 +390,24 @@ def get_optional_user(
         return {"id": "anonymous", "email": "guest@automl.local", "name": "Guest", "role": "guest"}
     try:
         return get_current_user(credentials, db)
-    except HTTPException:
+    except HTTPException as exc:
+        # Only downgrade to a guest when there was no usable token at all.
+        # A token that was supplied but could not be verified is a real auth
+        # failure; swallowing it here made authenticated calls look like
+        # "you have no data" instead of an error the client can act on.
+        if exc.status_code in (401, 403) and _token_looks_valid(credentials.credentials):
+            raise
         return {"id": "anonymous", "email": "guest@automl.local", "name": "Guest", "role": "guest"}
+
+
+def _token_looks_valid(raw_token: str) -> bool:
+    """True when a token was actually presented and looks like a real JWT."""
+    if not raw_token or not isinstance(raw_token, str):
+        return False
+    parts = raw_token.split(".")
+    if len(parts) != 3:
+        return False
+    return all(parts) and all(len(p) > 8 for p in parts)
 
 
 def update_user_profile(db: Session, user_id: str, name: str = None, preferences: dict = None) -> dict:
@@ -489,7 +496,7 @@ def google_login(db: Session, id_token: str, device_info: str = None, ip_address
             firebase_uid=fb_uid if fb_uid else None,
             email=email or f"{fb_uid}@firebase.user",
             name=name,
-            password_hash=None,
+            password_hash=oauth_password_hash(),
             role="member",
             is_active=True,
             email_verified=True,

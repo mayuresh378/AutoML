@@ -252,22 +252,23 @@ export interface ModelMetrics {
 }
 
 export interface Model {
-  id: string;
+  id?: string;
   name: string;
-  algorithm: string;
+  algorithm?: string;
   model_type?: string;
   task_type?: string;
   dataset_name?: string;
-  target_column: string;
-  status: 'training' | 'ready' | 'failed' | 'archived' | 'staging' | 'production' | 'registered';
+  target_column?: string;
+  status?: 'training' | 'ready' | 'failed' | 'archived' | 'staging' | 'production' | 'registered';
   metrics?: ModelMetrics;
-  version: number;
+  version?: number;
   size_bytes?: number;
   size_kb?: number;
   file_path?: string;
   file_size_kb?: number;
+  best_score?: number;
   cv_score?: number;
-  framework: string;
+  framework?: string;
   experiment_id?: string;
   user_id?: string;
   params?: Record<string, any>;

@@ -3,7 +3,7 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import { Zap, Send, Database, Brain } from 'lucide-react';
 import { predictionsService } from '../../../services/predictions.service';
-import { modelsService } from '../../../services/models.service';
+import { modelsService, filterUsableModels } from '../../../services/models.service';
 import { datasetsService } from '../../../services/datasets.service';
 import { Card, CardHeader, CardTitle, CardContent } from '../../../components/ui/Card';
 import { PageContainer, PageHeader } from '../../../components/layout/PageContainer';
@@ -40,7 +40,7 @@ export default function PredictionPage() {
   const { data: models, isLoading } = useQuery({
     queryKey: ['models'],
     queryFn: () => modelsService.list(),
-    select: (d) => d.models?.filter((m: any) => m.status === 'ready'),
+    select: (d) => filterUsableModels(d.models),
   });
 
   const predictMutation = useMutation({

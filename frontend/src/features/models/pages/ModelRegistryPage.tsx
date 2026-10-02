@@ -58,11 +58,12 @@ function formatRelative(dateString?: string): string {
   return 'just now';
 }
 
-function StatusBadge({ status }: { status: string }) {
-  const c = statusColors[status] || statusColors.staging;
+function StatusBadge({ status }: { status?: string }) {
+  const label = status || 'unknown';
+  const c = statusColors[status || ''] || statusColors.staging;
   return (
     <span className={styles.statusBadge} style={{ background: c.bg, color: c.text, borderColor: c.border }}>
-      {status}
+      {label}
     </span>
   );
 }

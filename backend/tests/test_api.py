@@ -95,6 +95,191 @@ class TestModels:
         assert resp.status_code == 200
         assert "models" in resp.json()
 
+    def test_filesystem_models_are_listed_as_usable(self, client: TestClient, tmp_path, monkeypatch):
+        """Filesystem models must satisfy the frontend's model pickers.
+
+        Pickers previously filtered on `status === 'ready'`, but filesystem
+        models were returned with no `status` key and registry rows defaulted
+        to "staging", so the dropdowns rendered zero options.
+        """
+        import pickle
+        monkeypatch.setattr("main.MODELS_DIR", str(tmp_path))
+
+        fname = "picker_model.pkl"
+        (tmp_path / fname).write_bytes(pickle.dumps({"m": 1}))
+        (tmp_path / fname.replace(".pkl", "_meta.json")).write_text(
+            '{"cv_score": 0.91, "task_type": "classification", "target_column": "y"}'
+        )
+
+        resp = client.get("/api/v1/models")
+        assert resp.status_code == 200
+        models = {m["name"]: m for m in resp.json()["models"]}
+        assert fname in models, "filesystem model missing from the model list"
+
+        entry = models[fname]
+        assert entry["status"] == "ready"
+        assert entry["id"]
+        assert entry["version"] is not None
+        assert entry["framework"]
+        assert entry["task_type"] == "classification"
+        assert entry["cv_score"] == 0.91
+
+    def test_staged_registry_model_with_file_is_usable(self, client: TestClient, db, tmp_path, monkeypatch):
+        """A "staging" registry row whose artifact exists is trained and usable."""
+        import pickle
+        monkeypatch.setattr("main.MODELS_DIR", str(tmp_path))
+        from models import ModelRegistry
+
+        fname = "staged_model.pkl"
+        (tmp_path / fname).write_bytes(pickle.dumps({"m": 1}))
+        (tmp_path / fname.replace(".pkl", "_meta.json")).write_text('{"cv_score": 0.75}')
+        db.add(ModelRegistry(id="reg_staged", name="staged_model", user_id="usr_test1", status="staging"))
+        db.commit()
+
+        resp = client.get("/api/v1/models")
+        assert resp.status_code == 200
+        models = {m["name"]: m for m in resp.json()["models"]}
+        assert fname in models
+        assert models[fname]["status"] == "ready"
+
+    def test_archived_and_failed_models_keep_terminal_status(self, client: TestClient, db, tmp_path, monkeypatch):
+        import pickle
+        monkeypatch.setattr("main.MODELS_DIR", str(tmp_path))
+        from models import ModelRegistry
+
+        for name, status in (("arch_model", "archived"), ("fail_model", "failed")):
+            (tmp_path / f"{name}.pkl").write_bytes(pickle.dumps({"m": 1}))
+            (tmp_path / f"{name}_meta.json").write_text("{}")
+            db.add(ModelRegistry(id=f"reg_{name}", name=name, user_id="usr_test1", status=status))
+        db.commit()
+
+        resp = client.get("/api/v1/models")
+        assert resp.status_code == 200
+        models = {m["name"]: m for m in resp.json()["models"]}
+        assert models["arch_model.pkl"]["status"] == "archived"
+        assert models["fail_model.pkl"]["status"] == "failed"
+
+
+class TestOptionalUserAuthDowngrade:
+    """`get_optional_user` must not mask a bad token as "no data".
+
+    The model list endpoint used to answer 200 with an empty array whenever the
+    caller was downgraded to a guest, which made the Explain AI model dropdown
+    look like "you have no models" rather than an authentication failure.
+    """
+
+    def _call(self, db, token):
+        from fastapi import HTTPException
+        from fastapi.security import HTTPAuthorizationCredentials
+        from auth import get_optional_user
+
+        creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token) if token else None
+        return get_optional_user(creds, db)
+
+    def test_unverifiable_jwt_raises_401(self, db):
+        from fastapi import HTTPException
+        bogus = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJnaG9zdCJ9.notarealsignature"
+        with pytest.raises(HTTPException) as exc:
+            self._call(db, bogus)
+        assert exc.value.status_code == 401
+
+    def test_no_token_is_a_guest(self, db):
+        user = self._call(db, None)
+        assert user["id"] == "anonymous"
+
+    def test_garbage_token_is_a_guest(self, db):
+        user = self._call(db, "not-a-jwt")
+        assert user["id"] == "anonymous"
+
+    def test_token_shape_detection(self):
+        from auth import _token_looks_valid
+
+        assert _token_looks_valid(
+            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJnaG9zdCJ9.notarealsignature"
+        )
+        assert not _token_looks_valid("not-a-jwt")
+        assert not _token_looks_valid("a.b.c")
+        assert not _token_looks_valid("")
+        assert not _token_looks_valid(None)
+
+
+class TestOAuthUserSecurity:
+    """Tokens must be cryptographically verified, never merely decoded.
+
+    An earlier version of `get_current_user` had a third "unverified decode"
+    attempt. It happened to raise TypeError, so it was inert, but repairing that
+    call would have let anyone mint a JWT with an `email` claim and be
+    provisioned as that account. The fallback is now removed on purpose.
+    """
+
+    def _forged_token(self, email="victim@example.com", sub="forged_uid"):
+        import jwt as pyjwt
+        return pyjwt.encode(
+            {"sub": sub, "email": email, "name": "Mallory"},
+            "x" * 40,
+            algorithm="HS256",
+        )
+
+    def test_forged_token_cannot_authenticate(self, db):
+        from fastapi import HTTPException
+        from fastapi.security import HTTPAuthorizationCredentials
+        from auth import get_current_user
+        from models import User
+
+        creds = HTTPAuthorizationCredentials(
+            scheme="Bearer", credentials=self._forged_token()
+        )
+        with pytest.raises(HTTPException) as exc:
+            get_current_user(creds, db)
+        assert exc.value.status_code == 401
+        assert db.query(User).filter(User.email == "victim@example.com").count() == 0
+
+    def test_unsigned_token_with_admin_claim_cannot_escalate(self, db):
+        import jwt as pyjwt
+        from fastapi import HTTPException
+        from fastapi.security import HTTPAuthorizationCredentials
+        from auth import get_current_user
+        from models import User
+
+        token = pyjwt.encode(
+            {"sub": "forged_admin", "email": "admin@example.com", "role": "admin"},
+            "x" * 40,
+            algorithm="HS256",
+        )
+        creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
+        with pytest.raises(HTTPException) as exc:
+            get_current_user(creds, db)
+        assert exc.value.status_code == 401
+        assert db.query(User).filter(User.email == "admin@example.com").count() == 0
+
+    def test_oauth_password_hash_is_unusable(self):
+        from auth import oauth_password_hash, verify_password
+
+        first = oauth_password_hash()
+        second = oauth_password_hash()
+        assert first and first != second
+        assert not verify_password("", first)
+        assert not verify_password("password", first)
+
+
+class TestOAuthPasswordHash:
+    """OAuth-provisioned rows must satisfy a NOT NULL password_hash.
+
+    `users.password_hash` is NOT NULL in the database even though the ORM
+    declares it nullable, so inserting NULL made provisioning fail. That failure
+    was swallowed, the caller was downgraded to a guest, and the model list came
+    back empty, so a Google/Firebase sign-in saw an empty model dropdown.
+    """
+
+    def test_hash_is_non_empty_and_not_guessable(self):
+        from auth import oauth_password_hash, verify_password
+
+        h = oauth_password_hash()
+        assert h and len(h) > 20
+        assert not verify_password("password", h)
+        assert not verify_password("", h)
+        assert not verify_password(None, h)
+
 
 class TestMonitoring:
     def test_metrics(self, client: TestClient):

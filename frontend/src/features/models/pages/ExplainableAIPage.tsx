@@ -7,7 +7,7 @@ import { Badge } from '../../../components/ui/Badge';
 import { EmptyState } from '../../../components/ui/EmptyState';
 import { ErrorState } from '../../../components/ui/ErrorState';
 import { LoadingSpinner } from '../../../components/LoadingSpinner';
-import { modelsService } from '../../../services/models.service';
+import { modelsService, filterUsableModels } from '../../../services/models.service';
 import { Lightbulb, Brain } from 'lucide-react';
 import { getErrorMessage } from '../../../services/http';
 
@@ -17,7 +17,7 @@ export default function ExplainableAIPage() {
   const { data: models, isLoading } = useQuery({
     queryKey: ['models'],
     queryFn: () => modelsService.list(),
-    select: (d) => d.models?.filter((m: any) => m.status === 'ready'),
+    select: (d) => filterUsableModels(d.models),
   });
 
   return (

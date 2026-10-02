@@ -1650,11 +1650,23 @@ def list_models_api(db: Session = Depends(get_db), offset: int = Query(0, ge=0),
             fs_sizes[f] = size_kb
             if reg is None:
                 meta = _load_model_meta(f)
+                # Filesystem models previously carried no `status`/`id` at all,
+                # while registry rows defaulted to "staging". Frontend model
+                # pickers filtered on `status === 'ready'`, which matched
+                # neither, so their dropdowns rendered zero options. A .pkl that
+                # exists on disk and has a loadable sidecar is usable, so report
+                # it as "ready" and give it a stable synthetic id.
                 fs_models.append({
+                    "id": f"fs:{f}",
                     "name": f, "size_kb": size_kb,
+                    "version": 1,
+                    "framework": meta.get("framework") or "sklearn",
+                    "status": meta.get("status") or "ready",
                     "task_type": meta.get("task_type"),
                     "target_column": meta.get("target_column") or meta.get("target"),
+                    "dataset_name": meta.get("dataset_name"),
                     "best_score": meta.get("cv_score"),
+                    "cv_score": meta.get("cv_score"),
                     "metrics": meta.get("metrics"),
                     "created_at": datetime.fromtimestamp(os.path.getmtime(fpath)).isoformat(),
                 })
@@ -1665,11 +1677,18 @@ def list_models_api(db: Session = Depends(get_db), offset: int = Query(0, ge=0),
         fpath = os.path.join(MODELS_DIR, fs_name) if fs_name else None
         has_file = fpath is not None and os.path.exists(fpath)
         meta = _load_model_meta(fs_name) if has_file else {}
+        # `status` defaults to "staging" on insert, but a staged model whose
+        # artifact is on disk is trained and perfectly usable. Report it as
+        # "ready" so pickers gated on status include it. Explicitly archived or
+        # failed models keep their real status.
+        status = m.status
+        if status in (None, "", "staging") and has_file:
+            status = "ready"
         registered.append({
             "id": m.id, "name": fs_name if has_file else m.name, "version": m.version,
             "model_type": m.model_type, "task_type": m.task_type,
             "framework": m.framework, "file_size_kb": fs_sizes.get(fs_name) or m.file_size_kb,
-            "cv_score": m.cv_score, "status": m.status,
+            "cv_score": m.cv_score, "status": status,
             "tags": m.tags, "description": m.description,
             "experiment_id": m.experiment_id,
             # Fall back to the training-time sidecar when there is no experiment.

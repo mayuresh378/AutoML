@@ -10,7 +10,8 @@ import {
   type ComprehensiveExplanation,
   type ModelEvaluation,
 } from '../services/explain.service';
-import { http } from '../../../services/http';
+import { http, getErrorMessage } from '../../../services/http';
+import { filterUsableModels } from '../../../services/models.service';
 import type { Model, Dataset } from '../../../types/api';
 import { FeatureImportanceChart } from '../components/FeatureImportanceChart';
 import { ShapWaterfall } from '../components/ShapWaterfall';
@@ -45,7 +46,7 @@ export default function ExplainPage() {
   const modelsQuery = useQuery({
     queryKey: ['models'],
     queryFn: () => http.get<{ models: Model[] }>('/models'),
-    select: (data) => data.models ?? [],
+    select: (data) => filterUsableModels(data.models),
     staleTime: 30_000,
   });
 
@@ -68,6 +69,20 @@ export default function ExplainPage() {
 
   const models = modelsQuery.data ?? [];
   const datasets = datasetsQuery.data ?? [];
+
+  // Loading/failure/empty all previously rendered as the same bare
+  // "Select a model" control, so an empty dropdown gave no reason why.
+  const modelPlaceholder = modelsQuery.isLoading
+    ? 'Loading models...'
+    : modelsQuery.isError
+      ? 'Could not load models'
+      : modelsQuery.isFetching
+        ? 'Refreshing models...'
+        : 'Select a model';
+
+  const modelLoadError = modelsQuery.isError
+    ? getErrorMessage(modelsQuery.error) || 'Failed to load models'
+    : null;
 
   const comprehensiveMutation = useMutation({
     mutationFn: () => explainService.comprehensive(modelName, fileName, targetColumn),
@@ -107,16 +122,16 @@ export default function ExplainPage() {
         <div className={styles.inputCard}>
           <div className={styles.inputRow}>
             <div className={styles.inputGroup}>
-              <label className={styles.label}>Model</label>
+              <label className={styles.label} htmlFor="explain-model-select">Model</label>
               <div className={styles.selectWrapper}>
                 <select
+                  id="explain-model-select"
                   className={styles.select}
                   value={modelName}
                   onChange={(e) => setModelName(e.target.value)}
+                  aria-describedby="explain-model-hint"
                 >
-                  <option value="">
-                    {modelsQuery.isLoading ? 'Loading models...' : 'Select a model'}
-                  </option>
+                  <option value="">{modelPlaceholder}</option>
                   {models.map((m) => (
                     <option key={m.name} value={m.name}>
                       {m.name} ({m.task_type || 'unknown'})
@@ -125,11 +140,28 @@ export default function ExplainPage() {
                 </select>
                 <ChevronDown size={16} className={styles.selectIcon} />
               </div>
+              <div id="explain-model-hint">
+                {modelLoadError && (
+                  <p className={styles.hint} role="alert">
+                    <AlertCircle size={13} />
+                    <span>{modelLoadError}</span>
+                    <button type="button" className={styles.hintAction} onClick={() => modelsQuery.refetch()}>
+                      Retry
+                    </button>
+                  </p>
+                )}
+                {!modelsQuery.isLoading && !modelsQuery.isError && models.length === 0 && (
+                  <p className={styles.hint}>
+                    No models available. Train a model first, or check that you are signed in.
+                  </p>
+                )}
+              </div>
             </div>
             <div className={styles.inputGroup}>
-              <label className={styles.label}>Dataset</label>
+              <label className={styles.label} htmlFor="explain-dataset-select">Dataset</label>
               <div className={styles.selectWrapper}>
                 <select
+                  id="explain-dataset-select"
                   className={styles.select}
                   value={fileName}
                   onChange={(e) => {
@@ -150,9 +182,10 @@ export default function ExplainPage() {
               </div>
             </div>
             <div className={styles.inputGroup}>
-              <label className={styles.label}>Target Column</label>
+              <label className={styles.label} htmlFor="explain-target-select">Target Column</label>
               <div className={styles.selectWrapper}>
                 <select
+                  id="explain-target-select"
                   className={styles.select}
                   value={targetColumn}
                   onChange={(e) => setTargetColumn(e.target.value)}

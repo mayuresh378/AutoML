@@ -1,6 +1,24 @@
 import { http } from './http';
 import type { Model } from '../types/api';
 
+/**
+ * Statuses that make a model unusable in a selection dropdown.
+ * A model that is merely "staging" or has no status at all is still trained
+ * and loadable, so it stays selectable. Gating on `status === 'ready'`
+ * instead of excluding the terminal states silently emptied these dropdowns,
+ * because the API reports staged models as "staging".
+ */
+const UNUSABLE_STATUSES = new Set(['failed', 'archived']);
+
+export function isModelUsable(model: Pick<Model, 'status'>): boolean {
+  const status = (model.status ?? '').toString().toLowerCase();
+  return !UNUSABLE_STATUSES.has(status);
+}
+
+export function filterUsableModels(models: Model[] | undefined | null): Model[] {
+  return (models ?? []).filter(isModelUsable);
+}
+
 export const modelsService = {
   list: () => http.get<{ models: Model[] }>('/models'),
 

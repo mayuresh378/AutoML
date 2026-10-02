@@ -157,6 +157,27 @@
   font-size: var(--text-body-sm);
 }
 
+.hint {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-top: var(--space-2);
+  color: var(--color-text-tertiary);
+  font-size: var(--text-caption);
+  line-height: 1.45;
+}
+
+.hintAction {
+  background: none;
+  border: none;
+  padding: 0 var(--space-1);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  color: var(--color-text-link);
+  text-decoration: underline;
+}
+
 .tabsBar {
   display: flex;
   gap: var(--space-1);
