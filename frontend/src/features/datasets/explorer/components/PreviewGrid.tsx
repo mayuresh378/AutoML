@@ -285,10 +285,10 @@ export function PreviewGrid({ dataset, onSelectColumn, selectedColumn, profile, 
 
       {/* Table */}
       <div className="overflow-x-auto overflow-y-auto max-h-[64vh] overscroll-x-contain">
-        <table className="border-collapse text-[13px]" style={{ width: table.getTotalSize(), minWidth: '100%' }}>
+        <table className="border-separate border-spacing-0 text-[13px]" style={{ width: table.getTotalSize(), minWidth: '100%' }}>
           <thead>
             {table.getHeaderGroups().map((hg) => (
-              <tr key={hg.id} className="border-b border-white/[0.08] bg-surface">
+              <tr key={hg.id} className="bg-[#18181b]">
                 {hg.headers.map((header) => {
                   const pinned = header.column.getIsPinned();
                   const colId = header.column.id;
@@ -303,11 +303,11 @@ export function PreviewGrid({ dataset, onSelectColumn, selectedColumn, profile, 
                       aria-sort={sortDir === 'asc' ? 'ascending' : sortDir === 'desc' ? 'descending' : undefined}
                       style={{ width: header.getSize(), minWidth: header.column.columnDef.minSize }}
                       className={cn(
-                        'relative px-4 py-3 align-bottom border-r border-white/[0.04] select-none',
-                        'sticky top-0 z-20 bg-surface',
+                        'relative px-4 py-3 align-bottom border-r border-r-white/[0.04] border-b border-b-white/[0.08] select-none',
+                        'sticky top-0 z-30 min-h-[52px] bg-[#18181b] shadow-[0_6px_12px_-6px_rgba(0,0,0,0.5)]',
                         numeric ? 'text-right' : 'text-left',
-                        pinned === 'left' && 'left-0 z-30 border-r border-white/[0.10]',
-                        pinned === 'right' && 'right-0 z-30 border-r border-white/[0.10]',
+                        pinned === 'left' && 'left-0 z-40 border-r-white/[0.10]',
+                        pinned === 'right' && 'right-0 z-40 border-r-white/[0.10]',
                         hasSel && 'shadow-[inset_0_-2px_0_0_rgba(96,165,250,0.8)]',
                       )}
                     >
@@ -426,7 +426,7 @@ export function PreviewGrid({ dataset, onSelectColumn, selectedColumn, profile, 
                 <tr
                   key={row.id}
                   className={cn(
-                    'border-b border-white/[0.04] transition-colors',
+                    'transition-colors',
                     row.getIsSelected() ? 'bg-white/[0.04]' : 'hover:bg-white/[0.02]',
                   )}
                 >
@@ -439,9 +439,9 @@ export function PreviewGrid({ dataset, onSelectColumn, selectedColumn, profile, 
                         key={cell.id}
                         style={{ width: cell.column.getSize() }}
                         className={cn(
-                          'px-4 py-2.5 whitespace-nowrap max-w-[320px] overflow-hidden text-ellipsis border-r border-white/[0.03]',
+                          'px-4 py-2.5 whitespace-nowrap max-w-[320px] overflow-hidden text-ellipsis border-r border-r-white/[0.03] border-b border-b-white/[0.04]',
                           cellMeta.kind === 'numeric' && 'text-right tabular-nums',
-                          pinned && 'sticky z-10 bg-card border-r border-white/[0.10]',
+                          pinned && 'sticky z-10 bg-card border-r-white/[0.10]',
                           pinned === 'left' && 'left-0',
                           isColSelected && 'bg-white/[0.03]',
                         )}
