@@ -112,12 +112,15 @@ export function PreviewGrid({ dataset, onSelectColumn, selectedColumn, profile, 
       },
       {
         id: '__index',
-        size: 56,
+        size: 68,
+        minSize: 64,
         enableResizing: false,
         enableSorting: false,
         enableGlobalFilter: false,
         cell: ({ row }) => (
-          <span className="text-zinc-600 font-mono text-xs">{pageIndex * pageSize + row.index + 1}</span>
+          <span className="block pr-2 text-right text-zinc-600 font-mono text-xs tabular-nums">
+            {pageIndex * pageSize + row.index + 1}
+          </span>
         ),
       },
       ...cols.map((col): ColumnDef<RowRecord, any> => {
@@ -127,25 +130,25 @@ export function PreviewGrid({ dataset, onSelectColumn, selectedColumn, profile, 
           id: col,
           accessorKey: col,
           header: col,
-          size: 200,
-          minSize: 160,
-          maxSize: 640,
+            size: 220,
+            minSize: 140,
+            maxSize: 720,
           enableSorting: true,
           cell: ({ getValue }) => {
             const v = getValue() as any;
             return v == null || v === '' ? (
               <span className="text-zinc-600 italic text-xs">NULL</span>
             ) : (
-              <span
-                title={String(v)}
-                className={cn(
-                  'font-mono text-[13px]',
-                  numeric && 'tabular-nums',
-                  numeric ? 'text-zinc-200' : 'text-zinc-400',
-                )}
-              >
-                {String(v)}
-              </span>
+                <span
+                  title={String(v)}
+                  className={cn(
+                    'font-mono text-[13px] tabular-nums whitespace-pre',
+                    numeric && 'text-zinc-100',
+                    !numeric && 'text-zinc-300',
+                  )}
+                >
+                  {String(v)}
+                </span>
             );
           },
         };
@@ -285,7 +288,7 @@ export function PreviewGrid({ dataset, onSelectColumn, selectedColumn, profile, 
 
       {/* Table */}
       <div className="overflow-x-auto overflow-y-auto max-h-[64vh] overscroll-x-contain">
-        <table className="border-separate border-spacing-0 text-[13px]" style={{ width: table.getTotalSize(), minWidth: '100%' }}>
+        <table className="border-separate border-spacing-0 text-[13px] table-fixed" style={{ width: table.getTotalSize(), minWidth: '100%' }}>
           <thead>
             {table.getHeaderGroups().map((hg) => (
               <tr key={hg.id} className="bg-[#18181b]">
@@ -303,8 +306,8 @@ export function PreviewGrid({ dataset, onSelectColumn, selectedColumn, profile, 
                       aria-sort={sortDir === 'asc' ? 'ascending' : sortDir === 'desc' ? 'descending' : undefined}
                       style={{ width: header.getSize(), minWidth: header.column.columnDef.minSize }}
                       className={cn(
-                        'relative px-4 py-3 align-bottom border-r border-r-white/[0.04] border-b border-b-white/[0.08] select-none',
-                        'sticky top-0 z-30 min-h-[52px] bg-[#18181b] shadow-[0_6px_12px_-6px_rgba(0,0,0,0.5)]',
+                         'relative px-3 py-3 align-bottom border-r border-r-white/[0.04] border-b border-b-white/[0.08] select-none',
+                         'sticky top-0 z-30 min-h-[52px] bg-[#18181b] shadow-[0_6px_12px_-6px_rgba(0,0,0,0.5)]',
                         numeric ? 'text-right' : 'text-left',
                         pinned === 'left' && 'left-0 z-40 border-r-white/[0.10]',
                         pinned === 'right' && 'right-0 z-40 border-r-white/[0.10]',
@@ -439,12 +442,12 @@ export function PreviewGrid({ dataset, onSelectColumn, selectedColumn, profile, 
                         key={cell.id}
                         style={{ width: cell.column.getSize() }}
                         className={cn(
-                          'px-4 py-2.5 whitespace-nowrap max-w-[320px] overflow-hidden text-ellipsis border-r border-r-white/[0.03] border-b border-b-white/[0.04]',
-                          cellMeta.kind === 'numeric' && 'text-right tabular-nums',
-                          pinned && 'sticky z-10 bg-card border-r-white/[0.10]',
-                          pinned === 'left' && 'left-0',
-                          isColSelected && 'bg-white/[0.03]',
-                        )}
+                           'px-3 py-2.5 whitespace-nowrap max-w-[420px] overflow-hidden text-ellipsis border-r border-r-white/[0.03] border-b border-b-white/[0.04]',
+                           cellMeta.kind === 'numeric' && 'text-right tabular-nums',
+                           pinned && 'sticky z-10 bg-card border-r-white/[0.10]',
+                           pinned === 'left' && 'left-0',
+                           isColSelected && 'bg-white/[0.03]',
+                         )}
                       >
                         {flexRender(cell.column.columnDef.cell, cell.getContext())}
                       </td>
