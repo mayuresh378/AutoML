@@ -1,11 +1,11 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import {
   Target, Brain, Sliders, Activity, BarChart3, Play, Package,
   ChevronRight, Check, Loader2, AlertCircle,
 } from 'lucide-react';
-import { trainingService, TrainingProgress } from '../../../services/training.service';
+import { trainingService, TrainingProgress, pickBestResult } from '../../../services/training.service';
 import { LiveTrainingProgress } from './LiveTrainingProgress';
 import { AccuracyChart } from './AccuracyChart';
 import styles from './TrainingWorkflow.module.css';
@@ -50,6 +50,25 @@ const REGRESSION_ALGOS = [
   { name: 'DecisionTree', label: 'Decision Tree', desc: 'Single tree regressor' },
 ];
 
+/** Formats a 0-1 score, or a dash when the value was never measured. */
+function formatPct(value: number | null | undefined): string {
+  return value == null ? '—' : `${(value * 100).toFixed(1)}%`;
+}
+
+/** Formats a raw metric (R², RMSE, MAE, MSE) that is not a 0-1 percentage. */
+function formatPlain(value: number | null | undefined): string {
+  return value == null ? '—' : value.toFixed(4);
+}
+
+/** Reads the task's headline metric out of a result's metric bag. */
+function formatScore(
+  metrics: Record<string, number> | null | undefined,
+  key: 'accuracy' | 'r2',
+): string {
+  if (!metrics) return '—';
+  return key === 'r2' ? formatPlain(metrics.r2) : formatPct(metrics.accuracy);
+}
+
 export function TrainingWorkflow({ datasets }: TrainingWorkflowProps) {
   const navigate = useNavigate();
   const [step, setStep] = useState<Step>('task');
@@ -61,9 +80,62 @@ export function TrainingWorkflow({ datasets }: TrainingWorkflowProps) {
   const [optimizeHpo, setOptimizeHpo] = useState(true);
   const [jobId, setJobId] = useState<string | null>(null);
   const [progress, setProgress] = useState<TrainingProgress | null>(null);
+  const [requestError, setRequestError] = useState<string | null>(null);
+  const unsubscribeRef = useRef<(() => void) | null>(null);
 
   const selectedDs = useMemo(() => datasets.find((d) => d.name === selectedDataset), [datasets, selectedDataset]);
   const dsColumns = useMemo(() => (selectedDs as any)?.columns || [], [selectedDs]);
+
+  const results = useMemo(() => progress?.all_results ?? [], [progress]);
+  const isRegression = progress?.task_type === 'regression';
+  const rankMetric = progress?.rank_metric ?? (taskType === 'regression' ? 'r2' : 'accuracy');
+  const rankLabel = rankMetric === 'r2' ? 'R²' : 'Accuracy';
+
+  /** Columns are driven by the metrics the backend actually produced. The
+   *  headline column already shows R² for regression, so no extra R² column. */
+  const showF1 = useMemo(() => results.some((r) => r.metrics?.f1 != null), [results]);
+  const showRmse = useMemo(() => results.some((r) => r.metrics?.rmse != null), [results]);
+  const showMae = useMemo(() => results.some((r) => r.metrics?.mae != null), [results]);
+
+  /**
+   * The winner is derived from measured values only, and stays null while no
+   * algorithm has a score, so "Best" can never sit on an empty row.
+   */
+  const bestName = useMemo(() => {
+    const best = pickBestResult(results, rankMetric);
+    return best ? best.name : null;
+  }, [results, rankMetric]);
+
+  /** Successful models first (best score on top), then failures. Copy before
+   *  sorting: sorting in place mutated the array held in React state. */
+  const sortedResults = useMemo(() => {
+    const score = (r: typeof results[number]) =>
+      r.status === 'success' && r.metrics ? (r.metrics[rankMetric] as number) : -Infinity;
+    return [...results].sort((a, b) => {
+      if (score(a) !== score(b)) return score(b) - score(a);
+      return 0;
+    });
+  }, [results, rankMetric]);
+
+  const metricsError = useMemo(() => {
+    if (requestError) return requestError;
+    if (progress?.status === 'failed') {
+      return progress.error || progress.message || 'Training failed for an unknown reason';
+    }
+    if (progress?.status === 'cancelled') return 'Training was cancelled';
+    if (progress?.status === 'timeout') return 'Training timed out before results were received';
+    if (progress?.status === 'completed' && results.every((r) => r.status === 'error')) {
+      return 'No algorithm produced valid metrics. Check the training logs for the underlying errors.';
+    }
+    return null;
+  }, [requestError, progress, results]);
+
+  const metricsErrorTitle = useMemo(() => {
+    if (progress?.status === 'cancelled') return 'Training cancelled';
+    if (progress?.status === 'timeout') return 'Training timed out';
+    if (requestError || progress?.status === 'failed') return 'Training failed';
+    return 'No valid metrics';
+  }, [requestError, progress]);
 
   const currentStepIdx = STEPS.findIndex((s) => s.id === step);
 
@@ -76,32 +148,52 @@ export function TrainingWorkflow({ datasets }: TrainingWorkflowProps) {
 
   useEffect(() => {
     if (!jobId || !progress) return;
-    if (progress.status === 'completed') {
+    // Move on once the run has finished, whatever the outcome. The Metrics step
+    // renders either the table or the real error, so a run that produced no
+    // numbers always lands somewhere that explains why.
+    if (['completed', 'failed', 'cancelled', 'timeout'].includes(progress.status)) {
       setStep('metrics');
-    } else if (progress.status === 'failed') {
-      // stay on training step to show error
     }
   }, [progress, jobId]);
 
+  // Close the stream if the component goes away, otherwise it keeps calling
+  // setProgress on an unmounted tree.
+  useEffect(() => () => unsubscribeRef.current?.(), []);
+
   const handleStartTraining = useCallback(async () => {
     if (!selectedDataset || !targetColumn.trim()) return;
+    unsubscribeRef.current?.();
+    unsubscribeRef.current = null;
+    // Clear the previous run so the Metrics step can never show stale numbers
+    // from an earlier job while the new one starts.
+    setProgress(null);
+    setRequestError(null);
+    setJobId(null);
     setStep('training');
     try {
-      const result = await trainingService.runWorkflow({
+      const payload = {
         file_name: selectedDataset,
         target_column: targetColumn.trim(),
         task_type: taskType,
         algorithms: selectedAlgos.join(','),
         cv_folds: cvFolds,
         optimize_hyperparameters: optimizeHpo,
-      });
+      };
+      console.log('TRAINING API REQUEST:', payload);
+      const result = await trainingService.runWorkflow(payload);
+      console.log('TRAINING API RESPONSE:', result);
       setJobId(result.job_id);
-      const unsub = trainingService.subscribeProgress(result.job_id, (data) => {
+      unsubscribeRef.current = trainingService.subscribeProgress(result.job_id, (data) => {
         setProgress(data);
       });
-      return () => unsub();
     } catch (err) {
-      setProgress({ status: 'failed', progress: 0, current_step: 'error', message: String(err), logs: [], metrics_history: [] });
+      const message = err instanceof Error ? err.message : String(err);
+      setRequestError(message);
+      setProgress({
+        status: 'failed', progress: 0, current_step: 'failed',
+        message, error: message, logs: [], metrics_history: [],
+        task_type: taskType,
+      });
     }
   }, [selectedDataset, targetColumn, taskType, selectedAlgos, cvFolds, optimizeHpo]);
 
@@ -266,37 +358,67 @@ export function TrainingWorkflow({ datasets }: TrainingWorkflowProps) {
           {step === 'metrics' && (
             <motion.div key="metrics" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className={styles.stepPanel}>
               <h3 className={styles.panelTitle}>Training Results</h3>
-              {progress?.metrics_history && progress.metrics_history.length > 0 && (
-                <AccuracyChart metricsHistory={progress.metrics_history} />
+              {metricsError && (
+                <div className={styles.errorBanner}>
+                  <AlertCircle className={styles.errorIcon} />
+                  <div>
+                    <div className={styles.errorTitle}>{metricsErrorTitle}</div>
+                    <div className={styles.errorText}>{metricsError}</div>
+                  </div>
+                </div>
+              )}
+              {!metricsError && results.length === 0 && (
+                <div className={styles.loadingState}>
+                  <Loader2 className={styles.loadingSpin} />
+                  <span>Waiting for training results...</span>
+                </div>
+              )}
+              {!metricsError && results.length > 0 && progress?.metrics_history && progress.metrics_history.length > 0 && (
+                <AccuracyChart metricsHistory={progress.metrics_history} metricLabel={rankLabel} />
               )}
 
-              {progress?.all_results && (
+              {results.length > 0 && (
                 <div className={styles.resultsTable}>
                   <table className={styles.table}>
                     <thead>
                       <tr>
                         <th>Algorithm</th>
-                        <th>Accuracy</th>
+                        <th>{rankLabel}</th>
                         <th>CV Score</th>
-                        {progress.all_results[0]?.metrics?.f1 != null && <th>F1</th>}
-                        {progress.all_results[0]?.metrics?.rmse != null && <th>RMSE</th>}
+                        {showF1 && <th>F1</th>}
+                        {showRmse && <th>RMSE</th>}
+                        {showMae && <th>MAE</th>}
                         <th>Time</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {progress.all_results.sort((a, b) => (b.metrics?.accuracy || 0) - (a.metrics?.accuracy || 0)).map((r, i) => (
-                        <tr key={r.name} className={i === 0 ? styles.bestRow : ''}>
-                          <td className={styles.algoCell}>
-                            {r.name}
-                            {i === 0 && <span className={styles.bestBadge}>Best</span>}
-                          </td>
-                          <td>{r.metrics?.accuracy != null ? `${(r.metrics.accuracy * 100).toFixed(1)}%` : '—'}</td>
-                          <td>{r.cv_score != null ? `${(r.cv_score * 100).toFixed(1)}%` : '—'}</td>
-                          {progress.all_results?.[0]?.metrics?.f1 != null && <td>{r.metrics?.f1 != null ? `${(r.metrics.f1 * 100).toFixed(1)}%` : '—'}</td>}
-                          {progress.all_results?.[0]?.metrics?.rmse != null && <td>{r.metrics?.rmse ?? '—'}</td>}
-                          <td>{r.time}s</td>
-                        </tr>
-                      ))}
+                      {sortedResults.map((r) => {
+                        const isBest = bestName != null && r.name === bestName;
+                        if (r.status === 'error') {
+                          return (
+                            <tr key={r.name} className={styles.errorRow}>
+                              <td className={styles.algoCell}>{r.name}</td>
+                              <td colSpan={6} className={styles.errorCell}>
+                                <AlertCircle className={styles.errorIcon} /> {r.error || 'Training failed for this algorithm'}
+                              </td>
+                            </tr>
+                          );
+                        }
+                        return (
+                          <tr key={r.name} className={isBest ? styles.bestRow : ''}>
+                            <td className={styles.algoCell}>
+                              {r.name}
+                              {isBest && <span className={styles.bestBadge}>Best</span>}
+                            </td>
+                            <td>{formatScore(r.metrics, rankMetric)}</td>
+                            <td>{formatPct(r.cv_score)}</td>
+                            {showF1 && <td>{formatPct(r.metrics?.f1)}</td>}
+                            {showRmse && <td>{formatPlain(r.metrics?.rmse)}</td>}
+                            {showMae && <td>{formatPlain(r.metrics?.mae)}</td>}
+                            <td>{r.training_time != null ? `${r.training_time.toFixed(2)}s` : '—'}</td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

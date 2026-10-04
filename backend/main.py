@@ -225,7 +225,7 @@ def _persist_trained_model(
         "best_params": fitted.get("params") or {},
         "cv_score": best.get("cv_score"),
         "metrics": best.get("metrics"),
-        "training_time": best.get("time"),
+        "training_time": best.get("training_time", best.get("time")),
         "train_size": int(getattr(X, "shape", [None, None])[0]) if hasattr(X, "shape") else None,
         "test_size": int(getattr(X_test, "shape", [None, None])[0]) if hasattr(X_test, "shape") else None,
         "framework": "sklearn",
@@ -1479,10 +1479,17 @@ training_progress_store: dict[str, dict] = {}
 _training_lock = threading.Lock()
 
 def _update_progress(job_id: str, data: dict):
+    # Everything in this store is handed straight to json.dumps() by the SSE
+    # generator, which has no default= and would abort the whole stream on a
+    # numpy scalar (e.g. inside best_params) or a NaN/Inf metric. Sanitising on
+    # the way in keeps the stream from dying mid-run.
+    payload = _json_safe(data)
+    if not isinstance(payload, dict):
+        payload = {"value": payload}
     with _training_lock:
         if job_id not in training_progress_store:
             training_progress_store[job_id] = {}
-        training_progress_store[job_id].update(data)
+        training_progress_store[job_id].update(payload)
 
 
 @app.get("/api/v1/training/queue", tags=["Training"], summary="Training queue", description="Return the training job queue.")
@@ -1592,7 +1599,6 @@ async def run_training_workflow(
     })
 
     def _run():
-        import psutil
         logs = []
         metrics_history = []
         start = time.time()
@@ -1612,12 +1618,24 @@ async def run_training_workflow(
             log(f"Preprocessing done: {X.shape[0]} rows, {X.shape[1]} features, task={task}")
             _update_progress(job_id, {"progress": 10, "current_step": "algorithms", "message": f"Data ready: {X.shape[0]} rows × {X.shape[1]} features"})
 
-            from train import CLASSIFICATION_MODELS as CM, REGRESSION_MODELS as RM, _count_params, _default_scoring
-            from sklearn.model_selection import train_test_split, RandomizedSearchCV
+            from train import (CLASSIFICATION_MODELS as CM, REGRESSION_MODELS as RM,
+                               _count_params, _default_scoring, _compute_metrics)
+            from sklearn.model_selection import train_test_split, RandomizedSearchCV, cross_val_score
             model_candidates = CM if task == "classification" else RM
             if algorithms != "all":
-                selected = [a.strip() for a in algorithms.split(",")]
+                selected = [a.strip() for a in algorithms.split(",") if a.strip()]
+                # Silently dropping an unknown name left an empty candidate list,
+                # which surfaced as the confusing "0 of 0 failed". Report the
+                # typo against the algorithms that actually exist for this task.
+                unknown = [a for a in selected if a not in model_candidates]
+                if unknown:
+                    raise ValueError(
+                        f"Unknown algorithm(s) for {task}: {', '.join(unknown)}. "
+                        f"Available: {', '.join(model_candidates.keys())}"
+                    )
                 model_candidates = {k: v for k, v in model_candidates.items() if k in selected}
+            if not model_candidates:
+                raise ValueError("No algorithms were selected for training.")
             total_models = len(model_candidates)
             log(f"Training {total_models} algorithms: {', '.join(model_candidates.keys())}")
             _update_progress(job_id, {"total_models": total_models, "completed_models": 0, "message": f"Training {total_models} models..."})
@@ -1626,13 +1644,24 @@ async def run_training_workflow(
                 X, y, test_size=0.2, random_state=42, stratify=y if task == "classification" else None
             )
 
-            from sklearn.metrics import accuracy_score, f1_score, r2_score, mean_squared_error
+            # A CV split count above the smallest class size (or above the number
+            # of training rows) makes every fold invalid, which used to raise
+            # inside each algorithm and leave the whole run without metrics.
+            max_splits = 10
+            if task == "classification":
+                class_counts = [int(c) for c in getattr(y_train, "value_counts", lambda: [])()]
+                if class_counts:
+                    max_splits = max(2, min(max_splits, min(class_counts)))
+            else:
+                max_splits = max(2, min(max_splits, int(X_train.shape[0])))
+            n_splits = max(2, min(cv_folds, max_splits))
+            log(f"Cross-validation: {n_splits} folds (scoring={_default_scoring(task)})")
+
             all_results = []
             fitted_models = {}
             for idx, (name, spec) in enumerate(model_candidates.items()):
-                model_progress = ((idx) / total_models) * 80 + 10
                 _update_progress(job_id, {
-                    "progress": int(model_progress), "current_step": "training",
+                    "progress": int((idx / total_models) * 80 + 10), "current_step": "training",
                     "current_model": name, "model_index": idx + 1,
                     "message": f"Training {name} ({idx+1}/{total_models})",
                 })
@@ -1643,34 +1672,58 @@ async def run_training_workflow(
                     param_dist = spec["params"]
 
                     if optimize_hyperparameters:
-                        n_iter = min(5, _count_params(param_dist))
-                        cv = max(2, min(cv_folds, 10))
                         search = RandomizedSearchCV(
-                            base_model, param_dist, n_iter=n_iter,
-                            cv=cv, scoring=_default_scoring(task),
+                            base_model, param_dist, n_iter=min(5, _count_params(param_dist)),
+                            cv=n_splits, scoring=_default_scoring(task),
                             random_state=42, n_jobs=1, verbose=0,
                         )
                         search.fit(X_train, y_train)
                         best_model = search.best_estimator_
-                        cv_score = search.best_score_
+                        cv_score = float(search.best_score_)
                     else:
+                        # Still cross-validate the default parameters. Reporting a
+                        # placeholder 0 here made a genuinely bad model and a
+                        # skipped CV run look identical in the results table.
                         base_model.fit(X_train, y_train)
                         best_model = base_model
-                        cv_score = 0
+                        cv_scores = cross_val_score(
+                            base_model, X_train, y_train, cv=n_splits,
+                            scoring=_default_scoring(task), n_jobs=1,
+                        )
+                        cv_score = float(cv_scores.mean())
 
                     y_pred = best_model.predict(X_test)
                     mtime = round(time.time() - mstart, 2)
 
-                    if task == "classification":
-                        acc = round(accuracy_score(y_test, y_pred), 4)
-                        f1 = round(f1_score(y_test, y_pred, average='weighted', zero_division=0), 4)
-                        metrics = {"accuracy": acc, "f1": f1}
-                    else:
-                        r2 = round(r2_score(y_test, y_pred), 4)
-                        rmse = round(mean_squared_error(y_test, y_pred, squared=False), 4)
-                        metrics = {"r2": r2, "rmse": rmse, "accuracy": r2}
+                    # Task-correct metrics straight from the shared helper:
+                    # classification -> accuracy/precision/recall/f1,
+                    # regression -> r2/mse/rmse/mae. Regression therefore never
+                    # reports an "accuracy", and no model is left without a
+                    # metric because of a metric-calculation crash.
+                    metrics = _compute_metrics(y_test, y_pred, task)
+                    if task == "classification" and hasattr(best_model, "predict_proba"):
+                        try:
+                            from sklearn.metrics import roc_auc_score
+                            y_proba = best_model.predict_proba(X_test)
+                            n_cls = getattr(best_model, "classes_", None)
+                            n_cls = len(n_cls) if n_cls is not None else y_proba.shape[1]
+                            if n_cls == 2:
+                                metrics["roc_auc"] = round(float(roc_auc_score(y_test, y_proba[:, 1])), 4)
+                            elif n_cls > 2:
+                                metrics["roc_auc"] = round(float(roc_auc_score(
+                                    y_test, y_proba, multi_class="ovr", average="weighted")), 4)
+                        except Exception as roc_err:
+                            log(f"Note: ROC-AUC unavailable for {name}: {roc_err}")
 
-                    result = {"name": name, "metrics": metrics, "cv_score": round(cv_score, 4), "time": mtime}
+                    result = {
+                        "name": name, "algorithm": name, "status": "success",
+                        "metrics": metrics, "cv_score": round(cv_score, 4),
+                        # "training_time" is the canonical name used by the rest of
+                        # the platform; "time" stays as an alias so existing
+                        # consumers of this stream keep working.
+                        "training_time": mtime, "time": mtime,
+                        "best_params": getattr(best_model, "get_params", lambda: {})(),
+                    }
                     all_results.append(result)
                     # Keep the fitted estimator so the winner can be persisted.
                     # Previously this endpoint trained models and threw them
@@ -1678,24 +1731,61 @@ async def run_training_workflow(
                     # could never reappear after signing in again.
                     fitted_models[name] = {
                         "model": best_model,
-                        "params": getattr(best_model, "get_params", lambda: {})(),
+                        "params": result["best_params"],
                     }
                     metrics_history.append({"model": name, **metrics, "cv_score": round(cv_score, 4)})
-                    log(f"{name}: accuracy={metrics.get('accuracy', 'N/A')}, cv={cv_score:.4f} ({mtime}s)")
+                    log(f"{name}: metrics={metrics} cv={cv_score:.4f} ({mtime}s)")
                     _update_progress(job_id, {
                         "completed_models": idx + 1, "metrics_history": metrics_history,
                         "latest_result": result,
                     })
 
-                    cpu = psutil.cpu_percent(interval=None) if psutil else 0
-                    _update_progress(job_id, {"cpu_percent": cpu})
+                    try:
+                        import psutil
+                        _update_progress(job_id, {"cpu_percent": psutil.cpu_percent(interval=None)})
+                    except Exception:
+                        pass
                 except Exception as e:
-                    log(f"Error training {name}: {str(e)}")
-                    all_results.append({"name": name, "error": str(e)})
+                    import traceback
+                    detail = f"{type(e).__name__}: {e}"
+                    log(f"Error training {name}: {detail}")
+                    log(traceback.format_exc().strip())
+                    # Keep the row so the failure is visible per algorithm, but
+                    # with no metrics so it can never be mistaken for a score.
+                    all_results.append({
+                        "name": name, "algorithm": name, "status": "error", "error": detail,
+                        "metrics": None, "cv_score": None,
+                        "training_time": None, "time": None,
+                    })
+                    _update_progress(job_id, {"completed_models": idx + 1})
 
-            best = max(all_results, key=lambda r: r.get("metrics", {}).get("accuracy", 0))
             elapsed = round(time.time() - start, 2)
-            log(f"Training complete! Best model: {best['name']} (accuracy={best.get('metrics', {}).get('accuracy', 'N/A')})")
+            succeeded = [r for r in all_results if r.get("status") == "success"]
+            failed = [r for r in all_results if r.get("status") != "success"]
+
+            if not succeeded:
+                detail = "; ".join(f"{r['name']}: {r.get('error', 'unknown error')}" for r in failed)
+                raise RuntimeError(
+                    f"No models trained successfully ({len(failed)} of {len(all_results)} failed). {detail}"
+                )
+
+            # Rank only on metrics that were actually measured, using the metric
+            # that matches the task: accuracy for classification, R² for
+            # regression. Previously every row fell back to 0, so max() just
+            # returned the first candidate and crowned Ridge "Best" with no
+            # numbers behind it.
+            rank_metric = "accuracy" if task == "classification" else "r2"
+            scored = [r for r in succeeded if r["metrics"].get(rank_metric) is not None]
+            if not scored:
+                raise RuntimeError(
+                    f"Models trained but no {rank_metric} value could be computed for any of them."
+                )
+            best = max(scored, key=lambda r: r["metrics"][rank_metric])
+            log(f"Training complete! Best model: {best['name']} "
+                f"({rank_metric}={best['metrics'][rank_metric]}, cv_score={best.get('cv_score')})")
+            if failed:
+                log(f"{len(failed)} algorithm(s) failed: "
+                    + ", ".join(f"{r['name']} ({r.get('error', '')})" for r in failed))
 
             # Persist the winning pipeline to disk and attach it to the training
             # account, so the model is still there on the next sign-in.
@@ -1718,12 +1808,17 @@ async def run_training_workflow(
                 log(f"Warning: could not persist model: {save_err}")
                 _update_progress(job_id, {"save_warning": str(save_err)})
 
-            _update_progress(job_id, {
+            training_response = {
                 "status": "completed", "progress": 100, "current_step": "complete",
-                "message": f"Best model: {best['name']}",
-                "best_model": best, "all_results": all_results,
-                "elapsed": elapsed, "saved_model_name": saved_model_name,
-            })
+                "message": f"Best model: {best['name']} ({rank_metric}={best['metrics'][rank_metric]})",
+                "task_type": task, "rank_metric": rank_metric,
+                "best_model": best, "best_model_name": best["name"],
+                "all_results": all_results,
+                "failed_count": len(failed), "elapsed": elapsed,
+                "saved_model_name": saved_model_name,
+            }
+            print("TRAINING API RESPONSE:", json.dumps(_json_safe(training_response), default=str), flush=True)
+            _update_progress(job_id, training_response)
 
             best_model_name = f"{file_name.split('.')[0]}_{best['name']}"
             exp_data = {
@@ -1731,7 +1826,7 @@ async def run_training_workflow(
                 "model": best["name"], "task_type": task,
                 "cv_score": best.get("cv_score"), "metrics": best.get("metrics"),
                 "dataset": file_name, "target": target_column,
-                "training_time": best.get("time"), "total_time": elapsed,
+                "training_time": best.get("training_time"), "total_time": elapsed,
                 "status": "success", "run_at": datetime.now(timezone.utc),
                 "user_id": current_user.get("id"), "project_id": project_id,
             }
@@ -1739,8 +1834,16 @@ async def run_training_workflow(
             log_audit(db, current_user.get("name", "User"), "training.completed",
                       f"{file_name} -> {best['name']}", "experiment", exp.id)
         except Exception as e:
-            _update_progress(job_id, {"status": "failed", "message": str(e)})
-            log(f"Training failed: {str(e)}")
+            import traceback
+            detail = f"{type(e).__name__}: {e}"
+            print(f"TRAINING API RESPONSE (failed): {detail}", flush=True)
+            traceback.print_exc()
+            _update_progress(job_id, {
+                "status": "failed", "current_step": "failed", "message": detail,
+                "error": detail, "logs": logs[-50:],
+                "all_results": locals().get("all_results", []),
+            })
+            log(f"Training failed: {detail}")
 
     background_tasks.add_task(_run)
     return {"job_id": job_id, "status": "queued", "message": "Training started"}

@@ -367,6 +367,54 @@
   font-weight: 600;
 }
 
+/* ── Errors ── */
+.errorBanner {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  margin-bottom: 18px;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  border-radius: 10px;
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.errorIcon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  color: #ef4444;
+  margin-top: 1px;
+}
+
+.errorTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: #ef4444;
+}
+
+.errorText {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+  word-break: break-word;
+}
+
+.errorRow td { background: rgba(239, 68, 68, 0.04); }
+
+.errorCell {
+  font-size: 12px;
+  color: #ef4444;
+}
+
+.errorCell .errorIcon {
+  width: 14px;
+  height: 14px;
+  margin-right: 6px;
+  vertical-align: -2px;
+}
+
 /* ── Loading ── */
 .loadingState {
   display: flex;

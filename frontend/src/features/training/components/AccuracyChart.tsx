@@ -5,9 +5,11 @@ import styles from './AccuracyChart.module.css';
 
 interface AccuracyChartProps {
   metricsHistory: { model: string; accuracy?: number; r2?: number; cv_score?: number; f1?: number }[];
+  /** Name of the plotted metric, so a regression run is not labelled "Accuracy". */
+  metricLabel?: string;
 }
 
-function getAccuracyValue(item: AccuracyChartProps['metricsHistory'][0]): number {
+function getScoreValue(item: AccuracyChartProps['metricsHistory'][0]): number {
   if (item.accuracy != null) return item.accuracy;
   if (item.r2 != null) return item.r2;
   return 0;
@@ -20,16 +22,14 @@ function getBarColor(value: number): string {
   return '#ef4444';
 }
 
-export const AccuracyChart = memo(function AccuracyChart({ metricsHistory }: AccuracyChartProps) {
+export const AccuracyChart = memo(function AccuracyChart({ metricsHistory, metricLabel = 'Accuracy' }: AccuracyChartProps) {
   if (!metricsHistory || metricsHistory.length === 0) return null;
 
   const data = metricsHistory.map((m) => ({
     name: m.model,
-    accuracy: +(getAccuracyValue(m) * 100).toFixed(1),
+    score: +(getScoreValue(m) * 100).toFixed(1),
     cv: m.cv_score != null ? +(m.cv_score * 100).toFixed(1) : undefined,
   }));
-
-  const maxAcc = Math.max(...data.map((d) => d.accuracy));
 
   return (
     <div className={styles.container}>
@@ -51,7 +51,7 @@ export const AccuracyChart = memo(function AccuracyChart({ metricsHistory }: Acc
             <YAxis
               domain={[0, 100]}
               tick={{ fontSize: 11, fill: 'var(--color-text-secondary)' }}
-              label={{ value: 'Accuracy %', angle: -90, position: 'insideLeft', style: { fontSize: 11, fill: 'var(--color-text-tertiary)' } }}
+              label={{ value: `${metricLabel} %`, angle: -90, position: 'insideLeft', style: { fontSize: 11, fill: 'var(--color-text-tertiary)' } }}
             />
             <Tooltip
               contentStyle={{
@@ -60,11 +60,11 @@ export const AccuracyChart = memo(function AccuracyChart({ metricsHistory }: Acc
                 borderRadius: 8,
                 fontSize: 12,
               }}
-              formatter={(value: number, name: string) => [`${value}%`, name === 'accuracy' ? 'Accuracy' : 'CV Score']}
+              formatter={(value: number, name: string) => [`${value}%`, name === 'score' ? metricLabel : 'CV Score']}
             />
-            <Bar dataKey="accuracy" radius={[4, 4, 0, 0]} name="accuracy">
+            <Bar dataKey="score" radius={[4, 4, 0, 0]} name="score">
               {data.map((entry, index) => (
-                <Cell key={index} fill={getBarColor(entry.accuracy / 100)} />
+                <Cell key={index} fill={getBarColor(entry.score / 100)} />
               ))}
             </Bar>
             {data.some((d) => d.cv != null) && (

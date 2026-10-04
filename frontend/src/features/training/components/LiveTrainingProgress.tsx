@@ -21,6 +21,11 @@ function formatDuration(seconds: number): string {
   return `${h}h ${m % 60}m`;
 }
 
+/** Formats a 0-1 score, or an explicit dash when the value was never measured. */
+function formatPct(value: number | null | undefined): string {
+  return value == null ? '—' : `${(value * 100).toFixed(1)}%`;
+}
+
 export const LiveTrainingProgress = memo(function LiveTrainingProgress({ progress, onCancel }: LiveTrainingProgressProps) {
   const [logsExpanded, setLogsExpanded] = useState(true);
   const logsRef = useRef<HTMLDivElement>(null);
@@ -36,6 +41,8 @@ export const LiveTrainingProgress = memo(function LiveTrainingProgress({ progres
   const isComplete = progress.status === 'completed';
   const isFailed = progress.status === 'failed';
   const isRunning = progress.status === 'running';
+  const rankMetric = progress.rank_metric ?? (progress.task_type === 'regression' ? 'r2' : 'accuracy');
+  const rankLabel = rankMetric === 'r2' ? 'R²' : 'Accuracy';
 
   return (
     <div className={styles.container}>
@@ -103,7 +110,7 @@ export const LiveTrainingProgress = memo(function LiveTrainingProgress({ progres
       </div>
 
       {/* Best Model Badge */}
-      {isComplete && progress.best_model && (
+      {isComplete && progress.best_model && progress.best_model.metrics && (
         <motion.div
           className={styles.bestModel}
           initial={{ opacity: 0, y: 8 }}
@@ -114,11 +121,14 @@ export const LiveTrainingProgress = memo(function LiveTrainingProgress({ progres
             <div className={styles.bestLabel}>Best Model</div>
             <div className={styles.bestName}>{progress.best_model.name}</div>
             <div className={styles.bestMetrics}>
-              Accuracy: {progress.best_model.metrics?.accuracy != null ? (progress.best_model.metrics.accuracy * 100).toFixed(1) + '%' : '—'} · CV: {progress.best_model.cv_score != null ? (progress.best_model.cv_score * 100).toFixed(1) + '%' : '—'}
+              {/* The headline metric follows the task: R² for regression,
+                  accuracy for classification. */}
+              {rankLabel}: {formatPct(progress.best_model.metrics[rankMetric])} · CV: {formatPct(progress.best_model.cv_score)}
             </div>
           </div>
         </motion.div>
       )}
+
 
       {/* Cancel Button */}
       {isRunning && onCancel && (
