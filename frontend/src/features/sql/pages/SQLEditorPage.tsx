@@ -23,6 +23,7 @@ import { SavedQueriesPanel } from '../components/SavedQueriesPanel';
 import { DataProfile } from '../components/DataProfile';
 import { ExplainTab } from '../components/ExplainTab';
 import { AiRecommendations } from '../components/AiRecommendations';
+import { Select } from '../../../components/ui/Select';
 import { QUERY_TEMPLATES, KEYBOARD_SHORTCUTS, QueryResult, QueryProfile } from '../types';
 import {
   BarChart, PieChart as RePie, LineChart as ReLine, AreaChart, ScatterChart,
@@ -809,32 +810,36 @@ function ChartView({
   return (
     <div className={styles.chartArea}>
       <div className={styles.chartControls}>
-        <select
+        <Select
+          containerClassName="w-auto"
+          aria-label="Chart type"
+          triggerClassName={styles.chartSelect}
           value={chartType}
           onChange={(e) => setChartConfig({ type: e.target.value, xKey, yKey })}
-          className={styles.chartSelect}
-        >
-          <option value="bar">Bar</option>
-          <option value="pie">Pie</option>
-          <option value="line">Line</option>
-          <option value="area">Area</option>
-          <option value="scatter">Scatter</option>
-        </select>
-        <select
+          options={[
+            { value: 'bar', label: 'Bar' },
+            { value: 'pie', label: 'Pie' },
+            { value: 'line', label: 'Line' },
+            { value: 'area', label: 'Area' },
+            { value: 'scatter', label: 'Scatter' },
+          ]}
+        />
+        <Select
+          containerClassName="w-auto"
+          aria-label="X axis"
+          triggerClassName={styles.chartSelect}
           value={xKey}
           onChange={(e) => setChartConfig({ type: chartType, xKey: e.target.value, yKey })}
-          className={styles.chartSelect}
-        >
-          {strCols.map((c) => <option key={c} value={c}>{c} (X)</option>)}
-          {numCols.map((c) => <option key={c} value={c}>{c} (X)</option>)}
-        </select>
-        <select
+          options={[...strCols, ...numCols].map((c) => ({ value: c, label: `${c} (X)` }))}
+        />
+        <Select
+          containerClassName="w-auto"
+          aria-label="Y axis"
+          triggerClassName={styles.chartSelect}
           value={yKey}
           onChange={(e) => setChartConfig({ type: chartType, xKey, yKey: e.target.value })}
-          className={styles.chartSelect}
-        >
-          {numCols.map((c) => <option key={c} value={c}>{c} (Y)</option>)}
-        </select>
+          options={numCols.map((c) => ({ value: c, label: `${c} (Y)` }))}
+        />
       </div>
       <div className="flex-1 p-3">
         <ResponsiveContainer width="100%" height="100%">

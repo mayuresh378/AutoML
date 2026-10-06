@@ -3,7 +3,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Brain, AlertCircle, Loader2, Sparkles, Globe, BarChart3,
-  TrendingUp, MapPin, MessageSquare, Activity, ChevronRight, ChevronDown,
+  TrendingUp, MapPin, MessageSquare, Activity, ChevronRight,
 } from 'lucide-react';
 import {
   explainService,
@@ -12,6 +12,7 @@ import {
 } from '../services/explain.service';
 import { http, getErrorMessage } from '../../../services/http';
 import { filterUsableModels } from '../../../services/models.service';
+import { Select } from '../../../components/ui/Select';
 import type { Model, Dataset } from '../../../types/api';
 import { FeatureImportanceChart } from '../components/FeatureImportanceChart';
 import { ShapWaterfall } from '../components/ShapWaterfall';
@@ -123,23 +124,19 @@ export default function ExplainPage() {
           <div className={styles.inputRow}>
             <div className={styles.inputGroup}>
               <label className={styles.label} htmlFor="explain-model-select">Model</label>
-              <div className={styles.selectWrapper}>
-                <select
-                  id="explain-model-select"
-                  className={styles.select}
-                  value={modelName}
-                  onChange={(e) => setModelName(e.target.value)}
-                  aria-describedby="explain-model-hint"
-                >
-                  <option value="">{modelPlaceholder}</option>
-                  {models.map((m) => (
-                    <option key={m.name} value={m.name}>
-                      {m.name} ({m.task_type || 'unknown'})
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown size={16} className={styles.selectIcon} />
-              </div>
+              <Select
+                id="explain-model-select"
+                containerClassName="w-full"
+                triggerClassName={styles.select}
+                value={modelName}
+                onChange={(e) => setModelName(e.target.value)}
+                aria-describedby="explain-model-hint"
+                placeholder={modelPlaceholder}
+                options={models.map((m) => ({
+                  value: m.name,
+                  label: `${m.name} (${m.task_type || 'unknown'})`,
+                }))}
+              />
               <div id="explain-model-hint">
                 {modelLoadError && (
                   <p className={styles.hint} role="alert">
@@ -159,47 +156,34 @@ export default function ExplainPage() {
             </div>
             <div className={styles.inputGroup}>
               <label className={styles.label} htmlFor="explain-dataset-select">Dataset</label>
-              <div className={styles.selectWrapper}>
-                <select
-                  id="explain-dataset-select"
-                  className={styles.select}
-                  value={fileName}
-                  onChange={(e) => {
-                    setFileName(e.target.value);
-                    setTargetColumn('');
-                  }}
-                >
-                  <option value="">
-                    {datasetsQuery.isLoading ? 'Loading datasets...' : 'Select a dataset'}
-                  </option>
-                  {datasets.map((d) => (
-                    <option key={d.name} value={d.name}>
-                      {d.name} ({d.rows?.toLocaleString()} rows, {Array.isArray(d.columns) ? d.columns.length : '?'} cols)
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown size={16} className={styles.selectIcon} />
-              </div>
+              <Select
+                id="explain-dataset-select"
+                containerClassName="w-full"
+                triggerClassName={styles.select}
+                value={fileName}
+                onChange={(e) => {
+                  setFileName(e.target.value);
+                  setTargetColumn('');
+                }}
+                placeholder={datasetsQuery.isLoading ? 'Loading datasets...' : 'Select a dataset'}
+                options={datasets.map((d) => ({
+                  value: d.name,
+                  label: `${d.name} (${d.rows?.toLocaleString()} rows, ${Array.isArray(d.columns) ? d.columns.length : '?'} cols)`,
+                }))}
+              />
             </div>
             <div className={styles.inputGroup}>
               <label className={styles.label} htmlFor="explain-target-select">Target Column</label>
-              <div className={styles.selectWrapper}>
-                <select
-                  id="explain-target-select"
-                  className={styles.select}
-                  value={targetColumn}
-                  onChange={(e) => setTargetColumn(e.target.value)}
-                  disabled={!fileName}
-                >
-                  <option value="">
-                    {!fileName ? 'Select dataset first' : 'Select target column'}
-                  </option>
-                  {columns.map((col) => (
-                    <option key={col} value={col}>{col}</option>
-                  ))}
-                </select>
-                <ChevronDown size={16} className={styles.selectIcon} />
-              </div>
+              <Select
+                id="explain-target-select"
+                containerClassName="w-full"
+                triggerClassName={styles.select}
+                value={targetColumn}
+                onChange={(e) => setTargetColumn(e.target.value)}
+                disabled={!fileName}
+                placeholder={!fileName ? 'Select dataset first' : 'Select target column'}
+                options={columns.map((col) => ({ value: col, label: col }))}
+              />
             </div>
             <div className={styles.buttonGroup}>
               <button

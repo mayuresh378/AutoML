@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { http } from '../../../services/http';
 import ExplainPage from '../pages/ExplainPage';
@@ -66,6 +66,22 @@ beforeEach(() => {
   getMock.mockReset();
 });
 
+/**
+ * Opens the dark Model dropdown and returns the option values.
+ * The control renders a portal listbox instead of a native <select>, so the
+ * options are read from the menu rather than from `select.options`.
+ */
+const modelOptions = async () => {
+  // Wait for the models request to settle first: opening the menu mid-load
+  // would show an empty listbox.
+  await waitFor(() =>
+    expect(screen.getByLabelText('Model')).not.toHaveTextContent('Loading models'),
+  );
+  fireEvent.click(screen.getByLabelText('Model'));
+  const options = await screen.findAllByRole('option');
+  return options.map((o) => o.getAttribute('data-value') ?? '');
+};
+
 describe('ExplainPage model dropdown', () => {
   it('lists every usable model, including staged and status-less ones', async () => {
     getMock.mockImplementation((url: string) => {
@@ -85,17 +101,8 @@ describe('ExplainPage model dropdown', () => {
 
     renderPage();
 
-    const modelOptions = async () => {
-      const select = (await screen.findByLabelText('Model')) as HTMLSelectElement;
-      return Array.from(select.options).map((o) => o.value);
-    };
-
-    await waitFor(async () => {
-      const values = await modelOptions();
-      expect(values).toContain('ready_model.pkl');
-    });
-
-    const values = await modelOptions();
+const values = await modelOptions();
+    expect(values).toContain('ready_model.pkl');
     expect(values).toContain('staged_model.pkl');
     expect(values).toContain('no_status.pkl');
     expect(values).not.toContain('archived_model.pkl');
@@ -120,11 +127,9 @@ describe('ExplainPage model dropdown', () => {
 
     renderPage();
 
-    await waitFor(() =>
-      expect(
-        Array.from((screen.getByLabelText('Model') as HTMLSelectElement).options).map((o) => o.value),
-      ).toContain('engine_classification_RandomForest.pkl'),
-    );
+expect(await modelOptions()).toContain('engine_classification_RandomForest.pkl');
+    // Close the menu so the option label no longer duplicates the trigger text.
+    fireEvent.keyDown(screen.getByRole('listbox'), { key: 'Escape' });
     expect(screen.getByText(/engine_classification_RandomForest\.pkl \(classification\)/)).toBeTruthy();
   });
 
@@ -136,11 +141,7 @@ describe('ExplainPage model dropdown', () => {
 
     renderPage();
 
-    await waitFor(() =>
-      expect((screen.getByLabelText('Model') as HTMLSelectElement).options[0].textContent).toBe(
-        'Could not load models',
-      ),
-    );
+    await waitFor(() => expect(screen.getByLabelText('Model')).toHaveTextContent('Could not load models'));
     expect(await screen.findByRole('alert')).toHaveTextContent('Unauthorized');
     expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
   });
@@ -157,3 +158,4 @@ describe('ExplainPage model dropdown', () => {
     );
   });
 });
+

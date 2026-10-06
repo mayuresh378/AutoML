@@ -562,11 +562,13 @@ export default function CleaningPage() {
                   ]} />
                 <div>
                   <label className="block text-sm font-medium text-zinc-300 mb-1.5">Target column (preserve)</label>
-                  <select value={encTarget} onChange={(e) => setEncTarget(e.target.value)}
-                    className="w-full rounded bg-card border border-border px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:ring-2 focus:ring-primary/50 appearance-none">
-                    <option value="">None</option>
-                    {(state?.dataset?.columns ?? []).map((c: string) => <option key={c} value={c}>{c}</option>)}
-                  </select>
+                  <Select
+                    containerClassName="w-full"
+                    value={encTarget}
+                    onChange={(e) => setEncTarget(e.target.value)}
+                    placeholder="None"
+                    options={(state?.dataset?.columns ?? []).map((c: string) => ({ value: c, label: c }))}
+                  />
                 </div>
                 {encTarget && (
                   <label className="flex items-center gap-2 text-sm text-zinc-400 mt-5 cursor-pointer">

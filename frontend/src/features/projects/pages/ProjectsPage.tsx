@@ -13,6 +13,7 @@ import { StatusBadge } from '../../../components/ui/StatusBadge';
 import { EmptyState } from '../../../components/ui/EmptyState';
 import { ErrorState } from '../../../components/ui/ErrorState';
 import { Dialog } from '../../../components/ui/Dialog';
+import { Select } from '../../../components/ui/Select';
 import { useNotification } from '../../../hooks/useNotification';
 import { staggerContainer, staggerItem } from '../../../lib/animations';
 import { timeAgo, formatDate } from '../../../lib/formatters';
@@ -192,11 +193,19 @@ export default function ProjectsPage() {
           </div>
           <div className={styles.sortWrap}>
             <ArrowUpDown className="w-3.5 h-3.5" />
-            <select className={styles.sortSelect} value={sort} onChange={(e) => setSort(e.target.value as Sort)}>
-              <option value="updated">Last updated</option>
-              <option value="name">Name</option>
-              <option value="created">Date created</option>
-            </select>
+<Select
+        containerClassName="w-auto"
+        size="sm"
+        aria-label="Sort projects"
+        triggerClassName={styles.sortSelect}
+        value={sort}
+        onChange={(e) => setSort(e.target.value as Sort)}
+        options={[
+          { value: 'updated', label: 'Last updated' },
+          { value: 'name', label: 'Name' },
+          { value: 'created', label: 'Date created' },
+        ]}
+      />
           </div>
           <div className={styles.viewToggle}>
             <button className={`${styles.viewBtn} ${view === 'grid' ? styles.active : ''}`} title="Grid view" onClick={() => setView('grid')}><LayoutGrid className="w-4 h-4" /></button>

@@ -101,12 +101,25 @@ function streamFrom() {
   return handle;
 }
 
+/**
+ * Picks an option in a DarkSelect. The trigger is a button and the menu lives
+ * in a portal, so a fireEvent.change on a native select no longer applies.
+ */
+async function pickOption(triggerLabel: string | RegExp, optionLabel: string | RegExp) {
+  // DarkSelect exposes its trigger with role="combobox", the ARIA pattern for
+  // a select control.
+  const trigger = screen.getByRole('combobox', { name: triggerLabel });
+  fireEvent.click(trigger);
+  const option = await screen.findByRole('option', { name: optionLabel });
+  fireEvent.click(option);
+}
+
 /** Walks the wizard to the Hyperparameters step with the given task type. */
 async function goToTrainingStep(task: 'Classification' | 'Regression') {
   render(<MemoryRouter><TrainingWorkflow datasets={DATASETS as any} /></MemoryRouter>);
   fireEvent.click(screen.getByText(task));
-  fireEvent.change(screen.getByDisplayValue('Choose a dataset'), { target: { value: DATASETS[0].name } });
-  fireEvent.change(screen.getByDisplayValue('Choose target'), { target: { value: 'target_reg' } });
+  await pickOption(/Choose a dataset/, DATASETS[0].name);
+  await pickOption(/Choose target/, 'target_reg');
   fireEvent.click(screen.getByText(/Continue/));
   fireEvent.click(screen.getByText(/Continue/));
   return screen.getByText(/Start Training/);

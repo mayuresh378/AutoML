@@ -12,6 +12,7 @@ import { datasetsService } from '../../../services/datasets.service';
 import { PageContainer } from '../../../components/layout/PageContainer';
 import { LoadingSpinner } from '../../../components/LoadingSpinner';
 import { ErrorState } from '../../../components/ui/ErrorState';
+import { Select } from '../../../components/ui/Select';
 import { cn } from '../../../lib/cn';
 import {
   useExplorerDatasets, useExplorerAnalyze, useExplorerProfile, useExplorerPreview,
@@ -442,15 +443,15 @@ function DatasetSummaryBar({
           )}
           <label className="inline-flex items-center gap-2">
             <span className="text-[11px] uppercase tracking-wider text-zinc-600">Switch</span>
-            <select
-              value={dataset.name}
-              onChange={(e) => onSelect(e.target.value)}
-              aria-label="Switch dataset"
-              className={cn('rounded-md bg-white/[0.04] border border-white/[0.08] px-2 py-1.5 text-[13px] font-medium text-zinc-200', focusRing)}
-              style={{ colorScheme: 'dark' }}
-            >
-              {datasets.map((d) => <option key={d.name} value={d.name}>{d.name}</option>)}
-            </select>
+<Select
+          value={dataset.name}
+          onChange={(e) => onSelect(e.target.value)}
+          aria-label="Switch dataset"
+          options={datasets.map((d) => ({ value: d.name, label: d.name }))}
+          size="sm"
+          containerClassName="inline-block w-auto"
+          triggerClassName={cn('bg-white/[0.04] border-white/[0.08] px-2 py-1.5 text-[13px] font-medium text-zinc-200', focusRing)}
+        />
           </label>
         </div>
       </div>
@@ -730,16 +731,16 @@ function ColumnSummaryCard({
     <section aria-label="Column summary" className="rounded-xl border border-white/[0.08] bg-card p-5">
       <div className="flex items-center justify-between gap-2 mb-4">
         <h3 className="text-sm font-semibold text-zinc-100">Column Summary</h3>
-        <select
-          value={colSel}
-          onChange={(e) => setColSel(e.target.value)}
-          aria-label="Select a column"
-          className={cn('rounded-md bg-white/[0.04] border border-white/[0.08] px-2 py-1.5 text-[13px] text-zinc-200 max-w-[180px]', focusRing)}
-          style={{ colorScheme: 'dark' }}
-        >
-          <option value="">Select a column…</option>
-          {cols.map((c) => <option key={c} value={c}>{c}</option>)}
-        </select>
+<Select
+        value={colSel}
+        onChange={(e) => setColSel(e.target.value)}
+        aria-label="Select a column"
+        placeholder="Select a column."
+        options={cols.map((c) => ({ value: c, label: c }))}
+        size="sm"
+        containerClassName="w-full max-w-[180px]"
+        triggerClassName={cn('bg-white/[0.04] border-white/[0.08] px-2 py-1.5 text-[13px] text-zinc-200', focusRing)}
+      />
       </div>
 
       {error ? (

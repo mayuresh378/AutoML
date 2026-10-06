@@ -1,6 +1,7 @@
 import { memo } from 'react';
 import { History, ChevronLeft, ChevronRight, Search, Loader2, ExternalLink } from 'lucide-react';
 import { EmptyState } from '../../../components/ui/EmptyState';
+import { Select } from '../../../components/ui/Select';
 import type { EvaluationRecordItem, TaskType } from '../services/evaluation.service';
 import { formatMetric, metricsForTask, primaryMetricKey } from '../utils/metrics';
 
@@ -75,19 +76,18 @@ export const EvaluationHistoryPanel = memo(function EvaluationHistoryPanel({
             className="w-full rounded bg-card border border-border pl-9 pr-3 py-2 text-sm text-zinc-200 placeholder:text-zinc-600 transition-all focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50"
           />
         </div>
-        <select
-          value={sortBy}
-          onChange={(e) => onSortChange(e.target.value, order)}
-          aria-label="Sort history by"
-          style={{ colorScheme: 'dark' }}
-          className="rounded bg-card border border-border px-3 py-2 text-sm text-zinc-200 cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/50"
-        >
-          <option value="created_at">Date</option>
-          <option value="model_name">Model</option>
-          <option value="dataset_name">Dataset</option>
-          <option value="target_column">Target</option>
-          <option value="task_type">Task</option>
-        </select>
+<Select
+      containerClassName="w-auto"
+      aria-label="Sort history by"
+      triggerClassName="px-3 py-2"
+      value={sortBy}
+      onChange={(e) => onSortChange(e.target.value, order)}
+      options={[
+        { value: 'created_at', label: 'Date' },
+        { value: 'model_name', label: 'Model' },
+        { value: 'dataset_name', label: 'Dataset' },
+      ]}
+    />
         <button
           type="button"
           onClick={() => onSortChange(sortBy, order === 'asc' ? 'desc' : 'asc')}

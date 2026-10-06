@@ -1,0 +1,48 @@
+/* ─────────────────────────────────────────────────────────────
+   Native control theming.
+
+   The OS paints native <select> popups, so without these they render
+   white-on-white against this dark UI. color-scheme tells the engine to
+   use dark form controls and the option rules cover engines that ignore it.
+
+   Every user-facing select is rendered by the shared DarkSelect component,
+   which styles its own portal menu. These rules are the safety net for any
+   native control that has not been migrated yet.
+   ───────────────────────────────────────────────────────────── */
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  color-scheme: dark;
+}
+
+select {
+  color-scheme: dark;
+  background-color: var(--bg-input, var(--color-bg));
+  color: var(--color-text);
+}
+
+select option,
+select optgroup {
+  background-color: #18181b;
+  color: var(--color-text);
+}
+
+select option:hover,
+select option:focus,
+select option:checked {
+  background-color: #3f3f46;
+  color: #ffffff;
+}
+
+select option:disabled,
+select:disabled option {
+  color: var(--color-text-tertiary);
+}
+
+/* Scrollbars inside native menus. */
+select option::-webkit-scrollbar {
+  width: 6px;
+}

@@ -16,6 +16,7 @@ import {
 import { datasetsService } from '../../../services/datasets.service';
 import { projectsService } from '../../../services/projects.service';
 import { tuningService } from '../../../services/tuning.service';
+import { Select } from '../../../components/ui/Select';
 import type { HPOExperiment, HPOProgress, TargetAnalysis } from '../../../types/api';
 import styles from './HyperparameterPage.module.css';
 
@@ -514,29 +515,25 @@ export default function HyperparameterPage() {
                         <>
                           <div className={styles.field}>
                             <label className={styles.label}>Source data</label>
-                            <select
+                            <Select
+                              containerClassName="w-full"
                               value={selectedDataset}
                               onChange={(e) => { setSelectedDataset(e.target.value); setTargetColumn(''); }}
                               disabled={isRunning}
-                            >
-                              <option value="">{loadingDatasets ? 'Loading datasets…' : 'Select dataset'}</option>
-                              {datasets.map((d: any) => (
-                                <option key={d.name} value={d.name}>{d.name}</option>
-                              ))}
-                            </select>
+                              placeholder={loadingDatasets ? 'Loading datasets…' : 'Select dataset'}
+                              options={(datasets as { name: string }[]).map((d) => ({ value: d.name, label: d.name }))}
+                            />
                           </div>
                           <div className={styles.field}>
                             <label className={styles.label}>Target column</label>
-                            <select
+                            <Select
+                              containerClassName="w-full"
                               value={targetColumn}
                               onChange={(e) => setTargetColumn(e.target.value)}
                               disabled={!selectedDataset || isRunning}
-                            >
-                              <option value="">{!selectedDataset ? 'Select dataset first' : 'Select target'}</option>
-                              {dsColumns.map((c: string) => (
-                                <option key={c} value={c}>{c}</option>
-                              ))}
-                            </select>
+                              placeholder={!selectedDataset ? 'Select dataset first' : 'Select target'}
+                              options={dsColumns.map((c: string) => ({ value: c, label: c }))}
+                            />
                           </div>
 
                           {targetAnalyzing && (
@@ -618,11 +615,19 @@ export default function HyperparameterPage() {
                         <>
                           <div className={styles.paramRow}>
                             <div className={styles.field}>
-                              <label className={styles.label}>CV folds</label>
-                              <select value={cvFolds} onChange={(e) => setCvFolds(Number(e.target.value))} disabled={isRunning}>
-                                {[3, 5, 7, 10].map((n) => <option key={n} value={n}>{n} folds</option>)}
-                                {![3, 5, 7, 10].includes(cvFolds) && <option value={cvFolds}>{cvFolds} folds</option>}
-                              </select>
+<label className={styles.label}>CV folds</label>
+              <Select
+                containerClassName="w-full"
+                value={String(cvFolds)}
+                onChange={(e) => setCvFolds(Number(e.target.value))}
+                disabled={isRunning}
+                options={(() => {
+                  const base = [3, 5, 7, 10].map((n) => ({ value: String(n), label: `${n} folds` }));
+                  return [3, 5, 7, 10].includes(cvFolds)
+                    ? base
+                    : [{ value: String(cvFolds), label: `${cvFolds} folds` }, ...base];
+                })()}
+              />
                             </div>
                             <div className={styles.field}>
                               <label className={styles.label}>Max iterations</label>
@@ -697,12 +702,14 @@ export default function HyperparameterPage() {
                             <label className={styles.label}>Attach to project</label>
                             <div className={styles.advRow}>
                               <FolderKanban size={14} className={styles.advIcon} />
-                              <select value={selectedProject} onChange={(e) => setSelectedProject(e.target.value)} disabled={isRunning}>
-                                <option value="">No project (standalone)</option>
-                                {(projects as any[]).map((p: any) => (
-                                  <option key={p.id} value={p.id}>{p.name}</option>
-                                ))}
-                              </select>
+<Select
+                containerClassName="w-full"
+                value={selectedProject}
+                onChange={(e) => setSelectedProject(e.target.value)}
+                disabled={isRunning}
+                placeholder="No project (standalone)"
+                options={(projects as { id: string; name: string }[]).map((p) => ({ value: p.id, label: p.name }))}
+              />
                             </div>
                           </div>
                           <div className={styles.advNote}>
@@ -969,16 +976,18 @@ export default function HyperparameterPage() {
                     </div>
                     <div className={styles.trialSortWrap}>
                       <ArrowUpDown size={12} />
-                      <select
-                        value={trialSort}
-                        onChange={(e) => setTrialSort(e.target.value as any)}
-                        className={styles.trialSortSel}
-                      >
-                        <option value="added">Order added</option>
-                        <option value="score-desc">Score: high to low</option>
-                        <option value="score-asc">Score: low to high</option>
-                        <option value="alpha">Model A–Z</option>
-                      </select>
+<Select
+              containerClassName="w-auto"
+              value={trialSort}
+              onChange={(e) => setTrialSort(e.target.value as any)}
+              triggerClassName={styles.trialSortSel}
+              options={[
+                { value: 'added', label: 'Order added' },
+                { value: 'score-desc', label: 'Score: high to low' },
+                { value: 'score-asc', label: 'Score: low to high' },
+                { value: 'alpha', label: 'Model A-Z' },
+              ]}
+            />
                     </div>
                   </div>
                   <div className={styles.tableWrap}>

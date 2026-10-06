@@ -167,14 +167,13 @@ const analysis: DatasetAnalyzeResponse = {
  * model-selector UI.
  */
 async function selectDataset() {
-  // Several native <select> elements exist (dataset, then target + task once
-  // analysis returns), and the dataset one has no <label>, so pick the
-  // control that actually offers the dataset as an option.
-  const selects = await screen.findAllByRole('combobox');
-  const datasetSelect = selects.find((el) =>
-    Array.from((el as HTMLSelectElement).options).some((o) => o.value === 'iris.csv'),
-  )!;
-  fireEvent.change(datasetSelect, { target: { value: 'iris.csv' } });
+  // The dataset control is the dark Select, so pick it by its accessible name
+  // and choose the dataset from the listbox rather than from native options.
+  fireEvent.click(
+    await screen.findByRole('combobox', { name: 'Choose from existing datasets...' }),
+  );
+  // Option labels carry row/column counts, so match on the dataset name prefix.
+  fireEvent.click(await screen.findByRole('option', { name: /^iris\.csv/ }));
   await waitFor(() =>
     expect(screen.getByText('Auto-Detected (High Confidence)')).toBeInTheDocument(),
   );
@@ -218,8 +217,14 @@ describe('ModelEvaluationPage', () => {
 
     expect(evaluationService.analyzeDataset).toHaveBeenCalledWith('iris.csv', undefined);
     // Target comes from the backend suggestion, not a hardcoded value.
-    expect(screen.getByText('species (Suggested Target)')).toBeInTheDocument();
-    expect(screen.getByText('Auto-Detected (High Confidence)')).toBeInTheDocument();
+// The visible trigger and the hidden form control both carry the option text,
+  // so assert on the combobox that the user actually sees.
+  expect(
+    screen
+      .getAllByText('species (Suggested Target)')
+      .some((el) => el.closest('[role="combobox"]')),
+  ).toBe(true);
+  expect(screen.getByText('Auto-Detected (High Confidence)')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /evaluate model/i })).toBeEnabled();
   });
 

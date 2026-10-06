@@ -1,10 +1,11 @@
 import { memo, useState, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import {
-  Play, Save, Wand2, Sparkles, History, Download, Keyboard, ChevronDown,
-  Database, Columns3, Code2, PanelLeft, PanelRight, Bookmark,
+  Play, Save, Wand2, Sparkles, History, Download, Keyboard,
+  Columns3, Code2, PanelLeft, PanelRight, Bookmark,
   FileJson, FileText, Table2,
 } from 'lucide-react';
+import { Select } from '../../../components/ui/Select';
 import styles from './SqlToolbar.module.css';
 
 interface SqlToolbarProps {
@@ -53,20 +54,18 @@ export const SqlToolbar = memo(function SqlToolbar({
     <div className={styles.toolbar}>
       <div className={styles.datasetGroup}>
         <div className={styles.datasetWrapper}>
-          <select
+          <Select
+            containerClassName="w-full"
+            aria-label="Filter by dataset"
+            triggerClassName={styles.datasetSelect}
             value={selectedDataset}
             onChange={(e) => onDatasetChange(e.target.value)}
-            className={styles.datasetSelect}
-          >
-            <option value="">All datasets</option>
-            {(datasets || []).map((d: any) => (
-              <option key={d.name || d.filename} value={d.name || d.filename}>
-                {d.filename || d.name}
-              </option>
-            ))}
-          </select>
-          <Database className={styles.datasetIcon} />
-          <ChevronDown className={styles.datasetChevron} />
+            placeholder="All datasets"
+            options={(datasets || []).map((d: any) => ({
+              value: d.name || d.filename,
+              label: d.filename || d.name,
+            }))}
+          />
         </div>
       </div>
 

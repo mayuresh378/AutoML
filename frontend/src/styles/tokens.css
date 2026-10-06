@@ -184,6 +184,9 @@
   --z-modal: 310;
   --z-toast: 400;
   --z-command-palette: 500;
+  /* Portalled dropdown menus must clear modals, command palettes and page
+     dialogs, which sit at --z-command-palette and hard-coded 1000. */
+  --z-select-menu: 1100;
 
   /* ── Transitions ── */
   --transition-fast: 150ms ease;

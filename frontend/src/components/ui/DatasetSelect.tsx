@@ -371,7 +371,8 @@ export function DatasetSelect({ datasets, value, onChange, placeholder = 'Select
           top: position.top,
           left: position.left,
           width: position.width,
-          zIndex: 450,
+          // Same layer as the shared DarkSelect menu.
+          zIndex: 'var(--z-select-menu)',
           background: '#0F172A',
           border: '1px solid rgba(255,255,255,0.08)',
           borderRadius: 14,

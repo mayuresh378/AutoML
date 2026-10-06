@@ -32,6 +32,7 @@ import {
 import { useExplorerPreview } from '../hooks';
 import { dtypeMeta, exportRowsToCsv, copyRowsToClipboard, fmt, stripExtension } from '../utils';
 import { Pagination } from '../../../../components/ui/Pagination';
+import { Select } from '../../../../components/ui/Select';
 import { cn } from '../../../../lib/cn';
 import type { DatasetAnalysisResult, DatasetProfile } from '../types';
 
@@ -241,15 +242,15 @@ export function PreviewGrid({ dataset, onSelectColumn, selectedColumn, profile, 
 
           <label className="flex items-center gap-1.5 text-xs text-zinc-500">
             <span className="hidden sm:inline">Rows</span>
-            <select
-              value={pageSize}
-              onChange={(e) => { setPageSize(Number(e.target.value)); setPageIndex(0); }}
-              aria-label="Rows per page"
-              className={cn('rounded-md bg-white/[0.04] border border-white/[0.08] px-1.5 py-1.5 text-xs text-zinc-300', focusRing)}
-              style={{ colorScheme: 'dark' }}
-            >
-              {[25, 50, 100].map((n) => <option key={n} value={n}>{n}</option>)}
-            </select>
+<Select
+          value={String(pageSize)}
+          onChange={(e) => { setPageSize(Number(e.target.value)); setPageIndex(0); }}
+          aria-label="Rows per page"
+          options={[25, 50, 100].map((n) => ({ value: String(n), label: String(n) }))}
+          size="sm"
+          containerClassName="inline-block w-auto"
+          triggerClassName={cn('bg-white/[0.04] border-white/[0.08] px-2 py-1.5 text-xs text-zinc-300', focusRing)}
+        />
           </label>
 
           <button

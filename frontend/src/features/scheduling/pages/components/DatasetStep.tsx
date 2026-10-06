@@ -4,6 +4,7 @@ import { EngineDataset } from '../../../../services/engine.service';
 import { datasetsService } from '../../../../services/datasets.service';
 import type { DatasetProfile, DatasetAnalysisResult } from '../../../../types/api';
 import { SectionCard } from './SectionCard';
+import { Select } from '../../../../components/ui/Select';
 import styles from './DatasetStep.module.css';
 
 interface Props {
@@ -108,29 +109,27 @@ export function DatasetStep({
       <div className={styles.row}>
         <div className={styles.field}>
           <span className={styles.label}><Database size={13} /> Dataset</span>
-          <select
-            className={styles.select}
+          <Select
+            containerClassName="w-full"
+            triggerClassName={styles.select}
             value={selectedDataset}
             onChange={(e) => onDatasetChange(e.target.value)}
-          >
-            <option value="">Select dataset...</option>
-            {datasets.map(d => (
-              <option key={d.name} value={d.name}>{d.name} ({d.rows.toLocaleString()} rows)</option>
-            ))}
-          </select>
+            placeholder="Select dataset..."
+            options={datasets.map(d => ({ value: d.name, label: `${d.name} (${d.rows.toLocaleString()} rows)` }))}
+          />
         </div>
 
         {!isCluster && (
           <div className={styles.field}>
             <span className={styles.label}><GitFork size={13} /> Target Column</span>
-            <select
-              className={styles.select}
+            <Select
+              containerClassName="w-full"
+              triggerClassName={styles.select}
               value={targetColumn}
               onChange={(e) => onTargetChange(e.target.value)}
-            >
-              <option value="">Select target...</option>
-              {targetColumns.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
+              placeholder="Select target..."
+              options={targetColumns.map(c => ({ value: c, label: c }))}
+            />
           </div>
         )}
 

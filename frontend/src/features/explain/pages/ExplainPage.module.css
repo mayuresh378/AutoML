@@ -375,14 +375,11 @@
   font-size: var(--text-body-sm);
 }
 
-.selectWrapper {
-  position: relative;
-}
-
+/* DarkSelect portals its menu, so no positioning wrapper is needed and the
+   trigger brings its own chevron. */
 .select {
   height: 40px;
   width: 100%;
-  padding: 0 var(--space-8) 0 var(--space-4);
   border-radius: var(--radius-lg);
   border: 1px solid var(--color-border);
   background: var(--color-surface);
@@ -390,7 +387,6 @@
   font-size: var(--text-body-sm);
   font-family: var(--font-sans);
   outline: none;
-  appearance: none;
   cursor: pointer;
   transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
 
@@ -400,13 +396,4 @@
 .select:focus {
   border-color: var(--color-secondary);
   box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
-}
-
-.selectIcon {
-  position: absolute;
-  right: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  pointer-events: none;
-  color: var(--color-text-tertiary);
 }

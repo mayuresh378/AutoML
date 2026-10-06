@@ -6,6 +6,7 @@ import {
   ChevronRight, Check, Loader2, AlertCircle,
 } from 'lucide-react';
 import { trainingService, TrainingProgress, pickBestResult } from '../../../services/training.service';
+import { Select } from '../../../components/ui/Select';
 import { LiveTrainingProgress } from './LiveTrainingProgress';
 import { AccuracyChart } from './AccuracyChart';
 import styles from './TrainingWorkflow.module.css';
@@ -256,17 +257,26 @@ export function TrainingWorkflow({ datasets }: TrainingWorkflowProps) {
               <div className={styles.formRow}>
                 <div className={styles.formGroup}>
                   <label className={styles.formLabel}>Dataset</label>
-                  <select className={styles.formSelect} value={selectedDataset} onChange={(e) => { setSelectedDataset(e.target.value); setTargetColumn(''); }}>
-                    <option value="">Choose a dataset</option>
-                    {datasets.map((d) => <option key={d.name} value={d.name}>{d.name}</option>)}
-                  </select>
+                  <Select
+                    containerClassName="w-full"
+                    triggerClassName={styles.formSelect}
+                    value={selectedDataset}
+                    onChange={(e) => { setSelectedDataset(e.target.value); setTargetColumn(''); }}
+                    placeholder="Choose a dataset"
+                    options={datasets.map((d) => ({ value: d.name, label: d.name }))}
+                  />
                 </div>
                 <div className={styles.formGroup}>
                   <label className={styles.formLabel}>Target Column</label>
-                  <select className={styles.formSelect} value={targetColumn} onChange={(e) => setTargetColumn(e.target.value)} disabled={!selectedDataset}>
-                    <option value="">Choose target</option>
-                    {dsColumns.map((c: string) => <option key={c} value={c}>{c}</option>)}
-                  </select>
+                  <Select
+                    containerClassName="w-full"
+                    triggerClassName={styles.formSelect}
+                    value={targetColumn}
+                    onChange={(e) => setTargetColumn(e.target.value)}
+                    disabled={!selectedDataset}
+                    placeholder="Choose target"
+                    options={dsColumns.map((c: string) => ({ value: c, label: c }))}
+                  />
                 </div>
               </div>
 
@@ -311,10 +321,14 @@ export function TrainingWorkflow({ datasets }: TrainingWorkflowProps) {
 
               <div className={styles.hpoForm}>
                 <div className={styles.formGroup}>
-                  <label className={styles.formLabel}>CV Folds</label>
-                  <select className={styles.formSelect} value={cvFolds} onChange={(e) => setCvFolds(Number(e.target.value))}>
-                    {[2, 3, 5, 7, 10].map((n) => <option key={n} value={n}>{n}-Fold Cross Validation</option>)}
-                  </select>
+<label className={styles.formLabel}>CV Folds</label>
+          <Select
+            containerClassName="w-full"
+            triggerClassName={styles.formSelect}
+            value={String(cvFolds)}
+            onChange={(e) => setCvFolds(Number(e.target.value))}
+            options={[2, 3, 5, 7, 10].map((n) => ({ value: String(n), label: `${n}-Fold Cross Validation` }))}
+          />
                 </div>
 
                 <div className={styles.formGroup}>

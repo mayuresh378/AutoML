@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { sqlService } from '../services/sqlEditor.service';
 import { QueryResult } from '../types';
+import { Select } from '../../../components/ui/Select';
 import styles from './ResultsGrid.module.css';
 
 interface ResultsGridProps {
@@ -279,13 +280,15 @@ export const ResultsGrid = memo(function ResultsGrid({ result, dataset, onLoadMo
           <button onClick={() => table.setPageIndex(table.getPageCount() - 1)} disabled={!table.getCanNextPage()} className={styles.gridBtn}>
             <ChevronsRight className={styles.gridBtnIcon} />
           </button>
-          <select
-            value={table.getState().pagination.pageSize}
+          <Select
+            containerClassName="w-auto"
+            size="sm"
+            aria-label="Rows per page"
+            triggerClassName={styles.pageSizeSelect}
+            value={String(table.getState().pagination.pageSize)}
             onChange={(e) => table.setPageSize(Number(e.target.value))}
-            className={styles.pageSizeSelect}
-          >
-            {[20, 50, 100, 200].map((n) => <option key={n} value={n}>{n}</option>)}
-          </select>
+            options={[20, 50, 100, 200].map((n) => ({ value: String(n), label: String(n) }))}
+          />
         </div>
       </div>
     </div>
