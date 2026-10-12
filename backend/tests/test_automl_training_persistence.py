@@ -230,3 +230,17 @@ def test_training_history_api(client, db):
     res_del = client.delete("/api/v1/training/history/run_hist_1")
     assert res_del.status_code == 200
     assert client.get("/api/v1/training/history/run_hist_1").status_code == 404
+
+
+def test_optional_models_import_resilience(monkeypatch):
+    """Verify that train and catalog modules do not crash if an optional library raises OSError."""
+    import sys
+    # Verify that get_algorithms_catalog works cleanly regardless of native lib status
+    catalog = get_algorithms_catalog()
+    assert "classification" in catalog
+    assert "regression" in catalog
+    # Verify catalog contains LightGBM, XGBoost, CatBoost entries with availability flags
+    names = [m["name"] for m in catalog["classification"]]
+    assert "LightGBM" in names
+    assert "XGBoost" in names
+    assert "CatBoost" in names

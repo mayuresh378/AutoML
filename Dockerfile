@@ -9,7 +9,7 @@ FROM python:3.11-slim
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libpq5 curl && \
+    libpq5 curl libgomp1 && \
     rm -rf /var/lib/apt/lists/*
 
 # The app runs as a non-root system user (uid 1001) whose default HOME is

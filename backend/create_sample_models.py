@@ -26,13 +26,13 @@ from sklearn.naive_bayes import GaussianNB
 try:
     from xgboost import XGBClassifier, XGBRegressor
     HAS_XGB = True
-except ImportError:
+except (ImportError, OSError, Exception):
     HAS_XGB = False
 
 try:
     from lightgbm import LGBMClassifier, LGBMRegressor
     HAS_LGBM = True
-except ImportError:
+except (ImportError, OSError, Exception):
     HAS_LGBM = False
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))

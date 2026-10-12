@@ -47,19 +47,19 @@ os.makedirs(MODELS_DIR, exist_ok=True)
 try:
     from xgboost import XGBClassifier, XGBRegressor
     XGB_AVAILABLE = True
-except ImportError:
+except (ImportError, OSError, Exception):
     XGB_AVAILABLE = False
 
 try:
     from lightgbm import LGBMClassifier, LGBMRegressor
     LGBM_AVAILABLE = True
-except ImportError:
+except (ImportError, OSError, Exception):
     LGBM_AVAILABLE = False
 
 try:
     from catboost import CatBoostClassifier, CatBoostRegressor
     CATB_AVAILABLE = True
-except ImportError:
+except (ImportError, OSError, Exception):
     CATB_AVAILABLE = False
 
 # ── Model Catalogs ─────────────────────────────────────────────────
@@ -414,14 +414,17 @@ def run_engine_job(file_name, target_column, task_type, model_names, progress_ca
         return _run_timeseries(prep, target_column, model_names, progress_callback, start_time)
     elif task_type == "regression":
         return _run_supervised(X, y, task_type, model_names, REGRESSION_MODELS, preprocessor, feature_names,
-                               compute_regression_metrics, "r2", cv_folds, progress_callback, start_time, label_map, validation)
+                               compute_regression_metrics, "r2", cv_folds, progress_callback, start_time, label_map, validation,
+                               target_column=target_column, file_name=file_name)
     else:
         return _run_supervised(X, y, task_type, model_names, CLASSIFICATION_MODELS, preprocessor, feature_names,
-                               compute_classification_metrics, "accuracy", cv_folds, progress_callback, start_time, label_map, validation)
+                               compute_classification_metrics, "accuracy", cv_folds, progress_callback, start_time, label_map, validation,
+                               target_column=target_column, file_name=file_name)
 
 
 def _run_supervised(X, y, task_type, model_names, catalog, preprocessor, feature_names,
-                    metrics_fn, sort_key, cv_folds, progress_callback, start_time, label_map=None, validation=None):
+                    metrics_fn, sort_key, cv_folds, progress_callback, start_time, label_map=None, validation=None,
+                    target_column=None, file_name=None):
     v = validation or {}
     method = v.get("method", "cross_validation")
     test_size = float(v.get("test_size", 20)) / 100.0

@@ -29,19 +29,19 @@ from sklearn.tree import DecisionTreeRegressor
 try:
     from xgboost import XGBClassifier, XGBRegressor
     XGB_AVAILABLE = True
-except ImportError:
+except (ImportError, OSError, Exception):
     XGB_AVAILABLE = False
 
 try:
     from lightgbm import LGBMClassifier, LGBMRegressor
     LGBM_AVAILABLE = True
-except ImportError:
+except (ImportError, OSError, Exception):
     LGBM_AVAILABLE = False
 
 try:
     from catboost import CatBoostClassifier, CatBoostRegressor
     CATB_AVAILABLE = True
-except ImportError:
+except (ImportError, OSError, Exception):
     CATB_AVAILABLE = False
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
