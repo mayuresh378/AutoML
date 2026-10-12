@@ -81,19 +81,19 @@ CLASSIFICATION_MODELS = {
 
 if XGB_AVAILABLE:
     CLASSIFICATION_MODELS["XGBoost"] = {
-        "model": XGBClassifier(random_state=42, verbosity=0),
+        "model": XGBClassifier(random_state=42, verbosity=0, n_jobs=1, eval_metric="logloss"),
         "params": {"n_estimators": [50, 100], "max_depth": [3, 6, 9], "learning_rate": [0.01, 0.1, 0.3]},
     }
 
 if LGBM_AVAILABLE:
     CLASSIFICATION_MODELS["LightGBM"] = {
-        "model": LGBMClassifier(random_state=42, verbose=-1),
+        "model": LGBMClassifier(random_state=42, verbose=-1, n_jobs=1),
         "params": {"n_estimators": [50, 100], "num_leaves": [15, 31, 63], "learning_rate": [0.01, 0.1]},
     }
 
 if CATB_AVAILABLE:
     CLASSIFICATION_MODELS["CatBoost"] = {
-        "model": CatBoostClassifier(random_state=42, verbose=0),
+        "model": CatBoostClassifier(random_state=42, verbose=0, thread_count=1),
         "params": {"iterations": [50, 100], "depth": [4, 6, 8], "learning_rate": [0.01, 0.1]},
     }
 
@@ -130,20 +130,83 @@ REGRESSION_MODELS = {
 
 if XGB_AVAILABLE:
     REGRESSION_MODELS["XGBoost"] = {
-        "model": XGBRegressor(random_state=42, verbosity=0),
+        "model": XGBRegressor(random_state=42, verbosity=0, n_jobs=1),
         "params": {"n_estimators": [50, 100], "max_depth": [3, 6, 9], "learning_rate": [0.01, 0.1, 0.3]},
     }
 
 if LGBM_AVAILABLE:
     REGRESSION_MODELS["LightGBM"] = {
-        "model": LGBMRegressor(random_state=42, verbose=-1),
+        "model": LGBMRegressor(random_state=42, verbose=-1, n_jobs=1),
         "params": {"n_estimators": [50, 100], "num_leaves": [15, 31, 63], "learning_rate": [0.01, 0.1]},
     }
 
 if CATB_AVAILABLE:
     REGRESSION_MODELS["CatBoost"] = {
-        "model": CatBoostRegressor(random_state=42, verbose=0),
+        "model": CatBoostRegressor(random_state=42, verbose=0, thread_count=1),
         "params": {"iterations": [50, 100], "depth": [4, 6, 8], "learning_rate": [0.01, 0.1]},
+    }
+
+ALL_KNOWN_CLASSIFIERS = {
+    "RandomForest": {"label": "Random Forest", "desc": "Ensemble of decision trees", "package": "sklearn"},
+    "GradientBoosting": {"label": "Gradient Boosting", "desc": "Sequential ensemble method", "package": "sklearn"},
+    "XGBoost": {"label": "XGBoost", "desc": "Extreme gradient boosting", "package": "xgboost"},
+    "LightGBM": {"label": "LightGBM", "desc": "Fast gradient boosting", "package": "lightgbm"},
+    "CatBoost": {"label": "CatBoost", "desc": "Categorical boosting", "package": "catboost"},
+    "SVC": {"label": "SVM", "desc": "Support vector classification", "package": "sklearn"},
+    "KNN": {"label": "KNN", "desc": "K-nearest neighbors", "package": "sklearn"},
+    "LogisticRegression": {"label": "Logistic Regression", "desc": "Linear classifier", "package": "sklearn"},
+    "DecisionTree": {"label": "Decision Tree", "desc": "Single tree classifier", "package": "sklearn"},
+    "NaiveBayes": {"label": "Naive Bayes", "desc": "Probabilistic classifier", "package": "sklearn"},
+}
+
+ALL_KNOWN_REGRESSORS = {
+    "RandomForest": {"label": "Random Forest", "desc": "Ensemble of decision trees", "package": "sklearn"},
+    "GradientBoosting": {"label": "Gradient Boosting", "desc": "Sequential ensemble method", "package": "sklearn"},
+    "XGBoost": {"label": "XGBoost", "desc": "Extreme gradient boosting", "package": "xgboost"},
+    "LightGBM": {"label": "LightGBM", "desc": "Fast gradient boosting", "package": "lightgbm"},
+    "CatBoost": {"label": "CatBoost", "desc": "Categorical boosting", "package": "catboost"},
+    "SVR": {"label": "SVR", "desc": "Support vector regression", "package": "sklearn"},
+    "KNN": {"label": "KNN", "desc": "K-nearest neighbors", "package": "sklearn"},
+    "Ridge": {"label": "Ridge", "desc": "L2 regularized linear", "package": "sklearn"},
+    "Lasso": {"label": "Lasso", "desc": "L1 regularized linear", "package": "sklearn"},
+    "DecisionTree": {"label": "Decision Tree", "desc": "Single tree regressor", "package": "sklearn"},
+}
+
+
+def get_algorithms_catalog():
+    """Return synchronized algorithm catalog with availability and package requirements."""
+    classification = []
+    for name, info in ALL_KNOWN_CLASSIFIERS.items():
+        is_avail = name in CLASSIFICATION_MODELS
+        classification.append({
+            "name": name,
+            "label": info["label"],
+            "desc": info["desc"],
+            "package": info["package"],
+            "available": is_avail,
+            "default_selected": is_avail,
+        })
+
+    regression = []
+    for name, info in ALL_KNOWN_REGRESSORS.items():
+        is_avail = name in REGRESSION_MODELS
+        regression.append({
+            "name": name,
+            "label": info["label"],
+            "desc": info["desc"],
+            "package": info["package"],
+            "available": is_avail,
+            "default_selected": is_avail,
+        })
+
+    return {
+        "classification": classification,
+        "regression": regression,
+        "optional": {
+            "XGBoost": XGB_AVAILABLE,
+            "LightGBM": LGBM_AVAILABLE,
+            "CatBoost": CATB_AVAILABLE,
+        },
     }
 
 

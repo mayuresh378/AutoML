@@ -18,9 +18,20 @@ elif _raw_url.startswith("postgresql://"):
 elif _raw_url.startswith("postgresql+psycopg2://"):
     _raw_url = _raw_url.replace("postgresql+psycopg2://", "postgresql+psycopg://", 1)
 
-DATABASE_URL = _raw_url or f"sqlite:///{os.path.join(os.path.dirname(os.path.abspath(__file__)), 'automl.db')}"
+is_postgres = "postgresql" in _raw_url or "postgres" in _raw_url
+if is_postgres:
+    try:
+        import psycopg
+    except ImportError:
+        try:
+            import psycopg2
+            _raw_url = _raw_url.replace("postgresql+psycopg://", "postgresql+psycopg2://")
+        except ImportError:
+            # Fall back to SQLite if neither psycopg nor psycopg2 is installed in the local environment
+            _raw_url = ""
+            is_postgres = False
 
-is_postgres = "postgresql" in DATABASE_URL or "postgres" in DATABASE_URL
+DATABASE_URL = _raw_url or f"sqlite:///{os.path.join(os.path.dirname(os.path.abspath(__file__)), 'automl.db')}"
 
 _engine_kwargs: dict = {"echo": False, "pool_pre_ping": True}
 if is_postgres:
@@ -164,7 +175,7 @@ def init_db():
                         Webhook, AuditLog,
                         Project, MarketplaceItem, Dataset, DatasetShare, Notification,
                         UserSession, PredictionLog, ActivityLog,
-                        DatasetCleanStep, CleaningHistory)
+                        DatasetCleanStep, CleaningHistory, TrainingRun)
     for attempt in range(30):
         try:
             Base.metadata.create_all(bind=engine)

@@ -1,14 +1,24 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import {
   Target, Brain, Sliders, Activity, BarChart3, Play, Package,
-  ChevronRight, Check, Loader2, AlertCircle,
+  ChevronRight, Check, Loader2, AlertCircle, Sparkles, RefreshCw,
 } from 'lucide-react';
-import { trainingService, TrainingProgress, pickBestResult } from '../../../services/training.service';
+import {
+  trainingService,
+  TrainingProgress,
+  pickBestResult,
+  AlgorithmInfo,
+  DatasetRecommendation,
+  TaskType,
+} from '../../../services/training.service';
 import { Select } from '../../../components/ui/Select';
 import { LiveTrainingProgress } from './LiveTrainingProgress';
 import { AccuracyChart } from './AccuracyChart';
+import { DatasetRecommendationCard } from './DatasetRecommendationCard';
+import { ErrorDiagnosticsPanel } from './ErrorDiagnosticsPanel';
 import styles from './TrainingWorkflow.module.css';
 
 interface TrainingWorkflowProps {
@@ -25,30 +35,30 @@ const STEPS: { id: Step; label: string; icon: any }[] = [
   { id: 'metrics', label: 'Metrics', icon: BarChart3 },
 ];
 
-const CLASSIFICATION_ALGOS = [
-  { name: 'RandomForest', label: 'Random Forest', desc: 'Ensemble of decision trees' },
-  { name: 'GradientBoosting', label: 'Gradient Boosting', desc: 'Sequential ensemble method' },
-  { name: 'XGBoost', label: 'XGBoost', desc: 'Extreme gradient boosting' },
-  { name: 'LightGBM', label: 'LightGBM', desc: 'Fast gradient boosting' },
-  { name: 'CatBoost', label: 'CatBoost', desc: 'Categorical boosting' },
-  { name: 'SVC', label: 'SVM', desc: 'Support vector classification' },
-  { name: 'KNN', label: 'KNN', desc: 'K-nearest neighbors' },
-  { name: 'LogisticRegression', label: 'Logistic Regression', desc: 'Linear classifier' },
-  { name: 'DecisionTree', label: 'Decision Tree', desc: 'Single tree classifier' },
-  { name: 'NaiveBayes', label: 'Naive Bayes', desc: 'Probabilistic classifier' },
+const FALLBACK_CLASSIFICATION_ALGOS: AlgorithmInfo[] = [
+  { name: 'RandomForest', label: 'Random Forest', desc: 'Ensemble of decision trees', available: true },
+  { name: 'GradientBoosting', label: 'Gradient Boosting', desc: 'Sequential ensemble method', available: true },
+  { name: 'XGBoost', label: 'XGBoost', desc: 'Extreme gradient boosting', available: true },
+  { name: 'LightGBM', label: 'LightGBM', desc: 'Fast gradient boosting', available: true },
+  { name: 'CatBoost', label: 'CatBoost', desc: 'Categorical boosting', available: false },
+  { name: 'SVC', label: 'SVM', desc: 'Support vector classification', available: true },
+  { name: 'KNN', label: 'KNN', desc: 'K-nearest neighbors', available: true },
+  { name: 'LogisticRegression', label: 'Logistic Regression', desc: 'Linear classifier', available: true },
+  { name: 'DecisionTree', label: 'Decision Tree', desc: 'Single tree classifier', available: true },
+  { name: 'NaiveBayes', label: 'Naive Bayes', desc: 'Probabilistic classifier', available: true },
 ];
 
-const REGRESSION_ALGOS = [
-  { name: 'RandomForest', label: 'Random Forest', desc: 'Ensemble of decision trees' },
-  { name: 'GradientBoosting', label: 'Gradient Boosting', desc: 'Sequential ensemble method' },
-  { name: 'XGBoost', label: 'XGBoost', desc: 'Extreme gradient boosting' },
-  { name: 'LightGBM', label: 'LightGBM', desc: 'Fast gradient boosting' },
-  { name: 'CatBoost', label: 'CatBoost', desc: 'Categorical boosting' },
-  { name: 'SVR', label: 'SVR', desc: 'Support vector regression' },
-  { name: 'KNN', label: 'KNN', desc: 'K-nearest neighbors' },
-  { name: 'Ridge', label: 'Ridge', desc: 'L2 regularized linear' },
-  { name: 'Lasso', label: 'Lasso', desc: 'L1 regularized linear' },
-  { name: 'DecisionTree', label: 'Decision Tree', desc: 'Single tree regressor' },
+const FALLBACK_REGRESSION_ALGOS: AlgorithmInfo[] = [
+  { name: 'RandomForest', label: 'Random Forest', desc: 'Ensemble of decision trees', available: true },
+  { name: 'GradientBoosting', label: 'Gradient Boosting', desc: 'Sequential ensemble method', available: true },
+  { name: 'XGBoost', label: 'XGBoost', desc: 'Extreme gradient boosting', available: true },
+  { name: 'LightGBM', label: 'LightGBM', desc: 'Fast gradient boosting', available: true },
+  { name: 'CatBoost', label: 'CatBoost', desc: 'Categorical boosting', available: false },
+  { name: 'SVR', label: 'SVR', desc: 'Support vector regression', available: true },
+  { name: 'KNN', label: 'KNN', desc: 'K-nearest neighbors', available: true },
+  { name: 'Ridge', label: 'Ridge', desc: 'L2 regularized linear', available: true },
+  { name: 'Lasso', label: 'Lasso', desc: 'L1 regularized linear', available: true },
+  { name: 'DecisionTree', label: 'Decision Tree', desc: 'Single tree regressor', available: true },
 ];
 
 /** Formats a 0-1 score, or a dash when the value was never measured. */
@@ -86,6 +96,36 @@ export function TrainingWorkflow({ datasets }: TrainingWorkflowProps) {
 
   const selectedDs = useMemo(() => datasets.find((d) => d.name === selectedDataset), [datasets, selectedDataset]);
   const dsColumns = useMemo(() => (selectedDs as any)?.columns || [], [selectedDs]);
+
+  // Dynamic Algorithm Catalog from Backend
+  const { data: algorithmsCatalog } = useQuery({
+    queryKey: ['trainingAlgorithms'],
+    queryFn: () => trainingService.algorithms(),
+  });
+
+  const availableAlgos: AlgorithmInfo[] = useMemo(() => {
+    if (taskType === 'classification') {
+      return algorithmsCatalog?.classification || FALLBACK_CLASSIFICATION_ALGOS;
+    }
+    return algorithmsCatalog?.regression || FALLBACK_REGRESSION_ALGOS;
+  }, [taskType, algorithmsCatalog]);
+
+  // AI Dataset Recommendations
+  const { data: recommendation, isLoading: loadingRecommendation } = useQuery({
+    queryKey: ['datasetRecommendation', selectedDataset, targetColumn],
+    queryFn: () => trainingService.recommendations(selectedDataset, targetColumn || undefined),
+    enabled: !!selectedDataset,
+  });
+
+  const handleApplyRecommendation = useCallback((rec: {
+    targetColumn: string;
+    taskType: TaskType;
+    algorithms: string[];
+  }) => {
+    setTargetColumn(rec.targetColumn);
+    setTaskType(rec.taskType);
+    setSelectedAlgos(rec.algorithms);
+  }, []);
 
   const results = useMemo(() => progress?.all_results ?? [], [progress]);
   const isRegression = progress?.task_type === 'regression';
@@ -142,10 +182,11 @@ export function TrainingWorkflow({ datasets }: TrainingWorkflowProps) {
 
   useEffect(() => {
     if (step === 'algorithms') {
-      const algos = taskType === 'classification' ? CLASSIFICATION_ALGOS : REGRESSION_ALGOS;
-      setSelectedAlgos(algos.map((a) => a.name));
+      // Preselect all algorithms that are available on the backend
+      const availableNames = availableAlgos.filter((a) => a.available).map((a) => a.name);
+      setSelectedAlgos(availableNames);
     }
-  }, [step, taskType]);
+  }, [step, availableAlgos]);
 
   useEffect(() => {
     if (!jobId || !progress) return;
@@ -202,7 +243,8 @@ export function TrainingWorkflow({ datasets }: TrainingWorkflowProps) {
     if (jobId) trainingService.cancel(jobId);
   }, [jobId]);
 
-  const toggleAlgo = useCallback((name: string) => {
+  const toggleAlgo = useCallback((name: string, isAvailable: boolean) => {
+    if (!isAvailable) return;
     setSelectedAlgos((prev) => prev.includes(name) ? prev.filter((a) => a !== name) : [...prev, name]);
   }, []);
 
@@ -280,6 +322,14 @@ export function TrainingWorkflow({ datasets }: TrainingWorkflowProps) {
                 </div>
               </div>
 
+              {recommendation && (
+                <DatasetRecommendationCard
+                  recommendation={recommendation}
+                  onApply={handleApplyRecommendation}
+                  isLoading={loadingRecommendation}
+                />
+              )}
+
               <div className={styles.stepActions}>
                 <button className={styles.btnNext} disabled={!selectedDataset || !targetColumn} onClick={() => setStep('algorithms')}>
                   Continue <ChevronRight className={styles.btnIcon} />
@@ -291,19 +341,38 @@ export function TrainingWorkflow({ datasets }: TrainingWorkflowProps) {
           {step === 'algorithms' && (
             <motion.div key="algorithms" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className={styles.stepPanel}>
               <h3 className={styles.panelTitle}>Select Algorithms</h3>
-              <p className={styles.panelDesc}>Choose which algorithms to train. Selected algorithms will be compared.</p>
+              <p className={styles.panelDesc}>Choose which algorithms to train. Only algorithms installed and verified on the server can be selected.</p>
               <div className={styles.algoGrid}>
-                {(taskType === 'classification' ? CLASSIFICATION_ALGOS : REGRESSION_ALGOS).map((algo) => (
-                  <button key={algo.name} className={`${styles.algoCard} ${selectedAlgos.includes(algo.name) ? styles.algoCardActive : ''}`} onClick={() => toggleAlgo(algo.name)}>
-                    <div className={styles.algoCheck}>
-                      {selectedAlgos.includes(algo.name) ? <Check className={styles.algoCheckIcon} /> : <div className={styles.algoUncheck} />}
-                    </div>
-                    <div className={styles.algoInfo}>
-                      <div className={styles.algoName}>{algo.label}</div>
-                      <div className={styles.algoDesc}>{algo.desc}</div>
-                    </div>
-                  </button>
-                ))}
+                {availableAlgos.map((algo) => {
+                  const isSelected = selectedAlgos.includes(algo.name);
+                  const isAvailable = algo.available;
+                  return (
+                    <button
+                      key={algo.name}
+                      type="button"
+                      className={`${styles.algoCard} ${isSelected ? styles.algoCardActive : ''} ${!isAvailable ? styles.algoCardDisabled : ''}`}
+                      onClick={() => toggleAlgo(algo.name, isAvailable)}
+                      disabled={!isAvailable}
+                    >
+                      <div className={styles.algoCheck}>
+                        {isSelected ? <Check className={styles.algoCheckIcon} /> : <div className={styles.algoUncheck} />}
+                      </div>
+                      <div className={styles.algoInfo}>
+                        <div className={styles.algoName}>
+                          {algo.label || algo.name}
+                          {isAvailable ? (
+                            <span className={styles.algoBadgeAvailable}>Available</span>
+                          ) : (
+                            <span className={styles.algoBadgeUnavailable}>Unavailable</span>
+                          )}
+                        </div>
+                        <div className={styles.algoDesc}>
+                          {algo.desc || (isAvailable ? 'Supported algorithm' : 'Not installed in environment')}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
               <div className={styles.stepActions}>
                 <button className={styles.btnBack} onClick={() => setStep('task')}>Back</button>
@@ -373,13 +442,12 @@ export function TrainingWorkflow({ datasets }: TrainingWorkflowProps) {
             <motion.div key="metrics" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className={styles.stepPanel}>
               <h3 className={styles.panelTitle}>Training Results</h3>
               {metricsError && (
-                <div className={styles.errorBanner}>
-                  <AlertCircle className={styles.errorIcon} />
-                  <div>
-                    <div className={styles.errorTitle}>{metricsErrorTitle}</div>
-                    <div className={styles.errorText}>{metricsError}</div>
-                  </div>
-                </div>
+                <ErrorDiagnosticsPanel
+                  errorTitle={metricsErrorTitle}
+                  errorMessage={metricsError}
+                  errorDetails={(progress as any)?.error_details}
+                  onRetry={handleStartTraining}
+                />
               )}
               {!metricsError && results.length === 0 && (
                 <div className={styles.loadingState}>

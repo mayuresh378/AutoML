@@ -50,6 +50,7 @@ class User(Base):
     webhooks = relationship("Webhook", back_populates="user")
     sessions = relationship("UserSession", back_populates="user")
     activity_logs = relationship("ActivityLog", back_populates="user")
+    training_runs = relationship("TrainingRun", back_populates="user")
 
 
 class Team(Base):
@@ -102,6 +103,7 @@ class Project(Base):
     experiments = relationship("Experiment", back_populates="project")
     model_registry = relationship("ModelRegistry", back_populates="project")
     datasets = relationship("Dataset", back_populates="project")
+    training_runs = relationship("TrainingRun", back_populates="project")
 
 
 class ApiKey(Base):
@@ -153,6 +155,51 @@ class Experiment(Base):
     project_id = Column(String, ForeignKey("projects.id"), nullable=True, index=True)
     project = relationship("Project", back_populates="experiments")
     model_registry = relationship("ModelRegistry", back_populates="experiment")
+
+
+class TrainingRun(Base):
+    __tablename__ = "training_runs"
+
+    id = Column(String, primary_key=True, default=_uuid)
+    name = Column(String, nullable=True)
+    user_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
+    project_id = Column(String, ForeignKey("projects.id"), nullable=True, index=True)
+    dataset_id = Column(String, nullable=True, index=True)
+    dataset_name = Column(String, nullable=False, index=True)
+    dataset_fingerprint = Column(String, nullable=True)
+    target_column = Column(String, nullable=False)
+    task_type = Column(String, nullable=False, default="classification")
+
+    selected_algorithms = Column(JSON, nullable=True)
+    hyperparameters_config = Column(JSON, nullable=True)
+    preprocessing_config = Column(JSON, nullable=True)
+
+    status = Column(String, nullable=False, default="queued", index=True)  # queued, running, completed, failed, cancelled
+    progress = Column(Float, default=0.0)
+    current_step = Column(String, nullable=True)
+    message = Column(String, nullable=True)
+
+    start_time = Column(DateTime, default=_now, index=True)
+    end_time = Column(DateTime, nullable=True)
+    duration_seconds = Column(Float, nullable=True)
+
+    best_model_name = Column(String, nullable=True)
+    best_score = Column(Float, nullable=True)
+    rank_metric = Column(String, nullable=True)
+
+    evaluation_metrics = Column(JSON, nullable=True)
+    all_results = Column(JSON, nullable=True)
+    logs = Column(JSON, nullable=True)
+
+    error_type = Column(String, nullable=True)
+    error_details = Column(JSON, nullable=True)
+
+    model_artifact_path = Column(String, nullable=True)
+    created_at = Column(DateTime, default=_now, index=True)
+    updated_at = Column(DateTime, default=_now, onupdate=_now)
+
+    user = relationship("User", back_populates="training_runs")
+    project = relationship("Project", back_populates="training_runs")
 
 
 class ModelRegistry(Base):

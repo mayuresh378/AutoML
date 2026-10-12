@@ -55,6 +55,7 @@ from crud import (
     get_team, update_team, delete_team,
     list_models as list_model_registry_entries,
     create_evaluation_record, list_evaluation_records, get_evaluation_record, query_evaluation_records,
+    create_training_run, update_training_run, get_training_run, list_training_runs, delete_training_run,
 )
 from api_responses import ok, error, created, deleted, paginated, TAGS_METADATA
 from fastapi.exceptions import RequestValidationError
@@ -1510,20 +1511,159 @@ def training_queue_api(db: Session = Depends(get_db), current_user: dict = Depen
 
 @app.get("/api/v1/training/algorithms", tags=["Training"], summary="List available algorithms")
 def list_algorithms_api():
-    from train import CLASSIFICATION_MODELS, REGRESSION_MODELS, XGB_AVAILABLE, LGBM_AVAILABLE, CATB_AVAILABLE
-    classification = []
-    for name in CLASSIFICATION_MODELS:
-        info = {"name": name, "available": True}
-        classification.append(info)
-    regression = []
-    for name in REGRESSION_MODELS:
-        info = {"name": name, "available": True}
-        regression.append(info)
+    from train import get_algorithms_catalog
+    return get_algorithms_catalog()
+
+
+@app.post("/api/v1/training/recommendations", tags=["Training"], summary="Get dataset training recommendations")
+def get_dataset_recommendations_api(
+    file_name: str = Form(...),
+    target_column: str = Form(None),
+    current_user: dict = Depends(get_optional_user),
+):
+    try:
+        from recommendations import generate_dataset_recommendations
+        return generate_dataset_recommendations(file_name, target_column)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+# ─── Training History APIs ──────────────────────────────────────────
+
+@app.get("/api/v1/training/history", tags=["Training"], summary="List training history")
+def list_training_history_api(
+    dataset_name: str = Query(None),
+    algorithm: str = Query(None),
+    task_type: str = Query(None),
+    status: str = Query(None),
+    search: str = Query(None),
+    sort_by: str = Query("created_at"),
+    order: str = Query("desc"),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_optional_user),
+):
+    uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
+    runs, total = list_training_runs(
+        db=db,
+        user_id=uid,
+        dataset_name=dataset_name,
+        algorithm=algorithm,
+        task_type=task_type,
+        status=status,
+        search=search,
+        sort_by=sort_by,
+        order=order,
+        limit=limit,
+        offset=offset,
+    )
+    items = []
+    for r in runs:
+        items.append({
+            "id": r.id,
+            "name": r.name,
+            "dataset_name": r.dataset_name,
+            "target_column": r.target_column,
+            "task_type": r.task_type,
+            "selected_algorithms": r.selected_algorithms,
+            "hyperparameters_config": r.hyperparameters_config,
+            "status": r.status,
+            "progress": r.progress,
+            "message": r.message,
+            "duration_seconds": r.duration_seconds,
+            "best_model_name": r.best_model_name,
+            "best_score": r.best_score,
+            "rank_metric": r.rank_metric,
+            "evaluation_metrics": r.evaluation_metrics,
+            "error_type": r.error_type,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+            "end_time": r.end_time.isoformat() if r.end_time else None,
+        })
+    return {"runs": items, "total": total, "limit": limit, "offset": offset}
+
+
+@app.get("/api/v1/training/history/{run_id}", tags=["Training"], summary="Get training run details")
+def get_training_history_run_api(
+    run_id: str,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_optional_user),
+):
+    uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
+    run = get_training_run(db, run_id, user_id=uid)
+    if not run:
+        raise HTTPException(status_code=404, detail="Training run not found")
     return {
-        "classification": classification,
-        "regression": regression,
-        "optional": {"XGBoost": XGB_AVAILABLE, "LightGBM": LGBM_AVAILABLE, "CatBoost": CATB_AVAILABLE},
+        "id": run.id,
+        "name": run.name,
+        "dataset_name": run.dataset_name,
+        "target_column": run.target_column,
+        "task_type": run.task_type,
+        "selected_algorithms": run.selected_algorithms,
+        "hyperparameters_config": run.hyperparameters_config,
+        "preprocessing_config": run.preprocessing_config,
+        "status": run.status,
+        "progress": run.progress,
+        "current_step": run.current_step,
+        "message": run.message,
+        "duration_seconds": run.duration_seconds,
+        "start_time": run.start_time.isoformat() if run.start_time else None,
+        "end_time": run.end_time.isoformat() if run.end_time else None,
+        "best_model_name": run.best_model_name,
+        "best_score": run.best_score,
+        "rank_metric": run.rank_metric,
+        "evaluation_metrics": run.evaluation_metrics,
+        "all_results": run.all_results,
+        "logs": run.logs,
+        "error_type": run.error_type,
+        "error_details": run.error_details,
+        "model_artifact_path": run.model_artifact_path,
+        "created_at": run.created_at.isoformat() if run.created_at else None,
     }
+
+
+@app.delete("/api/v1/training/history/{run_id}", tags=["Training"], summary="Delete training run")
+def delete_training_history_run_api(
+    run_id: str,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_optional_user),
+):
+    uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
+    deleted = delete_training_run(db, run_id, user_id=uid)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Training run not found")
+    return {"message": "Training run deleted", "id": run_id}
+
+
+@app.post("/api/v1/training/history/{run_id}/retry", tags=["Training"], summary="Retry training run")
+async def retry_training_run_api(
+    run_id: str,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
+    run = get_training_run(db, run_id, user_id=uid)
+    if not run:
+        raise HTTPException(status_code=404, detail="Training run not found")
+
+    hp = run.hyperparameters_config or {}
+    cv_folds = hp.get("cv_folds", 5)
+    optimize_hp = hp.get("optimize_hyperparameters", True)
+    algos = ",".join(run.selected_algorithms) if isinstance(run.selected_algorithms, list) else "all"
+
+    return await run_training_workflow(
+        background_tasks=background_tasks,
+        file_name=run.dataset_name,
+        target_column=run.target_column,
+        task_type=run.task_type,
+        algorithms=algos,
+        cv_folds=cv_folds,
+        optimize_hyperparameters=optimize_hp,
+        project_id=run.project_id,
+        db=db,
+        current_user=current_user,
+    )
 
 
 @app.get("/api/v1/training/{exp_id}", tags=["Training"], summary="Get training job", description="Retrieve a specific training job by ID.")
@@ -1591,7 +1731,34 @@ async def run_training_workflow(
     current_user: dict = Depends(get_current_user),
 ):
     import uuid as _uuid
+    from database import SessionLocal
+    from preprocess import prepare_train_test_data
+
     job_id = str(_uuid.uuid4())[:8]
+    user_id = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
+    selected_algos = [a.strip() for a in algorithms.split(",") if a.strip()] if algorithms != "all" else ["all"]
+
+    # Persist the initial TrainingRun in the database
+    initial_run_data = {
+        "id": job_id,
+        "name": f"{file_name.split('.')[0]}-{task_type}",
+        "user_id": user_id,
+        "project_id": project_id,
+        "dataset_name": file_name,
+        "target_column": target_column,
+        "task_type": task_type,
+        "selected_algorithms": selected_algos,
+        "hyperparameters_config": {
+            "optimize_hyperparameters": optimize_hyperparameters,
+            "cv_folds": cv_folds,
+        },
+        "status": "queued",
+        "progress": 0.0,
+        "current_step": "queued",
+        "message": "Training job queued",
+    }
+    create_training_run(db, initial_run_data)
+
     _update_progress(job_id, {
         "status": "queued", "progress": 0, "current_step": "preprocessing",
         "message": "Training job queued", "logs": [], "metrics_history": [],
@@ -1599,6 +1766,8 @@ async def run_training_workflow(
     })
 
     def _run():
+        from database import SessionLocal
+        bg_db = SessionLocal()
         logs = []
         metrics_history = []
         start = time.time()
@@ -1608,25 +1777,45 @@ async def run_training_workflow(
             _update_progress(job_id, {"logs": logs[-50:]})
 
         try:
-            log("Starting preprocessing...")
+            log("Starting leakage-free preprocessing...")
             _update_progress(job_id, {"status": "running", "current_step": "preprocessing", "progress": 5, "message": "Preprocessing data"})
-            preprocess_result = auto_preprocess(file_name, target_column, task_type)
-            X = preprocess_result["X"]
-            y = preprocess_result["y"]
-            preprocessor = preprocess_result["preprocessor"]
-            task = preprocess_result["task_type"]
-            log(f"Preprocessing done: {X.shape[0]} rows, {X.shape[1]} features, task={task}")
-            _update_progress(job_id, {"progress": 10, "current_step": "algorithms", "message": f"Data ready: {X.shape[0]} rows × {X.shape[1]} features"})
+            update_training_run(bg_db, job_id, {
+                "status": "running", "current_step": "preprocessing", "progress": 5.0,
+                "message": "Preprocessing data",
+            })
+
+            # Leakage-free train/test data preparation
+            prep_data = prepare_train_test_data(file_name, target_column, task_type)
+            X_train = prep_data["X_train"]
+            X_test = prep_data["X_test"]
+            y_train = prep_data["y_train"]
+            y_test = prep_data["y_test"]
+            preprocessor = prep_data["preprocessor"]
+            task = prep_data["task_type"]
+            features_list = prep_data["feature_names"]
+
+            log(f"Data split: {X_train.shape[0]} train rows, {X_test.shape[0]} test rows, {len(features_list)} features, task={task}")
+            _update_progress(job_id, {"progress": 10, "current_step": "algorithms", "message": f"Data ready: {X_train.shape[0] + X_test.shape[0]} rows × {len(features_list)} features"})
+
+            update_training_run(bg_db, job_id, {
+                "task_type": task,
+                "preprocessing_config": {
+                    "feature_names": features_list,
+                    "numeric_features": prep_data["numeric_features"],
+                    "categorical_features": prep_data["categorical_features"],
+                    "dropped_features": prep_data["dropped_features"],
+                    "train_shape": prep_data["processed_train_shape"],
+                    "test_shape": prep_data["processed_test_shape"],
+                },
+            })
 
             from train import (CLASSIFICATION_MODELS as CM, REGRESSION_MODELS as RM,
                                _count_params, _default_scoring, _compute_metrics)
-            from sklearn.model_selection import train_test_split, RandomizedSearchCV, cross_val_score
+            from sklearn.model_selection import RandomizedSearchCV, cross_val_score
+
             model_candidates = CM if task == "classification" else RM
             if algorithms != "all":
                 selected = [a.strip() for a in algorithms.split(",") if a.strip()]
-                # Silently dropping an unknown name left an empty candidate list,
-                # which surfaced as the confusing "0 of 0 failed". Report the
-                # typo against the algorithms that actually exist for this task.
                 unknown = [a for a in selected if a not in model_candidates]
                 if unknown:
                     raise ValueError(
@@ -1634,19 +1823,14 @@ async def run_training_workflow(
                         f"Available: {', '.join(model_candidates.keys())}"
                     )
                 model_candidates = {k: v for k, v in model_candidates.items() if k in selected}
+
             if not model_candidates:
                 raise ValueError("No algorithms were selected for training.")
+
             total_models = len(model_candidates)
             log(f"Training {total_models} algorithms: {', '.join(model_candidates.keys())}")
             _update_progress(job_id, {"total_models": total_models, "completed_models": 0, "message": f"Training {total_models} models..."})
 
-            X_train, X_test, y_train, y_test = train_test_split(
-                X, y, test_size=0.2, random_state=42, stratify=y if task == "classification" else None
-            )
-
-            # A CV split count above the smallest class size (or above the number
-            # of training rows) makes every fold invalid, which used to raise
-            # inside each algorithm and leave the whole run without metrics.
             max_splits = 10
             if task == "classification":
                 class_counts = [int(c) for c in getattr(y_train, "value_counts", lambda: [])()]
@@ -1681,9 +1865,6 @@ async def run_training_workflow(
                         best_model = search.best_estimator_
                         cv_score = float(search.best_score_)
                     else:
-                        # Still cross-validate the default parameters. Reporting a
-                        # placeholder 0 here made a genuinely bad model and a
-                        # skipped CV run look identical in the results table.
                         base_model.fit(X_train, y_train)
                         best_model = base_model
                         cv_scores = cross_val_score(
@@ -1695,11 +1876,6 @@ async def run_training_workflow(
                     y_pred = best_model.predict(X_test)
                     mtime = round(time.time() - mstart, 2)
 
-                    # Task-correct metrics straight from the shared helper:
-                    # classification -> accuracy/precision/recall/f1,
-                    # regression -> r2/mse/rmse/mae. Regression therefore never
-                    # reports an "accuracy", and no model is left without a
-                    # metric because of a metric-calculation crash.
                     metrics = _compute_metrics(y_test, y_pred, task)
                     if task == "classification" and hasattr(best_model, "predict_proba"):
                         try:
@@ -1718,17 +1894,10 @@ async def run_training_workflow(
                     result = {
                         "name": name, "algorithm": name, "status": "success",
                         "metrics": metrics, "cv_score": round(cv_score, 4),
-                        # "training_time" is the canonical name used by the rest of
-                        # the platform; "time" stays as an alias so existing
-                        # consumers of this stream keep working.
                         "training_time": mtime, "time": mtime,
                         "best_params": getattr(best_model, "get_params", lambda: {})(),
                     }
                     all_results.append(result)
-                    # Keep the fitted estimator so the winner can be persisted.
-                    # Previously this endpoint trained models and threw them
-                    # away, so a model trained from the UI never reached disk and
-                    # could never reappear after signing in again.
                     fitted_models[name] = {
                         "model": best_model,
                         "params": result["best_params"],
@@ -1750,8 +1919,6 @@ async def run_training_workflow(
                     detail = f"{type(e).__name__}: {e}"
                     log(f"Error training {name}: {detail}")
                     log(traceback.format_exc().strip())
-                    # Keep the row so the failure is visible per algorithm, but
-                    # with no metrics so it can never be mistaken for a score.
                     all_results.append({
                         "name": name, "algorithm": name, "status": "error", "error": detail,
                         "metrics": None, "cv_score": None,
@@ -1769,11 +1936,6 @@ async def run_training_workflow(
                     f"No models trained successfully ({len(failed)} of {len(all_results)} failed). {detail}"
                 )
 
-            # Rank only on metrics that were actually measured, using the metric
-            # that matches the task: accuracy for classification, R² for
-            # regression. Previously every row fell back to 0, so max() just
-            # returned the first candidate and crowned Ridge "Best" with no
-            # numbers behind it.
             rank_metric = "accuracy" if task == "classification" else "r2"
             scored = [r for r in succeeded if r["metrics"].get(rank_metric) is not None]
             if not scored:
@@ -1787,12 +1949,10 @@ async def run_training_workflow(
                 log(f"{len(failed)} algorithm(s) failed: "
                     + ", ".join(f"{r['name']} ({r.get('error', '')})" for r in failed))
 
-            # Persist the winning pipeline to disk and attach it to the training
-            # account, so the model is still there on the next sign-in.
             saved_model_name = None
             try:
                 saved_model_name = _persist_trained_model(
-                    db=db,
+                    db=bg_db,
                     model_name_prefix=os.path.splitext(os.path.basename(file_name))[0],
                     best=best,
                     fitted=fitted_models.get(best["name"], {}),
@@ -1800,8 +1960,8 @@ async def run_training_workflow(
                     task=task,
                     dataset_name=file_name,
                     target_column=target_column,
-                    X=X, y=y, X_test=X_test, y_test=y_test,
-                    user_id=current_user.get("id"),
+                    X=X_train, y=y_train, X_test=X_test, y_test=y_test,
+                    user_id=user_id,
                 )
                 log(f"Saved model: {saved_model_name}")
             except Exception as save_err:
@@ -1820,7 +1980,24 @@ async def run_training_workflow(
             print("TRAINING API RESPONSE:", json.dumps(_json_safe(training_response), default=str), flush=True)
             _update_progress(job_id, training_response)
 
-            best_model_name = f"{file_name.split('.')[0]}_{best['name']}"
+            # Update persistent TrainingRun
+            update_training_run(bg_db, job_id, {
+                "status": "completed",
+                "progress": 100.0,
+                "current_step": "complete",
+                "message": f"Best model: {best['name']} ({rank_metric}={best['metrics'][rank_metric]})",
+                "best_model_name": best["name"],
+                "best_score": best["metrics"].get(rank_metric),
+                "rank_metric": rank_metric,
+                "evaluation_metrics": best["metrics"],
+                "all_results": all_results,
+                "logs": logs,
+                "duration_seconds": elapsed,
+                "end_time": datetime.now(timezone.utc),
+                "model_artifact_path": saved_model_name,
+            })
+
+            # Also maintain legacy Experiment record for compatibility
             exp_data = {
                 "name": f"{file_name.split('.')[0]}-{best['name']}",
                 "model": best["name"], "task_type": task,
@@ -1828,22 +2005,68 @@ async def run_training_workflow(
                 "dataset": file_name, "target": target_column,
                 "training_time": best.get("training_time"), "total_time": elapsed,
                 "status": "success", "run_at": datetime.now(timezone.utc),
-                "user_id": current_user.get("id"), "project_id": project_id,
+                "user_id": user_id, "project_id": project_id,
             }
-            exp = create_experiment(db, exp_data)
-            log_audit(db, current_user.get("name", "User"), "training.completed",
+            exp = create_experiment(bg_db, exp_data)
+            log_audit(bg_db, current_user.get("name", "User"), "training.completed",
                       f"{file_name} -> {best['name']}", "experiment", exp.id)
         except Exception as e:
             import traceback
-            detail = f"{type(e).__name__}: {e}"
-            print(f"TRAINING API RESPONSE (failed): {detail}", flush=True)
+            error_msg = str(e)
+            exc_type = type(e).__name__
+            remedy_suggestions = []
+
+            if "Unknown algorithm" in error_msg:
+                error_type = "AlgorithmRegistryError"
+                remedy_suggestions.append("Check algorithm name against supported classifiers and regressors.")
+                remedy_suggestions.append("Make sure optional dependencies (catboost, xgboost, lightgbm) are installed in the backend.")
+            elif "Target column" in error_msg or "variance" in error_msg.lower():
+                error_type = "TargetValidationError"
+                remedy_suggestions.append("Select a target column with variation in its values.")
+                remedy_suggestions.append("Verify column name spelling against dataset header.")
+            elif "smallest class" in error_msg.lower() or "stratified" in error_msg.lower():
+                error_type = "StratificationError"
+                remedy_suggestions.append("Classification requires at least 2 samples per class for stratified splitting.")
+                remedy_suggestions.append("Consider switching to Regression or filtering rare single-instance categories.")
+            elif "continuous numeric" in error_msg.lower():
+                error_type = "TaskTypeMismatchError"
+                remedy_suggestions.append("Switch task type to Regression for continuous target values.")
+            else:
+                error_type = exc_type
+                remedy_suggestions.append("Review dataset columns, missing values, and data types.")
+
+            diagnostic_details = {
+                "error_type": error_type,
+                "exception_class": exc_type,
+                "error_message": error_msg,
+                "remedy_suggestions": remedy_suggestions,
+                "stack_trace": traceback.format_exc()[-1000:],
+            }
+
+            print(f"TRAINING API RESPONSE (failed): {error_msg}", flush=True)
             traceback.print_exc()
+
             _update_progress(job_id, {
-                "status": "failed", "current_step": "failed", "message": detail,
-                "error": detail, "logs": logs[-50:],
+                "status": "failed", "current_step": "failed", "message": error_msg,
+                "error": error_msg, "error_type": error_type, "error_details": diagnostic_details,
+                "logs": logs[-50:],
                 "all_results": locals().get("all_results", []),
             })
-            log(f"Training failed: {detail}")
+            log(f"Training failed: {error_msg}")
+
+            update_training_run(bg_db, job_id, {
+                "status": "failed",
+                "progress": 100.0,
+                "current_step": "failed",
+                "message": error_msg,
+                "error_type": error_type,
+                "error_details": diagnostic_details,
+                "logs": logs,
+                "duration_seconds": round(time.time() - start, 2),
+                "end_time": datetime.now(timezone.utc),
+            })
+        finally:
+            bg_db.close()
 
     background_tasks.add_task(_run)
     return {"job_id": job_id, "status": "queued", "message": "Training started"}
@@ -3751,6 +3974,7 @@ def admin_toggle_user(user_id: str, db: Session = Depends(get_db), current_user:
 def admin_projects(db: Session = Depends(get_db), offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=500), current_user: dict = Depends(get_current_user)):
     require_admin(current_user)
     from crud import list_projects
+    from models import Experiment, Dataset, ModelRegistry
     projects = list_projects(db)
     result = []
     for p in projects:

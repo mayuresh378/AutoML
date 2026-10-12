@@ -66,7 +66,87 @@ export interface TrainingProgress {
 
 export interface AlgorithmInfo {
   name: string;
+  label?: string;
+  desc?: string;
   available: boolean;
+  default_selected?: boolean;
+}
+
+export interface DatasetRecommendation {
+  file_name: string;
+  total_rows: number;
+  total_columns: number;
+  target_column: string;
+  target_reason: string;
+  available_columns: string[];
+  problem_type: TaskType;
+  problem_reason: string;
+  is_ambiguous: boolean;
+  quality_issues: Array<{
+    type: string;
+    severity: 'low' | 'medium' | 'high';
+    title: string;
+    description: string;
+  }>;
+  cleaning_suggestions: Array<{
+    stage: string;
+    action: string;
+    details: string;
+  }>;
+  numeric_feature_count: number;
+  categorical_feature_count: number;
+  class_distribution?: Record<string, number> | null;
+  recommended_algorithms: Array<{
+    name: string;
+    label: string;
+    reason: string;
+    priority: 'high' | 'medium' | 'low';
+  }>;
+  recommended_metrics: Array<{
+    name: string;
+    label: string;
+    reason: string;
+  }>;
+  complexity: string;
+  estimated_duration: string;
+  complexity_warning?: string | null;
+}
+
+export interface TrainingRunSummary {
+  id: string;
+  name: string;
+  dataset_name: string;
+  target_column: string;
+  task_type: TaskType;
+  selected_algorithms?: string[];
+  hyperparameters_config?: Record<string, any>;
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+  progress: number;
+  message?: string;
+  duration_seconds?: number;
+  best_model_name?: string;
+  best_score?: number;
+  rank_metric?: string;
+  evaluation_metrics?: Record<string, number>;
+  error_type?: string;
+  created_at?: string;
+  end_time?: string;
+}
+
+export interface TrainingRunDetail extends TrainingRunSummary {
+  current_step?: string;
+  start_time?: string;
+  all_results?: AlgorithmResult[];
+  logs?: Array<{ time: number; message: string }>;
+  error_details?: {
+    error_type: string;
+    exception_class?: string;
+    error_message: string;
+    remedy_suggestions?: string[];
+    stack_trace?: string;
+  };
+  model_artifact_path?: string;
+  preprocessing_config?: Record<string, any>;
 }
 
 function num(value: unknown): number | null {
@@ -220,4 +300,44 @@ export const trainingService = {
   queue: () => http.get<{ jobs: TrainingJob[] }>('/training/queue'),
 
   algorithms: () => http.get<{ classification: AlgorithmInfo[]; regression: AlgorithmInfo[]; optional: Record<string, boolean> }>('/training/algorithms'),
+
+  recommendations: (fileName: string, targetColumn?: string) => {
+    const form = new FormData();
+    form.append('file_name', fileName);
+    if (targetColumn) form.append('target_column', targetColumn);
+    return http.post<DatasetRecommendation>('/training/recommendations', form);
+  },
+
+  history: (params?: {
+    dataset_name?: string;
+    algorithm?: string;
+    task_type?: string;
+    status?: string;
+    search?: string;
+    sort_by?: string;
+    order?: string;
+    limit?: number;
+    offset?: number;
+  }) => {
+    const query = new URLSearchParams();
+    if (params?.dataset_name) query.set('dataset_name', params.dataset_name);
+    if (params?.algorithm) query.set('algorithm', params.algorithm);
+    if (params?.task_type) query.set('task_type', params.task_type);
+    if (params?.status) query.set('status', params.status);
+    if (params?.search) query.set('search', params.search);
+    if (params?.sort_by) query.set('sort_by', params.sort_by);
+    if (params?.order) query.set('order', params.order);
+    if (params?.limit != null) query.set('limit', String(params.limit));
+    if (params?.offset != null) query.set('offset', String(params.offset));
+    const qs = query.toString();
+    return http.get<{ runs: TrainingRunSummary[]; total: number; limit: number; offset: number }>(
+      `/training/history${qs ? `?${qs}` : ''}`
+    );
+  },
+
+  getRun: (runId: string) => http.get<TrainingRunDetail>(`/training/history/${runId}`),
+
+  deleteRun: (runId: string) => http.delete<{ message: string; id: string }>(`/training/history/${runId}`),
+
+  retryRun: (runId: string) => http.post<{ job_id: string; status: string; message?: string }>(`/training/history/${runId}/retry`),
 };

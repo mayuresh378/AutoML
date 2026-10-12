@@ -11,7 +11,7 @@ from jose import jwt
 from models import (User, Team, TeamMember, ApiKey, Experiment, ModelRegistry,
                     PredictionLog, Webhook, AuditLog,
                     Project, MarketplaceItem, Dataset, DatasetShare, Notification, ActivityLog,
-                    DatasetCleanStep, CleaningHistory, SavedQuery, QueryHistory, EvaluationRecord)
+                    DatasetCleanStep, CleaningHistory, SavedQuery, QueryHistory, EvaluationRecord, TrainingRun)
 
 from config import settings
 
@@ -972,4 +972,116 @@ def get_evaluation_record(db: Session, eval_id: str, user_id: str = None) -> Opt
     if user_id is not None:
         q = q.filter(EvaluationRecord.user_id == user_id)
     return q.first()
+
+
+# ─── Training Runs ──────────────────────────────────────────────────
+
+TRAINING_RUN_SORT_COLUMNS = {
+    "created_at": TrainingRun.created_at,
+    "start_time": TrainingRun.start_time,
+    "duration_seconds": TrainingRun.duration_seconds,
+    "best_score": TrainingRun.best_score,
+    "dataset_name": TrainingRun.dataset_name,
+    "status": TrainingRun.status,
+}
+
+
+def create_training_run(db: Session, data: dict) -> TrainingRun:
+    payload = {**data}
+    run_id = payload.pop("id", None) or _uid()
+    for key in ("selected_algorithms", "hyperparameters_config", "preprocessing_config", "evaluation_metrics", "all_results", "logs", "error_details"):
+        if key in payload and payload[key] is not None:
+            payload[key] = _json_safe(payload[key])
+    run = TrainingRun(id=run_id, created_at=_now(), **payload)
+    db.add(run)
+    db.commit()
+    db.refresh(run)
+    return run
+
+
+def update_training_run(db: Session, run_id: str, data: dict) -> Optional[TrainingRun]:
+    run = db.query(TrainingRun).filter(TrainingRun.id == run_id).first()
+    if not run:
+        return None
+    for k, v in data.items():
+        if hasattr(run, k):
+            if k in ("selected_algorithms", "hyperparameters_config", "preprocessing_config", "evaluation_metrics", "all_results", "logs", "error_details") and v is not None:
+                v = _json_safe(v)
+            setattr(run, k, v)
+    run.updated_at = _now()
+    db.commit()
+    db.refresh(run)
+    return run
+
+
+def get_training_run(db: Session, run_id: str, user_id: str = None) -> Optional[TrainingRun]:
+    q = db.query(TrainingRun).filter(TrainingRun.id == run_id)
+    if user_id is not None:
+        q = q.filter((TrainingRun.user_id == user_id) | (TrainingRun.user_id == None))
+    return q.first()
+
+
+def list_training_runs(
+    db: Session,
+    user_id: str = None,
+    dataset_name: str = None,
+    algorithm: str = None,
+    task_type: str = None,
+    status: str = None,
+    search: str = None,
+    sort_by: str = "created_at",
+    order: str = "desc",
+    limit: int = 50,
+    offset: int = 0,
+) -> tuple[list[TrainingRun], int]:
+    q = db.query(TrainingRun)
+    if user_id is not None:
+        q = q.filter((TrainingRun.user_id == user_id) | (TrainingRun.user_id == None))
+
+    if dataset_name and dataset_name.strip() and dataset_name != "all":
+        q = q.filter(TrainingRun.dataset_name == dataset_name.strip())
+
+    if task_type and task_type.strip() and task_type != "all":
+        q = q.filter(TrainingRun.task_type == task_type.strip())
+
+    if status and status.strip() and status != "all":
+        q = q.filter(TrainingRun.status == status.strip())
+
+    if algorithm and algorithm.strip() and algorithm != "all":
+        pattern = f"%{algorithm.strip().lower()}%"
+        q = q.filter(
+            func.lower(func.coalesce(TrainingRun.best_model_name, "")).like(pattern)
+        )
+
+    if search and search.strip():
+        pattern = f"%{search.strip().lower()}%"
+        q = q.filter(
+            func.lower(func.coalesce(TrainingRun.name, "")).like(pattern)
+            | func.lower(func.coalesce(TrainingRun.dataset_name, "")).like(pattern)
+            | func.lower(func.coalesce(TrainingRun.target_column, "")).like(pattern)
+            | func.lower(func.coalesce(TrainingRun.best_model_name, "")).like(pattern)
+            | func.lower(func.coalesce(TrainingRun.id, "")).like(pattern)
+        )
+
+    total = q.count()
+
+    column = TRAINING_RUN_SORT_COLUMNS.get(sort_by, TrainingRun.created_at)
+    if order == "asc":
+        q = q.order_by(column.asc().nulls_last())
+    else:
+        q = q.order_by(column.desc().nulls_last())
+
+    return q.offset(offset).limit(limit).all(), total
+
+
+def delete_training_run(db: Session, run_id: str, user_id: str = None) -> bool:
+    q = db.query(TrainingRun).filter(TrainingRun.id == run_id)
+    if user_id is not None:
+        q = q.filter((TrainingRun.user_id == user_id) | (TrainingRun.user_id == None))
+    run = q.first()
+    if run:
+        db.delete(run)
+        db.commit()
+        return True
+    return False
 
