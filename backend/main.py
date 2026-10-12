@@ -2402,7 +2402,15 @@ def get_evaluation_endpoint(
     rec = get_evaluation_record(db, eval_id, user_id=uid)
     if not rec:
         raise HTTPException(status_code=404, detail="Evaluation not found")
-    stored = (rec.results_summary or {}).get("result")
+    # Two storage shapes exist: the model-based `/evaluate` path nests the full
+    # payload under `results_summary["result"]`, while the dataset-driven path
+    # stores the payload in `results_summary` directly. Always expose the full
+    # evaluation under `result` so a stored run previews without the client
+    # having to know which shape it is.
+    summary = rec.results_summary or {}
+    stored = summary.get("result") if isinstance(summary, dict) else None
+    if stored is None:
+        stored = summary or None
     return {
         "id": rec.id,
         "model_id": rec.model_id,

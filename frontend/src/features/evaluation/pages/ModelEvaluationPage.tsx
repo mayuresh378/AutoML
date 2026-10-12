@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { ClipboardCheck, AlertCircle, Layers, Table2, BarChart3, RefreshCw } from 'lucide-react';
 import { useModels, useDatasets } from '../../../hooks/useApi';
@@ -52,6 +52,9 @@ export function ModelEvaluationPage() {
   const [compareSelection, setCompareSelection] = useState<string[]>([]);
   const [tab, setTab] = useState<TabId>('overview');
   const [viewingHistoryId, setViewingHistoryId] = useState<string | null>(null);
+  // Results render above the history table, so selecting a stored run must
+  // scroll the preview into view or the click appears to do nothing.
+  const resultsRef = useRef<HTMLDivElement | null>(null);
 
   // History list state
   const [historySearch, setHistorySearch] = useState('');
@@ -78,9 +81,10 @@ export function ModelEvaluationPage() {
   const datasets = useMemo(() => datasetsQuery.data ?? [], [datasetsQuery.data]);
 
   const liveResult = runDatasetEvaluation.data;
-  // Verified against the live API: GET /evaluation/{id} returns the payload in
-  // `results_summary`, and `result` is null. The page previously read only
-  // `.result`, so opening any stored evaluation rendered nothing.
+  // A stored run's payload can arrive under `result` (the backend now
+  // normalises this) or only under `results_summary` for older records, so read
+  // whichever is present. Reading only `.result` is what previously made stored
+  // evaluations render nothing.
   const detailPayload = historyDetail.data as
     | {
         result?: ComprehensiveEvaluation | null;
@@ -90,6 +94,14 @@ export function ModelEvaluationPage() {
   const storedResult: ComprehensiveEvaluation | null =
     detailPayload?.result ?? detailPayload?.results_summary ?? null;
   const result: ComprehensiveEvaluation | null = (viewingHistoryId ? storedResult : liveResult) ?? null;
+
+  // Scroll to the preview once the stored run has loaded. Keyed on the payload
+  // identity so switching between history rows re-scrolls.
+  useEffect(() => {
+    if (viewingHistoryId && storedResult) {
+      resultsRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+    }
+  }, [viewingHistoryId, storedResult]);
 
   const blockers = useMemo(() => {
     const out: string[] = [];
@@ -301,6 +313,7 @@ const isInitialLoad = datasetsQuery.isLoading;
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
+          ref={resultsRef}
           className={styles.results}
         >
           <div className={styles.resultHeader}>
@@ -427,7 +440,7 @@ const isInitialLoad = datasetsQuery.isLoading;
         </motion.div>
       )}
 
-      {!result && !runDatasetEvaluation.isPending && !resourceError && tab !== 'compare' && (
+      {!result && !runDatasetEvaluation.isPending && !resourceError && tab !== 'compare' && !(viewingHistoryId && historyDetail.isLoading) && (
         <EmptyState
           title="No evaluation to show yet"
           description="Upload or choose a dataset above, then click 'Evaluate Model'. The system will automatically analyze your data, train baseline models, and compute evaluation metrics."

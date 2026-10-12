@@ -1715,7 +1715,11 @@ def evaluate_dataset_end_to_end(
     eval_result["insights"] = insights
     eval_result["ai_insights"] = generate_ai_insights(eval_result)
 
-    # Store record if DB session provided
+    # Store record if DB session provided.
+    # IMPORTANT: persist the NaN/Inf-sanitised payload, not the raw one. The
+    # database column is JSON (Postgres), which rejects the bare `NaN` token,
+    # so storing `eval_result` directly made the whole INSERT fail — and with
+    # it the entire evaluation request — leaving history empty.
     if db:
         from models import EvaluationRecord
         db_record = EvaluationRecord(
@@ -1724,8 +1728,8 @@ def evaluate_dataset_end_to_end(
             dataset_name=file_name,
             target_column=target_column,
             task_type=task_type,
-            metrics=metrics,
-            results_summary=eval_result,
+            metrics=_sanitize_nan(metrics),
+            results_summary=_sanitize_nan(eval_result),
             ai_insights=eval_result["ai_insights"],
         )
         db.add(db_record)
