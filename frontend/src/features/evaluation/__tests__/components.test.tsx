@@ -5,6 +5,7 @@ import { ConfusionMatrixChart } from '../components/ConfusionMatrixChart';
 import { FeatureImportanceChart } from '../components/FeatureImportanceChart';
 import { InsightsPanel } from '../components/InsightsPanel';
 import { PredictionSamplesTable } from '../components/PredictionSamplesTable';
+import { ModelComparisonTable } from '../components/ModelComparisonTable';
 import type { PredictionSample } from '../services/evaluation.service';
 
 // Recharts measures its container, which jsdom reports as 0x0. The charts only
@@ -84,6 +85,42 @@ describe('MetricGrid', () => {
     );
     expect(screen.getByText('0.8100')).toBeInTheDocument();
     expect(screen.queryByText('Accuracy')).not.toBeInTheDocument();
+  });
+});
+
+describe('ModelComparisonTable', () => {
+  it('renders a null roc_auc as N/A instead of crashing', () => {
+    // The backend sends roc_auc: null when a classifier cannot produce
+    // probabilities (or roc_auc_score raises). Regression test for the
+    // "Cannot read properties of null (reading 'toFixed')" crash.
+    render(
+      <ModelComparisonTable
+        taskType="classification"
+        bestModelName="LogisticRegression"
+        models={[
+          { model_name: 'LogisticRegression', accuracy: 0.94, precision: 0.93, recall: 0.92, f1: 0.92, roc_auc: 0.97 },
+          { model_name: 'DecisionTree', accuracy: 0.9, precision: 0.89, recall: 0.88, f1: 0.88, roc_auc: null },
+        ]}
+      />,
+    );
+    expect(screen.getByText('0.9700')).toBeInTheDocument();
+    expect(screen.getByText('N/A')).toBeInTheDocument();
+    expect(screen.getAllByText('DecisionTree').length).toBeGreaterThan(0);
+  });
+
+  it('renders regression metrics and tolerates a null metric', () => {
+    render(
+      <ModelComparisonTable
+        taskType="regression"
+        bestModelName="RidgeRegression"
+        models={[
+          { model_name: 'RidgeRegression', r2: 0.81, mae: 3.1, mse: 12.4, rmse: 3.52 },
+          { model_name: 'DecisionTree', r2: null, mae: null, mse: null, rmse: null },
+        ]}
+      />,
+    );
+    expect(screen.getByText('0.8100')).toBeInTheDocument();
+    expect(screen.getAllByText('N/A').length).toBeGreaterThanOrEqual(4);
   });
 });
 

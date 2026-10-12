@@ -4,15 +4,24 @@ import styles from './ModelComparisonTable.module.css';
 
 interface ModelComparisonItem {
   model_name: string;
-  accuracy?: number;
-  precision?: number;
-  recall?: number;
-  f1?: number;
-  roc_auc?: number;
-  mae?: number;
-  mse?: number;
-  rmse?: number;
-  r2?: number;
+  accuracy?: number | null;
+  precision?: number | null;
+  recall?: number | null;
+  f1?: number | null;
+  roc_auc?: number | null;
+  mae?: number | null;
+  mse?: number | null;
+  rmse?: number | null;
+  r2?: number | null;
+}
+
+/**
+ * The backend sends a metric as `null` (not absent) when it could not be
+ * computed — e.g. `roc_auc` for a classifier without `predict_proba`. Render
+ * those as `N/A` instead of crashing on `null.toFixed()`.
+ */
+function fmtMetric(value: number | null | undefined): string {
+  return typeof value === 'number' && Number.isFinite(value) ? value.toFixed(4) : 'N/A';
 }
 
 interface Props {
@@ -72,20 +81,18 @@ export function ModelComparisonTable({ models = [], bestModelName, taskType }: P
 
                   {isClassification ? (
                     <>
-                      <td className={styles.numCell}>{(m.accuracy ?? 0).toFixed(4)}</td>
-                      <td className={styles.numCell}>{(m.precision ?? 0).toFixed(4)}</td>
-                      <td className={styles.numCell}>{(m.recall ?? 0).toFixed(4)}</td>
-                      <td className={styles.numCell}>{(m.f1 ?? 0).toFixed(4)}</td>
-                      <td className={styles.numCell}>
-                        {m.roc_auc !== undefined ? m.roc_auc.toFixed(4) : 'N/A'}
-                      </td>
+                      <td className={styles.numCell}>{fmtMetric(m.accuracy)}</td>
+                      <td className={styles.numCell}>{fmtMetric(m.precision)}</td>
+                      <td className={styles.numCell}>{fmtMetric(m.recall)}</td>
+                      <td className={styles.numCell}>{fmtMetric(m.f1)}</td>
+                      <td className={styles.numCell}>{fmtMetric(m.roc_auc)}</td>
                     </>
                   ) : (
                     <>
-                      <td className={styles.numCell}>{(m.r2 ?? 0).toFixed(4)}</td>
-                      <td className={styles.numCell}>{(m.mae ?? 0).toFixed(4)}</td>
-                      <td className={styles.numCell}>{(m.mse ?? 0).toFixed(4)}</td>
-                      <td className={styles.numCell}>{(m.rmse ?? 0).toFixed(4)}</td>
+                      <td className={styles.numCell}>{fmtMetric(m.r2)}</td>
+                      <td className={styles.numCell}>{fmtMetric(m.mae)}</td>
+                      <td className={styles.numCell}>{fmtMetric(m.mse)}</td>
+                      <td className={styles.numCell}>{fmtMetric(m.rmse)}</td>
                     </>
                   )}
 
