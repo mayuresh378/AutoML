@@ -56,6 +56,7 @@ from crud import (
     list_models as list_model_registry_entries,
     create_evaluation_record, list_evaluation_records, get_evaluation_record, query_evaluation_records,
     create_training_run, update_training_run, get_training_run, list_training_runs, delete_training_run,
+    create_engine_run, update_engine_run, get_engine_run, list_engine_runs, delete_engine_run,
 )
 from api_responses import ok, error, created, deleted, paginated, TAGS_METADATA
 from fastapi.exceptions import RequestValidationError
@@ -3116,6 +3117,74 @@ def hpo_cancel(job_id: str, current_user: dict = Depends(get_current_user)):
 engine_progress_store: dict[str, dict] = {}
 engine_lock = threading.Lock()
 
+_ENGINE_RANK_METRICS = {
+    "classification": ["accuracy", "f1", "f1_score", "precision", "recall"],
+    "regression": ["r2", "r2_score", "adjusted_r2"],
+    "clustering": ["silhouette", "silhouette_score", "calinski_harabasz", "davies_bouldin"],
+    "time_series": ["rmse", "mae", "mape"],
+}
+
+
+def _engine_rank_and_score(task_type: str, metrics: dict | None):
+    """Pick a headline metric + score from a model's metrics for the history list."""
+    if not metrics:
+        return None, None
+    for key in _ENGINE_RANK_METRICS.get(task_type, ["score"]):
+        val = metrics.get(key)
+        if isinstance(val, (int, float)) and not isinstance(val, bool):
+            return key, float(val)
+    for key, val in metrics.items():
+        if isinstance(val, (int, float)) and not isinstance(val, bool):
+            return key, float(val)
+    return None, None
+
+
+def _finish_engine_run_success(run_id: str, task_type: str, result: dict, run_mode: str):
+    """Persist the results of a completed engine run so it can be viewed later."""
+    from database import SessionLocal
+    db = SessionLocal()
+    try:
+        results = result.get("results") or []
+        best_metrics = result.get("best_metrics")
+        rank_metric, best_score = _engine_rank_and_score(task_type, best_metrics or {})
+        update_engine_run(db, run_id, {
+            "status": "completed",
+            "progress": 100.0,
+            "message": f"Done — {result.get('successful')}/{result.get('total')} models",
+            "end_time": datetime.now(timezone.utc),
+            "duration_seconds": result.get("elapsed"),
+            "best_model_name": result.get("best_model"),
+            "best_score": best_score,
+            "rank_metric": rank_metric,
+            "best_metrics": best_metrics,
+            "all_results": results,
+            "report": result.get("report"),
+            "profile": result.get("profile"),
+            "recommendation": result.get("recommendation"),
+            "mode": result.get("mode", run_mode),
+        })
+    except Exception:
+        pass
+    finally:
+        db.close()
+
+
+def _finish_engine_run_failure(run_id: str, error: str):
+    """Mark an engine run as failed."""
+    from database import SessionLocal
+    db = SessionLocal()
+    try:
+        update_engine_run(db, run_id, {
+            "status": "failed",
+            "message": f"Failed: {error}",
+            "end_time": datetime.now(timezone.utc),
+            "error_details": {"error": error},
+        })
+    except Exception:
+        pass
+    finally:
+        db.close()
+
 @app.get("/api/v1/engine/models", tags=["Engine"], summary="List engine models")
 def engine_models():
     return get_all_models()
@@ -3187,6 +3256,33 @@ def engine_run(
     except Exception:
         validation_options = {}
 
+    # Persist an engine-run record up front so it shows in history immediately
+    # and can be reviewed even after a backend restart.
+    run_id = job_id
+    try:
+        create_engine_run(db, {
+            "id": run_id,
+            "job_id": job_id,
+            "name": f"{file_name.split('.')[0]}-{task_type}",
+            "user_id": current_user.get("id") if current_user else None,
+            "project_id": project_id,
+            "dataset_name": file_name,
+            "target_column": target_column or None,
+            "task_type": task_type,
+            "mode": run_mode,
+            "hpo_budget": budget,
+            "cv_folds": cv_folds,
+            "selected_algorithms": model_list,
+            "preprocessing_config": preprocess_options,
+            "validation_config": validation_options,
+            "status": "queued",
+            "progress": 0.0,
+            "message": "Job queued...",
+            "start_time": datetime.now(timezone.utc),
+        })
+    except Exception:
+        pass
+
     with engine_lock:
         engine_progress_store[job_id] = {
             "status": "queued", "current_model": None, "current": 0,
@@ -3211,6 +3307,14 @@ def engine_run(
                 engine_progress_store[job_id]["status"] = "running"
                 engine_progress_store[job_id]["message"] = "Starting training..."
 
+            try:
+                from database import SessionLocal
+                _sdb = SessionLocal()
+                update_engine_run(_sdb, run_id, {"status": "running", "progress": 1.0, "message": "Starting training..."})
+                _sdb.close()
+            except Exception:
+                pass
+
             if run_mode in ("auto", "advanced"):
                 result = run_intelligent_job(
                     file_name=file_name, target=target_column or None,
@@ -3228,18 +3332,9 @@ def engine_run(
                     preprocess_options=preprocess_options, validation=validation_options,
                 )
 
-            with engine_lock:
-                store = engine_progress_store[job_id]
-                store["status"] = "completed"
-                store["results"] = result["results"]
-                store["best_model"] = result["best_model"]
-                store["best_metrics"] = result.get("best_metrics")
-                store["elapsed"] = result["elapsed"]
-                store["message"] = f"Done — {result['successful']}/{result['total']} models"
-                store["profile"] = result.get("profile")
-                store["report"] = result.get("report")
-                store["mode"] = result.get("mode", run_mode)
-                store["timestamp"] = time.time()
+            # Persist results before the client can observe completion, so a
+            # history refresh triggered by the 'completed' event is consistent.
+            _finish_engine_run_success(run_id, task_type, result, run_mode)
 
             exp_list = []
             for r in result["results"]:
@@ -3273,11 +3368,23 @@ def engine_run(
                     pass
 
             with engine_lock:
-                engine_progress_store[job_id]["experiments"] = exp_list
+                store = engine_progress_store[job_id]
+                store["experiments"] = exp_list
+                store["status"] = "completed"
+                store["results"] = result["results"]
+                store["best_model"] = result["best_model"]
+                store["best_metrics"] = result.get("best_metrics")
+                store["elapsed"] = result["elapsed"]
+                store["message"] = f"Done — {result['successful']}/{result['total']} models"
+                store["profile"] = result.get("profile")
+                store["report"] = result.get("report")
+                store["mode"] = result.get("mode", run_mode)
+                store["timestamp"] = time.time()
 
             log_audit(db, current_user.get("name", "User"), "engine.completed",
                       f"{file_name} trained {len(exp_list)} models ({task_type})", "engine")
         except Exception as e:
+            _finish_engine_run_failure(run_id, str(e))
             with engine_lock:
                 engine_progress_store[job_id].update({"status": "failed", "error": str(e), "message": f"Failed: {e}", "timestamp": time.time()})
 
@@ -3285,6 +3392,108 @@ def engine_run(
     threading.Thread(target=_background_engine, daemon=True).start()
 
     return {"job_id": job_id, "status": "queued", "total": len(model_list)}
+
+
+@app.get("/api/v1/engine/history", tags=["Engine"], summary="List AutoML engine run history")
+def engine_history_api(
+    dataset_name: str = Query(None),
+    task_type: str = Query(None),
+    status: str = Query(None),
+    search: str = Query(None),
+    sort_by: str = Query("created_at"),
+    order: str = Query("desc"),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_optional_user),
+):
+    uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
+    runs, total = list_engine_runs(
+        db=db, user_id=uid, dataset_name=dataset_name, task_type=task_type,
+        status=status, search=search, sort_by=sort_by, order=order,
+        limit=limit, offset=offset,
+    )
+    items = [{
+        "id": r.id,
+        "name": r.name,
+        "dataset_name": r.dataset_name,
+        "target_column": r.target_column,
+        "task_type": r.task_type,
+        "mode": r.mode,
+        "status": r.status,
+        "message": r.message,
+        "duration_seconds": r.duration_seconds,
+        "best_model_name": r.best_model_name,
+        "best_score": r.best_score,
+        "rank_metric": r.rank_metric,
+        "selected_algorithms": r.selected_algorithms,
+        "result_count": len(r.all_results) if isinstance(r.all_results, list) else 0,
+        "created_at": r.created_at.isoformat() if r.created_at else None,
+        "end_time": r.end_time.isoformat() if r.end_time else None,
+    } for r in runs]
+    return {"runs": items, "total": total, "limit": limit, "offset": offset}
+
+
+@app.get("/api/v1/engine/history/{run_id}", tags=["Engine"], summary="Get AutoML engine run details")
+def engine_history_run_api(
+    run_id: str,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_optional_user),
+):
+    uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
+    run = get_engine_run(db, run_id, user_id=uid)
+    if not run:
+        raise HTTPException(status_code=404, detail="Engine run not found")
+    results = run.all_results or []
+    progress = {
+        "status": run.status,
+        "task_type": run.task_type,
+        "message": run.message,
+        "results": results,
+        "best_model": run.best_model_name,
+        "best_metrics": run.best_metrics,
+        "elapsed": run.duration_seconds,
+        "mode": run.mode,
+        "profile": run.profile,
+        "report": run.report,
+        "recommendation": run.recommendation,
+        "timestamp": run.created_at.timestamp() if run.created_at else None,
+        "total": len(results),
+    }
+    return {
+        "id": run.id,
+        "name": run.name,
+        "dataset_name": run.dataset_name,
+        "target_column": run.target_column,
+        "task_type": run.task_type,
+        "mode": run.mode,
+        "status": run.status,
+        "message": run.message,
+        "selected_algorithms": run.selected_algorithms,
+        "preprocessing_config": run.preprocessing_config,
+        "validation_config": run.validation_config,
+        "best_model_name": run.best_model_name,
+        "best_score": run.best_score,
+        "rank_metric": run.rank_metric,
+        "best_metrics": run.best_metrics,
+        "duration_seconds": run.duration_seconds,
+        "created_at": run.created_at.isoformat() if run.created_at else None,
+        "end_time": run.end_time.isoformat() if run.end_time else None,
+        "progress": progress,
+    }
+
+
+@app.delete("/api/v1/engine/history/{run_id}", tags=["Engine"], summary="Delete AutoML engine run")
+def delete_engine_history_run_api(
+    run_id: str,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_optional_user),
+):
+    uid = current_user.get("id") if current_user and current_user.get("id") != "anonymous" else None
+    if not delete_engine_run(db, run_id, user_id=uid):
+        raise HTTPException(status_code=404, detail="Engine run not found")
+    return {"message": "Engine run deleted", "id": run_id}
+
 
 @app.get("/api/v1/engine/{job_id}/progress", tags=["Engine"], summary="Engine progress SSE")
 def engine_progress(job_id: str):

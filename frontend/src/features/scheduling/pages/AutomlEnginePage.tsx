@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
-import { engineService, EngineProgress, EngineDataset, EngineModelsResponse, EngineDatasetProfile, EngineRecommendation } from '../../../services/engine.service';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { engineService, EngineProgress, EngineDataset, EngineModelsResponse, EngineDatasetProfile, EngineRecommendation, EngineRunSummary } from '../../../services/engine.service';
 import { datasetsService } from '../../../services/datasets.service';
 import type { DatasetProfile } from '../../../types/api';
 import { EngineHero } from './components/EngineHero';
@@ -15,6 +15,7 @@ import { RunSection } from './components/RunSection';
 import { TrainingScreen } from './components/TrainingScreen';
 import { ResultsPanel } from './components/ResultsPanel';
 import { ReportPanel } from './components/ReportPanel';
+import { HistorySection } from './components/HistorySection';
 import styles from './AutoMLEnginePage.module.css';
 
 const STEPS = [
@@ -25,6 +26,7 @@ const STEPS = [
   { id: 'preprocess', label: 'Preprocessing' },
   { id: 'algorithms', label: 'Algorithms' },
   { id: 'validation', label: 'Validation' },
+  { id: 'history', label: 'History' },
 ] as const;
 
 function getTaskAlgorithms(models: EngineModelsResponse | null, taskType: string): string[] {
@@ -76,12 +78,34 @@ export default function AutoMLEnginePage() {
   const [activeSection, setActiveSection] = useState('dataset');
   const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const runRef = useRef<HTMLDivElement | null>(null);
+  const resultsRef = useRef<HTMLDivElement | null>(null);
   const unsubRef = useRef<(() => void) | null>(null);
+
+  const [history, setHistory] = useState<EngineRunSummary[]>([]);
+  const [historyTotal, setHistoryTotal] = useState(0);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null);
+
+  const loadHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    setHistoryError(null);
+    try {
+      const res = await engineService.history({ limit: 50 });
+      setHistory(res.runs || []);
+      setHistoryTotal(res.total || 0);
+    } catch (err: any) {
+      setHistoryError(err?.message || 'Failed to load run history');
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     engineService.models().then(setModels).catch(() => {});
     engineService.datasets().then(r => setDatasets(r.datasets || [])).catch(() => {});
-  }, []);
+    loadHistory();
+  }, [loadHistory]);
 
   useEffect(() => {
     if (models) setSelectedAlgos(getTaskAlgorithms(models, taskType));
@@ -169,6 +193,7 @@ export default function AutoMLEnginePage() {
       setIsRunning(true);
       setProgress(null);
       setExpandedModels(new Set());
+      setSelectedHistoryId(null);
       requestAnimationFrame(() => {
         runRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       });
@@ -192,11 +217,46 @@ export default function AutoMLEnginePage() {
         if (data.status === 'completed' || data.status === 'failed') {
           setIsRunning(false);
           if (unsubRef.current) { unsubRef.current(); unsubRef.current = null; }
+          setSelectedHistoryId(null);
+          loadHistory();
         }
       });
     } catch (err: any) {
       setIsRunning(false);
       setProgress({ status: 'failed', error: err.message || 'Failed', message: err.message });
+    }
+  };
+
+  const openHistoryRun = async (run: EngineRunSummary) => {
+    try {
+      const detail = await engineService.historyRun(run.id);
+      setSelectedHistoryId(run.id);
+      setIsRunning(false);
+      if (unsubRef.current) { unsubRef.current(); unsubRef.current = null; }
+      setTaskType(detail.task_type);
+      setExpandedModels(new Set());
+      setProgress({ ...detail.progress, status: detail.progress?.status || 'completed' });
+      requestAnimationFrame(() => {
+        resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    } catch {
+      // Leave current view untouched if the run cannot be loaded.
+    }
+  };
+
+  const deleteHistoryRun = async (run: EngineRunSummary) => {
+    const label = run.name || run.dataset_name;
+    if (!window.confirm(`Delete run "${label}"? This cannot be undone.`)) return;
+    try {
+      await engineService.deleteHistoryRun(run.id);
+      if (selectedHistoryId === run.id) {
+        setSelectedHistoryId(null);
+        if (!isRunning) setProgress(null);
+      }
+      loadHistory();
+    } catch {
+      // Ignore — the list refresh below will show the true state.
+      loadHistory();
     }
   };
 
@@ -328,20 +388,39 @@ export default function AutoMLEnginePage() {
           />
         </div>
 
+        <div
+          ref={(el) => { sectionRefs.current['history'] = el; }}
+          data-section="history"
+          className={styles.section}
+        >
+          <HistorySection
+            runs={history}
+            total={historyTotal}
+            loading={historyLoading}
+            error={historyError}
+            selectedId={selectedHistoryId}
+            onSelect={openHistoryRun}
+            onRefresh={loadHistory}
+            onDelete={deleteHistoryRun}
+          />
+        </div>
+
         {(isRunning || progress) && (
           <div ref={runRef}>
             <TrainingScreen progress={progress} isRunning={isRunning} />
           </div>
         )}
 
-        <ResultsPanel
-          progress={progress}
-          taskType={taskType}
-          expandedModels={expandedModels}
-          onToggleExpand={(name: string) => setExpandedModels(p => { const n = new Set(p); n.has(name) ? n.delete(name) : n.add(name); return n; })}
-        />
+        <div ref={resultsRef} className={styles.results}>
+          <ResultsPanel
+            progress={progress}
+            taskType={taskType}
+            expandedModels={expandedModels}
+            onToggleExpand={(name: string) => setExpandedModels(p => { const n = new Set(p); n.has(name) ? n.delete(name) : n.add(name); return n; })}
+          />
 
-        <ReportPanel report={progress?.report || null} />
+          <ReportPanel report={progress?.report || null} />
+        </div>
       </div>
     </div>
   );

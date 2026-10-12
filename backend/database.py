@@ -175,7 +175,7 @@ def init_db():
                         Webhook, AuditLog,
                         Project, MarketplaceItem, Dataset, DatasetShare, Notification,
                         UserSession, PredictionLog, ActivityLog,
-                        DatasetCleanStep, CleaningHistory, TrainingRun)
+                        DatasetCleanStep, CleaningHistory, TrainingRun, EngineRun)
     for attempt in range(30):
         try:
             Base.metadata.create_all(bind=engine)

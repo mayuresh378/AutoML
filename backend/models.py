@@ -202,6 +202,50 @@ class TrainingRun(Base):
     project = relationship("Project", back_populates="training_runs")
 
 
+class EngineRun(Base):
+    """Persisted AutoML Engine run so past results can be reviewed at any time."""
+
+    __tablename__ = "engine_runs"
+
+    id = Column(String, primary_key=True, default=_uuid)
+    job_id = Column(String, nullable=True, index=True)
+    name = Column(String, nullable=True)
+    user_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
+    project_id = Column(String, ForeignKey("projects.id"), nullable=True, index=True)
+    dataset_name = Column(String, nullable=False, index=True)
+    target_column = Column(String, nullable=True)
+    task_type = Column(String, nullable=False, default="classification")
+    mode = Column(String, default="auto")
+    hpo_budget = Column(Integer, nullable=True)
+    cv_folds = Column(Integer, nullable=True)
+
+    selected_algorithms = Column(JSON, nullable=True)
+    preprocessing_config = Column(JSON, nullable=True)
+    validation_config = Column(JSON, nullable=True)
+
+    status = Column(String, nullable=False, default="running", index=True)  # running, completed, failed
+    progress = Column(Float, default=0.0)
+    message = Column(String, nullable=True)
+
+    start_time = Column(DateTime, default=_now, index=True)
+    end_time = Column(DateTime, nullable=True)
+    duration_seconds = Column(Float, nullable=True)
+
+    best_model_name = Column(String, nullable=True)
+    best_score = Column(Float, nullable=True)
+    rank_metric = Column(String, nullable=True)
+
+    best_metrics = Column(JSON, nullable=True)
+    all_results = Column(JSON, nullable=True)
+    report = Column(JSON, nullable=True)
+    profile = Column(JSON, nullable=True)
+    recommendation = Column(JSON, nullable=True)
+
+    error_details = Column(JSON, nullable=True)
+    created_at = Column(DateTime, default=_now, index=True)
+    updated_at = Column(DateTime, default=_now, onupdate=_now)
+
+
 class ModelRegistry(Base):
     __tablename__ = "model_registry"
 

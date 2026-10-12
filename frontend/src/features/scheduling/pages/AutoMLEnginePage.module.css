@@ -16,3 +16,10 @@
 .section {
   scroll-margin-top: 88px;
 }
+
+.results {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  scroll-margin-top: 88px;
+}

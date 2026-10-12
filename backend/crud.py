@@ -11,7 +11,7 @@ from jose import jwt
 from models import (User, Team, TeamMember, ApiKey, Experiment, ModelRegistry,
                     PredictionLog, Webhook, AuditLog,
                     Project, MarketplaceItem, Dataset, DatasetShare, Notification, ActivityLog,
-                    DatasetCleanStep, CleaningHistory, SavedQuery, QueryHistory, EvaluationRecord, TrainingRun)
+                    DatasetCleanStep, CleaningHistory, SavedQuery, QueryHistory, EvaluationRecord, TrainingRun, EngineRun)
 
 from config import settings
 
@@ -1078,6 +1078,115 @@ def delete_training_run(db: Session, run_id: str, user_id: str = None) -> bool:
     q = db.query(TrainingRun).filter(TrainingRun.id == run_id)
     if user_id is not None:
         q = q.filter((TrainingRun.user_id == user_id) | (TrainingRun.user_id == None))
+    run = q.first()
+    if run:
+        db.delete(run)
+        db.commit()
+        return True
+    return False
+
+
+# ─── Engine Runs (AutoML) ───────────────────────────────────────────
+
+_ENGINE_RUN_JSON_FIELDS = (
+    "selected_algorithms", "preprocessing_config", "validation_config",
+    "best_metrics", "all_results", "report", "profile", "recommendation",
+    "error_details",
+)
+
+ENGINE_RUN_SORT_COLUMNS = {
+    "created_at": EngineRun.created_at,
+    "start_time": EngineRun.start_time,
+    "duration_seconds": EngineRun.duration_seconds,
+    "best_score": EngineRun.best_score,
+    "dataset_name": EngineRun.dataset_name,
+}
+
+
+def create_engine_run(db: Session, data: dict) -> EngineRun:
+    payload = {**data}
+    run_id = payload.pop("id", None) or _uid()
+    for key in _ENGINE_RUN_JSON_FIELDS:
+        if key in payload and payload[key] is not None:
+            payload[key] = _json_safe(payload[key])
+    run = EngineRun(id=run_id, **payload)
+    db.add(run)
+    db.commit()
+    db.refresh(run)
+    return run
+
+
+def update_engine_run(db: Session, run_id: str, data: dict) -> Optional[EngineRun]:
+    run = db.query(EngineRun).filter(EngineRun.id == run_id).first()
+    if not run:
+        return None
+    for k, v in data.items():
+        if hasattr(run, k):
+            if k in _ENGINE_RUN_JSON_FIELDS and v is not None:
+                v = _json_safe(v)
+            setattr(run, k, v)
+    run.updated_at = _now()
+    db.commit()
+    db.refresh(run)
+    return run
+
+
+def get_engine_run(db: Session, run_id: str, user_id: str = None) -> Optional[EngineRun]:
+    q = db.query(EngineRun).filter(EngineRun.id == run_id)
+    if user_id is not None:
+        q = q.filter((EngineRun.user_id == user_id) | (EngineRun.user_id == None))
+    return q.first()
+
+
+def list_engine_runs(
+    db: Session,
+    user_id: str = None,
+    dataset_name: str = None,
+    task_type: str = None,
+    status: str = None,
+    search: str = None,
+    sort_by: str = "created_at",
+    order: str = "desc",
+    limit: int = 50,
+    offset: int = 0,
+) -> tuple[list[EngineRun], int]:
+    q = db.query(EngineRun)
+    if user_id is not None:
+        q = q.filter((EngineRun.user_id == user_id) | (EngineRun.user_id == None))
+
+    if dataset_name and dataset_name.strip() and dataset_name != "all":
+        q = q.filter(EngineRun.dataset_name == dataset_name.strip())
+
+    if task_type and task_type.strip() and task_type != "all":
+        q = q.filter(EngineRun.task_type == task_type.strip())
+
+    if status and status.strip() and status != "all":
+        q = q.filter(EngineRun.status == status.strip())
+
+    if search and search.strip():
+        pattern = f"%{search.strip().lower()}%"
+        q = q.filter(
+            func.lower(func.coalesce(EngineRun.name, "")).like(pattern)
+            | func.lower(func.coalesce(EngineRun.dataset_name, "")).like(pattern)
+            | func.lower(func.coalesce(EngineRun.target_column, "")).like(pattern)
+            | func.lower(func.coalesce(EngineRun.best_model_name, "")).like(pattern)
+        )
+
+    total = q.count()
+
+    column = ENGINE_RUN_SORT_COLUMNS.get(sort_by, EngineRun.created_at)
+    if order == "asc":
+        q = q.order_by(column.asc().nulls_last())
+    else:
+        q = q.order_by(column.desc().nulls_last())
+
+    return q.offset(offset).limit(limit).all(), total
+
+
+def delete_engine_run(db: Session, run_id: str, user_id: str = None) -> bool:
+    q = db.query(EngineRun).filter(EngineRun.id == run_id)
+    if user_id is not None:
+        q = q.filter((EngineRun.user_id == user_id) | (EngineRun.user_id == None))
     run = q.first()
     if run:
         db.delete(run)

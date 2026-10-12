@@ -99,6 +99,32 @@ export interface EngineProgress {
   recommendation?: EngineRecommendation;
 }
 
+export interface EngineRunSummary {
+  id: string;
+  name: string | null;
+  dataset_name: string;
+  target_column: string | null;
+  task_type: string;
+  mode: string;
+  status: string;
+  message?: string | null;
+  duration_seconds?: number | null;
+  best_model_name?: string | null;
+  best_score?: number | null;
+  rank_metric?: string | null;
+  selected_algorithms?: string[] | null;
+  result_count?: number;
+  created_at?: string | null;
+  end_time?: string | null;
+}
+
+export interface EngineRunDetail extends EngineRunSummary {
+  preprocessing_config?: Record<string, boolean> | null;
+  validation_config?: Record<string, any> | null;
+  best_metrics?: Record<string, any> | null;
+  progress: EngineProgress;
+}
+
 export const engineService = {
   models: () => http.get<EngineModelsResponse>('/engine/models'),
 
@@ -187,4 +213,22 @@ export const engineService = {
   },
 
   getResult: (jobId: string) => http.get<EngineProgress>(`/engine/${jobId}`),
+
+  history: (params?: {
+    dataset_name?: string;
+    task_type?: string;
+    status?: string;
+    search?: string;
+    limit?: number;
+    offset?: number;
+  }) =>
+    http.get<{ runs: EngineRunSummary[]; total: number; limit: number; offset: number }>(
+      '/engine/history',
+      params,
+    ),
+
+  historyRun: (runId: string) => http.get<EngineRunDetail>(`/engine/history/${runId}`),
+
+  deleteHistoryRun: (runId: string) =>
+    http.delete<{ message: string; id: string }>(`/engine/history/${runId}`),
 };
