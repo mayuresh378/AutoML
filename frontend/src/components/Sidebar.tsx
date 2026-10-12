@@ -43,7 +43,6 @@ const NAV_GROUPS: NavGroup[] = [
       { label: 'Evaluation', path: '/app/evaluation', icon: 'BarChart3' },
       { label: 'Explain AI', path: '/app/explain', icon: 'Sparkles' },
       { label: 'Model Registry', path: '/app/models', icon: 'Layers' },
-      { label: 'Model Comparison', path: '/app/model-comparison', icon: 'GridCompare' },
     ],
   },
   {
@@ -96,7 +95,6 @@ function buildWorkspaceNav(projectId: string): NavGroup[] {
         { label: 'Model Registry', path: `${base}/models/registry`, icon: 'Layers' },
         { label: 'Evaluation', path: `${base}/models/evaluation`, icon: 'BarChart3' },
         { label: 'Explain AI', path: `${base}/models/explain`, icon: 'Sparkles' },
-        { label: 'Model Comparison', path: `${base}/models/comparison`, icon: 'GridCompare' },
       ],
     },
     {
@@ -121,7 +119,7 @@ const iconComponents: Record<string, string> = {
   BarChart3: 'M18 20V10M12 20V4M6 20v-6',
   Sparkles: 'M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5L12 3zM5 17l.5 1.5L7 19l-1.5.5L5 21l-.5-1.5L3 19l1.5-.5L5 17zM17 17l.5 1.5L19 19l-1.5.5L17 21l-.5-1.5L15 19l1.5-.5L17 17z',
   Layers: 'M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5',
-  GridCompare: 'M3 3h7v7H3zM14 14h7v7h-7zM14 3v7M3 14v7',
+  
   Rocket: 'M15.59 14.37a6 6 0 01-5.84 4.63 6 6 0 01-5.84-4.63M15.59 14.37a22 22 0 014.78-5.65A8.01 8.01 0 0014 2a22 22 0 00-5.65 4.78M15.59 14.37a6 6 0 01-.82 2.52 6 6 0 01-2 2 6 6 0 01-2.52.82m0 0a6 6 0 01-2.52-.82 6 6 0 01-2-2 6 6 0 01-.82-2.52M9 12a3 3 0 113 3 3 3 0 01-3-3z',
   Send: 'M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z',
   Activity: 'M22 12h-4l-3 9L9 3l-3 9H2',

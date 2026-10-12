@@ -65,26 +65,36 @@ def generate_dataset_recommendations(file_name: str, target_column: Optional[str
             f"Target '{target_column}' is non-numeric with {nunique_target} distinct categories "
             f"({', '.join([str(v) for v in y.dropna().unique()[:4]])}), which indicates a classification problem."
         )
-    elif nunique_target <= 15:
-        problem_type = "classification"
-        problem_reason = (
-            f"Target '{target_column}' is numeric but has only {nunique_target} discrete values "
-            f"({', '.join([str(v) for v in y.dropna().unique()[:4]])}), consistent with classification classes."
-        )
-    elif nunique_target > 15 and nunique_target <= 30:
-        is_ambiguous = True
-        problem_type = "classification" if nunique_target <= 20 else "regression"
-        problem_reason = (
-            f"Target '{target_column}' has {nunique_target} distinct numeric values. "
-            f"Could be treated as multiclass classification or continuous regression. Selected {problem_type} as default."
-        )
     else:
-        problem_type = "regression"
-        std_val = float(y.std()) if not np.isnan(float(y.std())) else 0.0
-        problem_reason = (
-            f"Target '{target_column}' is continuous numeric with {nunique_target} unique values "
-            f"(mean: {float(y.mean()):.2f}, std: {std_val:.2f}), which fits regression."
-        )
+        # Fractional numeric values (prices, measurements, ...) are continuous and
+        # must be regression, even when they have few distinct values. Only
+        # whole-numbered targets with few values behave like discrete classes.
+        y_num = pd.to_numeric(y, errors="coerce").dropna()
+        try:
+            integer_like = bool(np.all(np.equal(np.mod(y_num.to_numpy(dtype="float64"), 1), 0)))
+        except (TypeError, ValueError):
+            integer_like = False
+
+        if integer_like and nunique_target <= 15:
+            problem_type = "classification"
+            problem_reason = (
+                f"Target '{target_column}' is numeric but has only {nunique_target} discrete values "
+                f"({', '.join([str(v) for v in y.dropna().unique()[:4]])}), consistent with classification classes."
+            )
+        elif integer_like and nunique_target <= 30:
+            is_ambiguous = True
+            problem_type = "classification" if nunique_target <= 20 else "regression"
+            problem_reason = (
+                f"Target '{target_column}' has {nunique_target} distinct numeric values. "
+                f"Could be treated as multiclass classification or continuous regression. Selected {problem_type} as default."
+            )
+        else:
+            problem_type = "regression"
+            std_val = float(y.std()) if not np.isnan(float(y.std())) else 0.0
+            problem_reason = (
+                f"Target '{target_column}' is continuous numeric with {nunique_target} unique values "
+                f"(mean: {float(y.mean()):.2f}, std: {std_val:.2f}), which fits regression."
+            )
 
     # 3. Quality issues & Cleaning suggestions
     quality_issues = []

@@ -68,7 +68,6 @@ const NAV_GROUPS: NavGroup[] = [
       { label: 'Model Registry', path: 'models/registry', icon: Package },
       { label: 'Evaluation', path: 'models/evaluation', icon: Gauge },
       { label: 'Explain AI', path: 'models/explain', icon: Lightbulb },
-      { label: 'Model Comparison', path: 'models/comparison', icon: GitCompare },
     ],
   },
   {

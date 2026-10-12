@@ -33,7 +33,6 @@ const Explorer = lazy(() => import('../features/datasets/pages/ExplorerPage'));
 const DataProfiling = lazy(() => import('../features/datasets/pages/DatasetAnalysisPage'));
 const DataCleaning = lazy(() => import('../features/datasets/pages/CleaningPage'));
 const FeatureEngineering = lazy(() => import('../features/datasets/pages/FeatureEngineeringPage'));
-const ModelComparison = lazy(() => import('../features/models/pages/ModelComparisonPage'));
 const Prediction = lazy(() => import('../features/prediction/pages/PredictionPage'));
 
 export const router = createBrowserRouter([
@@ -130,14 +129,12 @@ export const router = createBrowserRouter([
           { path: 'models/registry', element: <Models /> },
           { path: 'models/evaluation', element: <ModelEvaluation /> },
           { path: 'models/explain', element: <Explain /> },
-          { path: 'models/comparison', element: <ModelComparison /> },
         ],
       },
       { path: 'explorer', element: <Explorer /> },
       { path: 'profiling', element: <DataProfiling /> },
       { path: 'cleaning', element: <DataCleaning /> },
       { path: 'feature-engineering', element: <FeatureEngineering /> },
-      { path: 'model-comparison', element: <ModelComparison /> },
       { path: 'prediction', element: <Prediction /> },
       { path: '*', element: <NotFound /> },
     ],

@@ -84,6 +84,10 @@ export function TrainingWorkflow({ datasets }: TrainingWorkflowProps) {
   const navigate = useNavigate();
   const [step, setStep] = useState<Step>('task');
   const [taskType, setTaskType] = useState<'classification' | 'regression'>('classification');
+  // True once the user explicitly picks a task type themselves. Until then the
+  // backend's dataset recommendation drives the task type, so continuous
+  // targets (prices, measurements) are automatically trained as regression.
+  const [taskTypeTouched, setTaskTypeTouched] = useState(false);
   const [selectedDataset, setSelectedDataset] = useState('');
   const [targetColumn, setTargetColumn] = useState('');
   const [selectedAlgos, setSelectedAlgos] = useState<string[]>([]);
@@ -126,6 +130,16 @@ export function TrainingWorkflow({ datasets }: TrainingWorkflowProps) {
     setTaskType(rec.taskType);
     setSelectedAlgos(rec.algorithms);
   }, []);
+
+  // Auto-apply the backend-recommended task type for the current dataset and
+  // target (e.g. regression for continuous prices) unless the user has already
+  // made an explicit task type selection. This prevents a continuous target
+  // from silently running as classification and failing at the results step.
+  useEffect(() => {
+    if (recommendation?.problem_type && !taskTypeTouched) {
+      setTaskType(recommendation.problem_type);
+    }
+  }, [recommendation?.problem_type, taskTypeTouched]);
 
   const results = useMemo(() => progress?.all_results ?? [], [progress]);
   const isRegression = progress?.task_type === 'regression';
@@ -283,12 +297,12 @@ export function TrainingWorkflow({ datasets }: TrainingWorkflowProps) {
               <h3 className={styles.panelTitle}>Select Task Type</h3>
               <p className={styles.panelDesc}>Choose the type of machine learning problem you want to solve.</p>
               <div className={styles.taskGrid}>
-                <button className={`${styles.taskCard} ${taskType === 'classification' ? styles.taskCardActive : ''}`} onClick={() => setTaskType('classification')}>
+                <button className={`${styles.taskCard} ${taskType === 'classification' ? styles.taskCardActive : ''}`} onClick={() => { setTaskType('classification'); setTaskTypeTouched(true); }}>
                   <div className={styles.taskIcon}>🎯</div>
                   <div className={styles.taskName}>Classification</div>
                   <div className={styles.taskDesc}>Predict categories or labels (e.g., spam/not spam, disease type)</div>
                 </button>
-                <button className={`${styles.taskCard} ${taskType === 'regression' ? styles.taskCardActive : ''}`} onClick={() => setTaskType('regression')}>
+                <button className={`${styles.taskCard} ${taskType === 'regression' ? styles.taskCardActive : ''}`} onClick={() => { setTaskType('regression'); setTaskTypeTouched(true); }}>
                   <div className={styles.taskIcon}>📈</div>
                   <div className={styles.taskName}>Regression</div>
                   <div className={styles.taskDesc}>Predict continuous values (e.g., price, temperature, revenue)</div>
@@ -303,7 +317,7 @@ export function TrainingWorkflow({ datasets }: TrainingWorkflowProps) {
                     containerClassName="w-full"
                     triggerClassName={styles.formSelect}
                     value={selectedDataset}
-                    onChange={(e) => { setSelectedDataset(e.target.value); setTargetColumn(''); }}
+                    onChange={(e) => { setSelectedDataset(e.target.value); setTargetColumn(''); setTaskTypeTouched(false); }}
                     placeholder="Choose a dataset"
                     options={datasets.map((d) => ({ value: d.name, label: d.name }))}
                   />
@@ -314,7 +328,7 @@ export function TrainingWorkflow({ datasets }: TrainingWorkflowProps) {
                     containerClassName="w-full"
                     triggerClassName={styles.formSelect}
                     value={targetColumn}
-                    onChange={(e) => setTargetColumn(e.target.value)}
+                    onChange={(e) => { setTargetColumn(e.target.value); setTaskTypeTouched(false); }}
                     disabled={!selectedDataset}
                     placeholder="Choose target"
                     options={dsColumns.map((c: string) => ({ value: c, label: c }))}

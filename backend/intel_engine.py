@@ -170,8 +170,16 @@ def _detect_target(df: pd.DataFrame, target: str = None) -> dict:
     inferred_task = "regression"
     if top:
         col_data = df[top["column"]].dropna()
-        if top["column"] in df.columns and (str(col_data.dtype) == "object" or col_data.nunique() <= 20):
-            inferred_task = "classification"
+        if top["column"] in df.columns:
+            if str(col_data.dtype) == "object":
+                inferred_task = "classification"
+            else:
+                try:
+                    integer_like = bool(np.all(np.equal(np.mod(col_data.to_numpy(dtype="float64"), 1), 0)))
+                except (TypeError, ValueError):
+                    integer_like = False
+                if integer_like and col_data.nunique() <= 20:
+                    inferred_task = "classification"
     return {"candidates": candidates[:6], "suggested": top["column"] if top else None,
             "inferred_task": inferred_task}
 

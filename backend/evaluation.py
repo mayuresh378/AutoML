@@ -1419,9 +1419,20 @@ def detect_task_type(y: pd.Series) -> str:
     """Detect whether ML problem is classification or regression."""
     if y.dtype.name in ["bool", "object", "category", "string"]:
         return "classification"
-    
-    unique_count = int(y.nunique(dropna=True))
-    if unique_count <= 20 or (unique_count <= 50 and unique_count / max(len(y), 1) <= 0.05):
+
+    y_num = pd.to_numeric(y, errors="coerce").dropna()
+    if y_num.empty:
+        return "classification"
+
+    unique_count = int(y_num.nunique())
+
+    # Fractional values (prices, measurements, ...) are continuous -> regression.
+    try:
+        integer_like = bool(np.all(np.equal(np.mod(y_num.to_numpy(dtype="float64"), 1), 0)))
+    except (TypeError, ValueError):
+        integer_like = False
+
+    if integer_like and (unique_count <= 20 or (unique_count <= 50 and unique_count / max(len(y), 1) <= 0.05)):
         return "classification"
     return "regression"
 

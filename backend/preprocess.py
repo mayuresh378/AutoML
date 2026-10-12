@@ -88,6 +88,22 @@ def validate_dataset_and_target(df: pd.DataFrame, target_column: str, task_type:
         )
 
     if task_type == "classification":
+        # Fractional numeric values (prices, measurements, ...) are a
+        # continuous regression target, not discrete classes. Catch this early
+        # so the user gets an actionable message instead of sklearn's
+        # "Unknown label type: continuous".
+        if pd.api.types.is_numeric_dtype(y):
+            y_numeric = pd.to_numeric(y, errors="coerce").dropna()
+            try:
+                is_fractional = bool(np.any(np.not_equal(np.mod(y_numeric.to_numpy(dtype="float64"), 1), 0)))
+            except (TypeError, ValueError):
+                is_fractional = False
+            if is_fractional:
+                raise ValueError(
+                    f"Target column '{actual_col}' contains fractional numeric values "
+                    "(for example prices or measurements), which is a regression target. "
+                    "Please select Regression as the task type instead of Classification."
+                )
         # If numeric continuous with many distinct values, warn or suggest regression
         if pd.api.types.is_numeric_dtype(y) and nunique > 50 and (nunique / len(y)) > 0.5:
             raise ValueError(
@@ -299,12 +315,33 @@ def prepare_train_test_data(
 
 
 def detect_task_type(y: pd.Series) -> str:
-    if y.dtype in ["int64", "float64"]:
-        unique_count = y.nunique()
-        if unique_count <= 20:
-            return "classification"
-        return "regression"
-    return "classification"
+    """Infer classification vs. regression from a target column.
+
+    Non-numeric targets (strings, categories, booleans) are classification.
+    A numeric target only counts as classification when its values are whole
+    numbers with few distinct classes (e.g. 0/1/2 or ratings). Fractional
+    values such as prices or measurements are continuous and must be treated
+    as regression — training a classifier on them fails with
+    "Unknown label type: continuous".
+    """
+    if not pd.api.types.is_numeric_dtype(y):
+        return "classification"
+
+    y_num = pd.to_numeric(y, errors="coerce").dropna()
+    if y_num.empty:
+        return "classification"
+
+    unique_count = int(y_num.nunique())
+
+    # Whole-numbered numeric targets with few distinct values look like class labels.
+    try:
+        integer_like = bool(np.all(np.equal(np.mod(y_num.to_numpy(dtype="float64"), 1), 0)))
+    except (TypeError, ValueError):
+        integer_like = False
+
+    if integer_like and unique_count <= 20:
+        return "classification"
+    return "regression"
 
 
 def preprocess_target(y: pd.Series, task_type: str) -> pd.Series:
