@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, within, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 vi.mock('react-router-dom', async (importOriginal) => {
   const actual = await importOriginal<typeof import('react-router-dom')>();
@@ -75,6 +76,8 @@ const trainingMock = vi.hoisted(() => ({
   runWorkflow: vi.fn(),
   subscribeProgress: vi.fn(),
   cancel: vi.fn(),
+  algorithms: vi.fn(),
+  recommendations: vi.fn(),
 }));
 
 vi.mock('../../../services/training.service', async (importOriginal) => {
@@ -114,9 +117,23 @@ async function pickOption(triggerLabel: string | RegExp, optionLabel: string | R
   fireEvent.click(option);
 }
 
+/**
+ * TrainingWorkflow reads its algorithm catalog and dataset recommendation
+ * through react-query, so every render needs a QueryClientProvider. Retries are
+ * disabled to keep failures fast and deterministic.
+ */
+function renderWorkflow() {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={qc}>
+      <MemoryRouter><TrainingWorkflow datasets={DATASETS as any} /></MemoryRouter>
+    </QueryClientProvider>,
+  );
+}
+
 /** Walks the wizard to the Hyperparameters step with the given task type. */
 async function goToTrainingStep(task: 'Classification' | 'Regression') {
-  render(<MemoryRouter><TrainingWorkflow datasets={DATASETS as any} /></MemoryRouter>);
+  renderWorkflow();
   fireEvent.click(screen.getByText(task));
   await pickOption(/Choose a dataset/, DATASETS[0].name);
   await pickOption(/Choose target/, 'target_reg');
@@ -132,7 +149,15 @@ function rowFor(table: HTMLElement, algorithm: string): HTMLElement {
 beforeEach(() => {
   trainingMock.runWorkflow.mockReset();
   trainingMock.subscribeProgress.mockReset();
+  trainingMock.algorithms.mockReset();
+  trainingMock.recommendations.mockReset();
   trainingMock.runWorkflow.mockResolvedValue({ job_id: 'job123', status: 'queued' });
+  // An empty payload leaves the catalog fields undefined so the component
+  // falls back to its built-in algorithm lists (an empty *array* would be
+  // truthy and hide every algorithm). A null recommendation keeps the auto
+  // task-type effect from overriding the choice made by each test.
+  trainingMock.algorithms.mockResolvedValue({});
+  trainingMock.recommendations.mockResolvedValue(null);
 });
 
 describe('Training results table (real captured payloads)', () => {

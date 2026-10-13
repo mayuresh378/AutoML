@@ -423,7 +423,7 @@ export function TrainingHistoryDashboard({ onSelectRunForRetry }: TrainingHistor
                                       )
                                     : '—'}
                                 </td>
-                                <td>{r.cv_score ? `${(r.cv_score * 100).toFixed(1)}%` : '—'}</td>
+                                <td>{r.cv_score != null ? `${(r.cv_score * 100).toFixed(1)}%` : '—'}</td>
                                 <td>{r.training_time != null ? `${r.training_time.toFixed(2)}s` : '—'}</td>
                                 <td>
                                   {r.status === 'success' ? (

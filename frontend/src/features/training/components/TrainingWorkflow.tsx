@@ -235,9 +235,7 @@ export function TrainingWorkflow({ datasets }: TrainingWorkflowProps) {
         cv_folds: cvFolds,
         optimize_hyperparameters: optimizeHpo,
       };
-      console.log('TRAINING API REQUEST:', payload);
       const result = await trainingService.runWorkflow(payload);
-      console.log('TRAINING API RESPONSE:', result);
       setJobId(result.job_id);
       unsubscribeRef.current = trainingService.subscribeProgress(result.job_id, (data) => {
         setProgress(data);
@@ -254,7 +252,8 @@ export function TrainingWorkflow({ datasets }: TrainingWorkflowProps) {
   }, [selectedDataset, targetColumn, taskType, selectedAlgos, cvFolds, optimizeHpo]);
 
   const handleCancel = useCallback(() => {
-    if (jobId) trainingService.cancel(jobId);
+    // Fire-and-forget, but never leave the rejection unhandled.
+    if (jobId) void trainingService.cancel(jobId).catch(() => {});
   }, [jobId]);
 
   const toggleAlgo = useCallback((name: string, isAvailable: boolean) => {

@@ -1480,6 +1480,31 @@ import queue as _queue
 training_progress_store: dict[str, dict] = {}
 _training_lock = threading.Lock()
 
+# Live progress lives only in memory. Without a cap these dicts grow for the
+# life of the process — every finished job keeps its logs, metrics and results
+# resident forever. Keep the most recent entries and drop the oldest *finished*
+# jobs first so a still-running job's progress is never evicted.
+_PROGRESS_STORE_LIMIT = 300
+_TERMINAL_STATUSES = {"completed", "failed", "cancelled", "success", "error"}
+
+
+def _prune_progress_store(store: dict, limit: int = _PROGRESS_STORE_LIMIT) -> None:
+    if len(store) <= limit:
+        return
+    # Pass 1: evict finished jobs, oldest first (dict preserves insertion order).
+    for key in list(store.keys()):
+        if len(store) <= limit:
+            return
+        if str(store.get(key, {}).get("status", "")).lower() in _TERMINAL_STATUSES:
+            store.pop(key, None)
+    # Pass 2: extremely unlikely (limit exceeded by *active* jobs only). Bound
+    # memory regardless by evicting the oldest remaining entries.
+    for key in list(store.keys()):
+        if len(store) <= limit:
+            return
+        store.pop(key, None)
+
+
 def _update_progress(job_id: str, data: dict):
     # Everything in this store is handed straight to json.dumps() by the SSE
     # generator, which has no default= and would abort the whole stream on a
@@ -1492,6 +1517,7 @@ def _update_progress(job_id: str, data: dict):
         if job_id not in training_progress_store:
             training_progress_store[job_id] = {}
         training_progress_store[job_id].update(payload)
+        _prune_progress_store(training_progress_store)
 
 
 @app.get("/api/v1/training/queue", tags=["Training"], summary="Training queue", description="Return the training job queue.")
@@ -1978,7 +2004,6 @@ async def run_training_workflow(
                 "failed_count": len(failed), "elapsed": elapsed,
                 "saved_model_name": saved_model_name,
             }
-            print("TRAINING API RESPONSE:", json.dumps(_json_safe(training_response), default=str), flush=True)
             _update_progress(job_id, training_response)
 
             # Update persistent TrainingRun
@@ -2044,7 +2069,6 @@ async def run_training_workflow(
                 "stack_trace": traceback.format_exc()[-1000:],
             }
 
-            print(f"TRAINING API RESPONSE (failed): {error_msg}", flush=True)
             traceback.print_exc()
 
             _update_progress(job_id, {
@@ -2649,6 +2673,7 @@ def _hpo_update(job_id, model_name, status, current, total, best_params, best_sc
             "started_at": prev.get("started_at"),
             "timestamp": time.time(),
         }
+        _prune_progress_store(hpo_progress_store)
 
 
 # Persistent record of completed/cancelled HPO runs so users can re-open, compare,
@@ -3300,6 +3325,7 @@ def engine_run(
             "hpo_budget": budget, "profile": None, "report": None,
             "recommendation": None,
         }
+        _prune_progress_store(engine_progress_store)
 
     def _engine_progress_callback(data):
         with engine_lock:

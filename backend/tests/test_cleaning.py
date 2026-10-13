@@ -268,6 +268,8 @@ class TestBoolDummies:
         encoded.to_csv(os.path.join(str(dataset_dir), "raw_ohe.csv"), index=False)
         monkeypatch.setattr("preprocess.DATASET_DIR", str(dataset_dir))
         res = preprocess.auto_preprocess("raw_ohe.csv", target_column="score", task_type="regression")
-        assert len(res["X"]) == len(df)
+        # Rows with a missing target are intentionally dropped by validation, so
+        # compare against the non-null target count, not the raw frame length.
+        assert len(res["X"]) == int(df["score"].notna().sum())
         bool_remnants = [c for c in res["X"].columns if pd.api.types.is_bool_dtype(res["X"][c])]
         assert bool_remnants == []  # regression: SimpleImputer rejected bool arrays

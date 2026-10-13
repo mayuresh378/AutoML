@@ -7,5 +7,8 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: './src/test/setup.ts',
+    // Pin the API base so tests are deterministic regardless of the
+    // developer's local frontend/.env (which points at a live backend).
+    env: { VITE_API_URL: '/api/v1' },
   },
 });

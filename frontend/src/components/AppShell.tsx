@@ -5,6 +5,7 @@ import { useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import TopNav from './TopNav';
 import LoadingSpinner from './LoadingSpinner';
+import { ErrorBoundary } from './ErrorBoundary';
 import styles from './AppShell.module.css';
 
 export default function AppShell() {
@@ -26,7 +27,12 @@ export default function AppShell() {
               className={styles.page}
             >
               <Suspense fallback={<LoadingSpinner />}>
-                <Outlet />
+                {/* Isolate a crashing page so the sidebar/top nav survive and
+                    the user can simply navigate elsewhere. Keying by pathname
+                    remounts the boundary (clearing its error) on navigation. */}
+                <ErrorBoundary key={location.pathname}>
+                  <Outlet />
+                </ErrorBoundary>
               </Suspense>
             </motion.div>
           </AnimatePresence>
